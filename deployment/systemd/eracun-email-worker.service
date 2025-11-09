@@ -1,0 +1,81 @@
+# eRacun Email Ingestion Worker Service
+#
+# This service monitors email accounts for incoming invoices (PDF/XML attachments)
+# and queues them for processing.
+#
+# INSTALLATION:
+# sudo cp deployment/systemd/eracun-email-worker.service /etc/systemd/system/
+# sudo systemctl daemon-reload
+# sudo systemctl enable eracun-email-worker
+# sudo systemctl start eracun-email-worker
+#
+# MONITORING:
+# sudo systemctl status eracun-email-worker
+# sudo journalctl -u eracun-email-worker -f
+
+[Unit]
+Description=eRacun Email Ingestion Worker
+Documentation=https://github.com/eracun/eRacun-development
+After=network-online.target rabbitmq-server.service
+Wants=network-online.target rabbitmq-server.service
+
+[Service]
+Type=simple
+User=eracun
+Group=eracun
+WorkingDirectory=/opt/eracun/services/email-worker
+
+# Environment configuration files (precedence: later overrides earlier)
+EnvironmentFile=/etc/eracun/platform.conf
+EnvironmentFile=/etc/eracun/environment.conf
+EnvironmentFile=/etc/eracun/services/email-worker.conf
+EnvironmentFile=/run/eracun/secrets.env
+
+# Decrypt secrets before starting service
+ExecStartPre=/usr/local/bin/decrypt-secrets.sh email-worker
+
+# Start service
+ExecStart=/usr/local/bin/node dist/index.js
+
+# Restart policy
+Restart=on-failure
+RestartSec=5s
+StartLimitBurst=5
+StartLimitIntervalSec=60s
+
+# Resource limits
+MemoryMax=512M
+MemoryHigh=400M
+CPUQuota=100%
+
+# Systemd hardening (security)
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/log/eracun /var/lib/eracun
+
+# Prevent privilege escalation
+NoNewPrivileges=true
+
+# Prevent access to sensitive files
+InaccessiblePaths=/etc/eracun/.age-key
+ReadOnlyPaths=/etc/eracun/secrets
+
+# Namespace isolation
+PrivateDevices=true
+
+# Capability restrictions (email worker doesn't need special caps)
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# System call filtering
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=eracun-email-worker
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,90 @@
+# eRacun systemd Service Template
+#
+# This is a TEMPLATE file for creating systemd service units.
+# Copy and customize for each service.
+#
+# USAGE:
+# 1. Copy: cp eracun-service.template eracun-<service-name>.service
+# 2. Replace {{SERVICE_NAME}} with actual service name (e.g., email-worker)
+# 3. Replace {{SERVICE_PORT}} with service port (e.g., 3001)
+# 4. Replace {{SERVICE_DESCRIPTION}} with human-readable description
+# 5. Adjust dependencies (After=, Wants=) as needed
+# 6. Copy to droplet: sudo cp eracun-<service-name>.service /etc/systemd/system/
+# 7. Enable: sudo systemctl enable eracun-<service-name>
+# 8. Start: sudo systemctl start eracun-<service-name>
+
+[Unit]
+Description={{SERVICE_DESCRIPTION}}
+Documentation=https://github.com/eracun/eRacun-development
+After=network-online.target
+Wants=network-online.target
+
+# Dependencies (customize based on service needs)
+# After=postgresql.service rabbitmq-server.service
+# Wants=postgresql.service rabbitmq-server.service
+
+[Service]
+Type=simple
+User=eracun
+Group=eracun
+WorkingDirectory=/opt/eracun/services/{{SERVICE_NAME}}
+
+# Environment configuration files (precedence: later overrides earlier)
+EnvironmentFile=/etc/eracun/platform.conf
+EnvironmentFile=/etc/eracun/environment.conf
+EnvironmentFile=/etc/eracun/services/{{SERVICE_NAME}}.conf
+EnvironmentFile=/run/eracun/secrets.env
+
+# Decrypt secrets before starting service
+ExecStartPre=/usr/local/bin/decrypt-secrets.sh {{SERVICE_NAME}}
+
+# Start service
+ExecStart=/usr/local/bin/node dist/index.js
+
+# Restart policy
+Restart=on-failure
+RestartSec=5s
+
+# Resource limits (adjust based on service needs)
+MemoryMax=1G
+MemoryHigh=800M
+CPUQuota=200%
+
+# Systemd hardening (security)
+# See: https://www.freedesktop.org/software/systemd/man/systemd.exec.html
+
+# Filesystem protection
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/log/eracun /var/lib/eracun
+
+# Prevent privilege escalation
+NoNewPrivileges=true
+
+# Prevent access to sensitive files
+InaccessiblePaths=/etc/eracun/.age-key
+ReadOnlyPaths=/etc/eracun/secrets
+
+# Namespace isolation
+PrivateDevices=true
+
+# Capability restrictions (drop all capabilities)
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# System call filtering
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+
+# Network access (allow by default, restrict if service doesn't need network)
+# IPAddressDeny=any
+# IPAddressAllow=localhost
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=eracun-{{SERVICE_NAME}}
+
+[Install]
+WantedBy=multi-user.target

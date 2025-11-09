@@ -1,0 +1,98 @@
+# eRacun Production Environment Configuration
+#
+# This file contains production-specific overrides.
+# Deploy to: /etc/eracun/environment.conf (mode 644)
+#
+# IMPORTANT: This is production configuration - handle with care!
+
+---
+
+# Environment
+platform:
+  environment: production
+
+# Database (production)
+database:
+  host: db-prod.eracun.internal
+  port: 5432
+  name: eracun_production
+  pool:
+    min: 5
+    max: 20
+    idle_timeout_ms: 60000
+  ssl:
+    enabled: true
+    reject_unauthorized: true
+
+# RabbitMQ (production cluster)
+rabbitmq:
+  url: amqp://rmq-prod.eracun.internal:5672
+  vhost: /eracun-prod
+
+# FINA Integration (Production)
+fina:
+  b2c:
+    endpoint: https://cis.porezna-uprava.hr:8449/FiskalizacijaService
+    timeout_ms: 5000
+  b2b:
+    endpoint: https://as4-gateway.fina.hr/
+    timeout_ms: 10000
+  certificates:
+    path: /etc/eracun/secrets/fina-cert-production.p12
+    # Password in secrets: FINA_PROD_CERT_PASSWORD
+
+# Porezna Uprava (Croatian Tax Authority)
+porezna:
+  reporting_endpoint: https://ereporting.porezna-uprava.hr/api/v1
+  api_key_header: X-Porezna-API-Key
+  # API key in secrets: POREZNA_API_KEY
+
+# Observability (production)
+prometheus:
+  enabled: true
+  port: 9090
+
+jaeger:
+  enabled: true
+  endpoint: http://jaeger-prod.eracun.internal:14268/api/traces
+  sampler:
+    type: probabilistic
+    param: 0.05  # 5% sampling in production
+
+# Logging (production)
+logging:
+  level: warn  # Less verbose in production
+  format: json
+  include_trace_id: true
+
+# Performance (production targets)
+performance:
+  max_latency_ms: 200
+  max_validation_time_ms: 5000
+
+# Feature Flags (production)
+features:
+  ai_validation: true
+  triple_redundancy: true
+  chaos_testing: false
+  fuzz_testing: false
+
+# Security
+security:
+  tls:
+    min_version: TLS1.2
+    ciphers: TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256
+  cors:
+    enabled: true
+    allowed_origins:
+      - https://eracun.hr
+      - https://app.eracun.hr
+  rate_limit:
+    enabled: true
+    window_ms: 60000
+    max_requests: 1000
+
+# Resource Limits (per service)
+resources:
+  max_memory_mb: 1024
+  max_cpu_percent: 200
