@@ -19,30 +19,42 @@
 
 ## Active Items
 
-### 🔴 P0 - CRITICAL (Blocking)
-
-#### [PENDING-001](docs/pending/001-configuration-security-strategy.md) - Configuration & Secrets Management Strategy
-**Status:** 🔴 Open
-**Created:** 2025-11-09
-**Blocks:** All service implementation
-**Summary:** No defined strategy for config placement (global vs local), secrets protection (FINA certs, passwords), environment separation (dev/staging/prod).
-
-**Key Decisions Required:**
-- Secrets management tool (HashiCorp Vault recommended)
-- Configuration hierarchy (platform/service/environment levels)
-- Directory structure for configs
-- FINA certificate storage approach
-- .gitignore protection against committed secrets
-
-**Estimated Effort:** 2-4 days (ADRs + implementation + Vault setup)
-
-**Why Deferred Now:** Establishing SSOT foundation was more pressing (no point configuring services before we know how to specify them properly).
+_None - All critical blockers resolved!_
 
 ---
 
 ## Completed Items
 
-_None yet_
+### ✅ [PENDING-001](docs/pending/001-configuration-security-strategy.md) - Configuration & Secrets Management Strategy
+
+**Status:** ✅ Completed
+**Created:** 2025-11-09
+**Resolved:** 2025-11-09
+**Implementation Time:** ~8 hours (1 day)
+
+**Problem:** No defined strategy for configuration management and secrets protection on DigitalOcean droplets.
+
+**Solution Implemented:**
+- **Secrets Management:** SOPS + age encryption (Mozilla open source, €0 cost)
+- **Configuration Strategy:** Filesystem-based `/etc/eracun/` hierarchy (ADR-001)
+- **Deployment:** systemd service orchestration with Unix conventions
+
+**Deliverables Completed:**
+- ✅ ADR-001: Configuration Management Strategy (filesystem-based)
+- ✅ ADR-002: Secrets Management with SOPS + age
+- ✅ Directory structure: `config/`, `secrets/`, `deployment/systemd/`
+- ✅ systemd service template + decrypt-secrets.sh script
+- ✅ Configuration templates (.conf.example files)
+- ✅ .gitignore with comprehensive secret protection
+- ✅ Operational documentation (deployment/systemd/README.md)
+- ✅ Updated CLAUDE.md sections 2.1, 3.4, 6.1, 6.2
+
+**Git Commits:**
+- `86fa9ad` - feat(config): implement Unix/systemd configuration and secrets management
+- `85c70bc` - chore(gitignore): add comprehensive secret protection rules
+- `89b9424` - docs(claude): update deployment architecture to Unix/systemd
+
+**Outcome:** Service development can now proceed with secure configuration and secrets management infrastructure.
 
 ---
 
@@ -118,5 +130,5 @@ TBD Question → Decision Made → PENDING Implementation → Completed → Clos
 ---
 
 **Maintainer:** Technical Lead
-**Last Updated:** 2025-11-09
+**Last Updated:** 2025-11-09 (PENDING-001 completed)
 **Review Cadence:** Weekly (during planning)
