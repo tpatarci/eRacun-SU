@@ -303,26 +303,128 @@ Every service MUST implement:
 
 ## 8. REGULATORY COMPLIANCE
 
-### 8.1 Croatian E-Invoice Standards
+**⚠️ CRITICAL: See CROATIAN_COMPLIANCE.md for complete regulatory specifications**
+
+### 8.1 Croatian E-Invoice Standards (Fiskalizacija 2.0)
+
+**Effective Date:** 1 January 2026 (HARD DEADLINE)
+**Legal Framework:** Croatian Fiscalization Law (NN 89/25)
 
 **Mandatory Formats:**
-- UBL 2.1 (Universal Business Language)
-- EN 16931 (European e-invoicing standard)
-- FINA e-Račun schema (Croatia-specific extensions)
+- **UBL 2.1** (OASIS Universal Business Language) - PRIMARY
+- **EN 16931-1:2017** (European e-invoicing semantic model) - REQUIRED
+- **Croatian CIUS** (Core Invoice Usage Specification with extensions) - REQUIRED
+- **Alternative:** UN/CEFACT CII v.2.0 (less common)
+
+**Mandatory Data Elements:**
+- **OIB Numbers:** Issuer (BT-31), Operator (HR-BT-5), Recipient (BT-48)
+- **KPD Classification:** 6-digit KLASUS 2025 codes for EVERY line item
+- **VAT Breakdown:** Category codes + rates (25%, 13%, 5%, 0%)
+- **Digital Signature:** XMLDSig with FINA X.509 certificate
+- **Qualified Timestamp:** eIDAS-compliant for B2B invoices
 
 **Validation Layers:**
-1. **Syntactic:** XSD schema validation
-2. **Semantic:** Business rules engine (tax rates, VAT validation)
-3. **Cross-Reference:** AI-based anomaly detection
-4. **Consensus:** Triple redundancy with majority voting
+1. **Syntactic:** XSD schema validation (UBL 2.1)
+2. **Business Rules:** Schematron validator (Croatian CIUS)
+3. **KPD Validation:** Against official KLASUS registry
+4. **Semantic:** Business rules engine (tax rates, VAT validation)
+5. **Cross-Reference:** AI-based anomaly detection
+6. **Consensus:** Triple redundancy with majority voting
 
-### 8.2 Audit Requirements
+**Integration Endpoints:**
+- **B2C Fiscalization:** SOAP API `https://cis.porezna-uprava.hr:8449/FiskalizacijaService`
+- **B2B Exchange:** AS4 protocol via Access Point (four-corner model)
+- **Test Environment:** `https://cistest.apis-it.hr:8449/FiskalizacijaServiceTest`
 
-**Immutable Audit Trail:**
+---
+
+### 8.2 Audit & Archiving Requirements
+
+**⚠️ CRITICAL - NON-COMPLIANCE PENALTIES:**
+- **Fines:** Up to 66,360 EUR
+- **VAT Deduction Loss:** Retroactive tax liability
+- **Criminal Liability:** For intentional destruction
+
+**Retention Period:** **11 YEARS** (NOT 7 years)
+
+**Format Requirements:**
+- ✅ Original XML with UBL 2.1 structure
+- ✅ Preserved digital signatures (must remain valid)
+- ✅ Preserved qualified timestamps
+- ✅ Submission confirmations (JIR for B2C, UUID for B2B)
+- ❌ PDF conversion NOT legally compliant
+- ❌ Paper printouts NOT legally compliant
+
+**Storage Characteristics:**
+- **Immutability:** WORM (Write Once Read Many) required
+- **Encryption:** AES-256 at rest (minimum)
+- **Geographic Redundancy:** EU region + backup location
+- **Integrity Verification:** Automated signature checks (monthly minimum)
+- **Access Control:** Audit trail of all retrievals
+- **Archive Tier:** Cold storage after 1 year (cost optimization)
+
+**Audit Trail:**
 - Every document transformation logged
-- Original documents retained (S3-compatible storage)
+- Request IDs propagated through entire processing chain
+- Error context captured (never swallow exceptions)
 - Cryptographic signatures on audit entries
-- 7-year retention period (legal requirement)
+- Cross-referenced with Tax Authority submission records
+
+---
+
+### 8.3 Compliance Obligations Calendar
+
+**1 September 2025:**
+- Testing environment live
+- Begin certificate acquisition (5-10 day processing)
+- Start KPD product mapping
+- Register with FiskAplikacija (ePorezna portal)
+
+**1 September - 31 December 2025 (Transition Period):**
+- Confirm information system provider
+- Grant fiscalization authorization
+- Register endpoints with AMS (Address Metadata Service)
+- Complete integration testing
+- Obtain production FINA certificates
+
+**1 January 2026 (MANDATORY COMPLIANCE):**
+- **VAT Entities:** Issue + receive + fiscalize all B2B/B2G/B2C invoices
+- **Non-VAT Entities:** Receive + fiscalize incoming invoices only
+
+**Monthly (by 20th of following month):**
+- **eIzvještavanje (e-Reporting):** Payment data + rejection reports
+
+**1 January 2027:**
+- **Non-VAT Entities:** Issuing e-invoices becomes mandatory
+
+---
+
+### 8.4 Certificate Management
+
+**FINA Application Certificates (X.509):**
+- **Type:** Qualified digital certificates for fiscalization
+- **Cost:** ~39.82 EUR + VAT per 5-year certificate
+- **Demo Certificates:** FREE for testing (1-year validity)
+- **Issuance Time:** 5-10 business days
+- **Issuer:** FINA (primary) or AKD (alternative)
+- **Format:** .p12 soft certificate (PKCS#12)
+
+**Cryptographic Requirements:**
+- **Signature Algorithm:** SHA-256 with RSA
+- **Standard:** XMLDSig (enveloped signature)
+- **PKI Hierarchy:** Fina Root CA → Fina RDC 2015 CA → Application Certificate
+- **ZKI Code:** MD5 hash signed with private key (B2C receipts)
+
+**Lifecycle Management:**
+- **Renewal:** 30 days before expiration
+- **Revocation:** Immediate notification to FINA required
+- **Key Storage:** Hardware Security Module (HSM) preferred for production
+- **Access Control:** Minimum privilege, audit logging
+
+**Acquisition Contacts:**
+- FINA Support: 01 4404 707
+- Portal: cms.fina.hr
+- CMS activation: Online via NIAS authentication
 
 ---
 

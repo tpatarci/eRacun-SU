@@ -266,22 +266,29 @@
 
 ### 4.1 Document Storage Strategy
 
-**Status:** ⏳ Pending Decision
+**Status:** ✅ Partially Researched - Implementation Pending
 
-**Questions:**
-- Where to store original uploaded documents (S3-compatible object storage)?
-- Where to store generated XML (database, object storage)?
-- Retention policy (7 years legally required - archive to cold storage)?
-- Encryption at rest (provider-managed keys, customer-managed)?
-- Geographic replication (single region, multi-region)?
+**REGULATORY REQUIREMENTS (from CROATIAN_COMPLIANCE.md):**
+- **Retention Period:** 11 YEARS (not 7) - Croatian fiscalization law
+- **Format:** Original XML with preserved digital signatures and timestamps
+- **Storage Type:** Immutable (WORM - Write Once Read Many)
+- **Consequences of Non-Compliance:** Fines up to 66,360 EUR + LOSS OF VAT DEDUCTION RIGHTS
 
-**Considerations:**
-- Cost at scale (10,000s of documents monthly)
-- Retrieval latency requirements
-- Compliance (GDPR, Croatian data residency laws)
+**Implementation Decisions:**
+- ✅ Primary Storage: S3-compatible object storage (DigitalOcean Spaces recommended)
+- ✅ Archive Strategy: Glacier-class cold storage after 1 year
+- ✅ Encryption: AES-256 at rest (minimum)
+- ⏳ Geographic replication: EU region required (data residency) - specific region TBD
+- ⏳ Index database: PostgreSQL with full-text search - to be confirmed
+- ⏳ Signature validation: Automated monthly integrity checks - design needed
+
+**Remaining Questions:**
+- Customer-managed vs provider-managed encryption keys?
+- Multi-region within EU or single-region with backup?
+- Real-time replication vs periodic snapshots?
 
 **Decision Required By:** Sprint 2
-**Stakeholders:** Compliance Officer, Technical Lead
+**Stakeholders:** Compliance Officer, Technical Lead, Legal
 
 ---
 
@@ -434,13 +441,23 @@
 
 ### 7.2 Log Retention Policy
 
-**Status:** ⏳ Pending Definition
+**Status:** ✅ Partially Decided - Implementation Pending
 
-**Questions:**
-- Hot storage duration (7 days, 30 days)?
-- Archive to cold storage (S3 Glacier)?
-- Total retention period (1 year, 7 years for audit)?
-- Log sampling for high-volume services?
+**REGULATORY REQUIREMENTS:**
+- **Invoice XML:** 11 YEARS (see section 4.1)
+- **Audit logs:** 11 YEARS (compliance with fiscalization law)
+- **Application logs:** Operational needs (shorter retention acceptable)
+
+**Decisions Made:**
+- ✅ Invoice/audit logs: 11-year retention (hot: 30 days, warm: 1 year, cold: 10 years)
+- ✅ Archive destination: S3-compatible cold storage
+- ⏳ Application logs: 90 days hot + 1 year archive (to be confirmed)
+- ⏳ High-volume sampling: 10% sampling after 30 days (to be tested)
+
+**Remaining Questions:**
+- Separate retention policies per log type (access, error, debug)?
+- Log compression strategy (gzip, zstd)?
+- Search index retention (Elasticsearch/Loki hot data)?
 
 **Decision Required By:** Before production deployment
 **Stakeholders:** Compliance Officer, DevOps Team
@@ -520,47 +537,126 @@
 
 ### 9.1 Tax Calculation Rules
 
-**Status:** ⚠️ Critical - Requires Domain Expert
+**Status:** ✅ Researched - Validation Logic Needed
 
-**Questions:**
-- Current VAT rates in Croatia (standard, reduced)?
-- Special tax handling (reverse charge, exempt, zero-rated)?
-- Cross-border invoicing rules (EU vs non-EU)?
-- Tax rounding rules (per line item, per invoice)?
+**CROATIAN VAT RATES (from CROATIAN_COMPLIANCE.md):**
+- **Standard (S):** 25%
+- **Lower rate (AA):** 13%
+- **Reduced rate (A):** 5%
+- **Zero-rated (Z):** 0%
+- **Exempt (E):** 0% (no VAT charged or deductible)
+- **Reverse charge (AE):** 0% (buyer liable for VAT)
+
+**UBL 2.1 Requirements:**
+- VAT category code (UNCL5305 codes)
+- VAT rate percentage
+- Taxable amount (base)
+- VAT amount
+- Separate breakdown per rate in invoice
+
+**Remaining Questions - Requires Tax Consultant:**
+- Product/service to VAT rate mapping rules
+- Reverse charge trigger conditions (B2B, construction, etc.)
+- Cross-border EU invoicing (intra-community supply)
+- Rounding rules (per line vs invoice total)
+- Margin scheme applicability (used goods, travel)
+- Special schemes (farmers, small businesses)
 
 **Decision Required By:** Sprint 3 (business rules engine)
-**Stakeholders:** Tax Consultant, Accountant, Product Owner
+**Stakeholders:** Tax Consultant (CRITICAL), Accountant, Product Owner
 
 ---
 
 ### 9.2 FINA e-Račun Integration Details
 
-**Status:** ⚠️ Critical - Requires FINA Documentation
+**Status:** ✅ RESEARCHED - Implementation Ready
 
-**Questions:**
-- API endpoint URLs (test, production)?
-- Authentication method (API key, OAuth, client certificate)?
-- Rate limits imposed by FINA?
-- Retry policy for failed submissions?
-- Webhook setup for status updates?
+**API ENDPOINTS (from CROATIAN_COMPLIANCE.md):**
+- **Production (B2C):** `https://cis.porezna-uprava.hr:8449/FiskalizacijaService`
+- **Test (B2C):** `https://cistest.apis-it.hr:8449/FiskalizacijaServiceTest`
+- **B2B Exchange:** AS4 protocol via Access Point (four-corner model)
 
-**Decision Required By:** Sprint 5 (FINA connector)
-**Stakeholders:** Integration Lead, FINA Technical Contact
+**AUTHENTICATION:**
+- ✅ **B2C:** FINA X.509 certificate (.p12 format) + 1-way TLS
+- ✅ **B2B:** mTLS (2-way TLS) via Access Point
+- ✅ **Certificate Cost:** ~39.82 EUR + VAT for 5 years
+- ✅ **Demo Certificates:** FREE for testing (1-year validity)
+
+**PROTOCOL DETAILS:**
+- ✅ **B2C:** SOAP Web Services, WSDL 1.9 (active from 5 Nov 2025)
+- ✅ **B2B:** AS4 profile (OASIS ebMS 3.0)
+- ✅ **Digital Signature:** XMLDSig, SHA-256 with RSA
+- ✅ **Response:** JIR (Jedinstveni Identifikator Računa) for B2C
+
+**OPERATIONS:**
+- `racuni` - Submit B2C invoice
+- `echo` - Test connectivity
+- `provjera` - Validate invoice (test environment only)
+
+**REMAINING QUESTIONS:**
+- Specific rate limits (requests/second, daily quota)?
+- SLA guarantees (uptime percentage)?
+- Webhook availability or polling required for async operations?
+- Batch submission support for multiple invoices?
+- Maximum XML document size (noted: 10MB limit in CLAUDE.md)?
+
+**CERTIFICATE ACQUISITION:**
+- Contact: FINA support 01 4404 707
+- Portal: cms.fina.hr
+- Processing time: 5-10 business days
+- Required docs: Application, service agreement, ID copy, payment proof
+
+**Decision Required By:** Sprint 2 (certificate acquisition), Sprint 5 (connector implementation)
+**Stakeholders:** Integration Lead, FINA Technical Contact, Security Team
 
 ---
 
 ### 9.3 Porezna (Tax Authority) Integration
 
-**Status:** ⚠️ Critical - Requires Porezna Documentation
+**Status:** ✅ RESEARCHED - Regulatory Requirements Clear
 
-**Questions:**
-- Is integration mandatory or optional reporting?
-- API availability (or file-based submission)?
-- Schema differences vs FINA e-Račun?
-- Submission deadlines (real-time, daily batch)?
+**MANDATORY INTEGRATION REQUIREMENTS:**
+- ✅ **Fiscalization:** MANDATORY via same endpoints as FINA (B2C SOAP API)
+- ✅ **B2B Fiscalization:** Issuer fiscalizes immediately, Recipient within 5 working days
+- ✅ **eIzvještavanje (e-Reporting):** MANDATORY monthly reporting
 
-**Decision Required By:** Sprint 5 (Porezna connector)
-**Stakeholders:** Integration Lead, Porezna Technical Contact
+**E-REPORTING OBLIGATIONS (Monthly by 20th):**
+- **Issuers report:**
+  - Payment data for issued e-invoices
+  - Amounts received per invoice
+  - Payment method and date
+- **Recipients report:**
+  - Rejected invoices (with reason codes)
+  - Invoices where e-invoice issuance was impossible
+
+**ENDPOINTS:** Same as section 9.2
+- Production/Test SOAP endpoints for B2C fiscalization
+- AS4 for B2B exchange
+- ePorezna portal for e-reporting (or API submission)
+
+**SUBMISSION METHOD:**
+- ✅ Real-time fiscalization (B2C immediate, B2B within 5 days)
+- ✅ Monthly batch reporting via ePorezna portal or API
+- ✅ NIAS authentication required for ePorezna access
+
+**PENALTIES FOR NON-COMPLIANCE:**
+- Non-fiscalization: 2,650-66,360 EUR
+- Non-reporting: 1,320-26,540 EUR
+- Improper archiving: Up to 66,360 EUR + VAT deduction loss
+
+**REMAINING QUESTIONS:**
+- API specifications for automated e-reporting (vs manual portal submission)?
+- Bulk reporting API format (if available)?
+- Rejection reason code taxonomy?
+- Error handling and retry procedures for e-reporting?
+
+**ACCESS REQUIREMENTS:**
+- FiskAplikacija registration via ePorezna (NIAS login)
+- Confirm intermediary service provider
+- Grant fiscalization authorization
+
+**Decision Required By:** Sprint 4 (e-reporting module), Sprint 5 (full integration)
+**Stakeholders:** Integration Lead, Tax Consultant, Compliance Officer
 
 ---
 
@@ -799,7 +895,73 @@
 
 ### Decided Items
 
-*None yet - initial architecture phase*
+**2025-11-09: Croatian Regulatory Compliance Research Completed**
+- **Decision:** 11-year retention period for all invoice XML and audit logs
+- **Rationale:** Croatian Fiscalization Law (NN 89/25) mandates 11-year archiving with preserved digital signatures
+- **Impact:** Storage architecture, cost modeling, compliance framework
+- **Documented in:** CROATIAN_COMPLIANCE.md, TBD.md sections 4.1, 7.2
+
+**2025-11-09: FINA Certificate Requirements Defined**
+- **Decision:** Use FINA X.509 application certificates for B2C fiscalization
+- **Cost:** ~39.82 EUR + VAT per 5-year certificate
+- **Test Strategy:** Use FREE demo certificates during development (1-year validity)
+- **Rationale:** Mandatory for Croatian Tax Authority SOAP API authentication
+- **Impact:** Budget allocation, development timeline (5-10 day issuance), security architecture
+- **Documented in:** CROATIAN_COMPLIANCE.md section 2.4, TBD.md section 9.2
+
+**2025-11-09: UBL 2.1 Format Standardization**
+- **Decision:** UBL 2.1 (OASIS) as primary e-invoice format
+- **Alternative:** CII v.2.0 supported but UBL 2.1 preferred
+- **Rationale:** Croatian CIUS specification mandates EN 16931-1:2017 compliance, UBL 2.1 most widely adopted
+- **Impact:** XML schema design, validation pipeline, third-party integrations
+- **Documented in:** CROATIAN_COMPLIANCE.md section 2.1
+
+**2025-11-09: Croatian VAT Rates Cataloged**
+- **Decision:** Support 6 VAT categories (25%, 13%, 5%, 0% standard/exempt/reverse)
+- **Rationale:** Croatian tax code requirements for compliant invoicing
+- **Remaining Work:** Tax consultant engagement for complex scenarios (margin schemes, cross-border)
+- **Impact:** Business rules engine, validation logic, UI configuration
+- **Documented in:** CROATIAN_COMPLIANCE.md Appendix C, TBD.md section 9.1
+
+**2025-11-09: Dual API Integration Strategy**
+- **Decision:** Implement both SOAP (B2C) and AS4 (B2B) protocols
+- **SOAP Endpoint:** `https://cis.porezna-uprava.hr:8449/FiskalizacijaService` (production)
+- **AS4 Strategy:** Evaluate intermediary services vs proprietary Access Point (Sprint 2)
+- **Rationale:** Mandatory per Fiskalizacija 2.0 regulations (effective 1 Jan 2026)
+- **Impact:** Two separate connector services, different auth mechanisms, testing complexity
+- **Documented in:** CROATIAN_COMPLIANCE.md section 3, TBD.md sections 9.2, 9.3
+
+**2025-11-09: KPD Product Classification Mandatory**
+- **Decision:** All invoice line items require 6-digit KLASUS KPD 2025 codes
+- **Pre-Launch Requirement:** Complete product catalog mapping before 31 Dec 2025
+- **Rationale:** Tax Authority validation will reject invoices with invalid/missing KPD codes
+- **Impact:** Product master database design, customer onboarding workflow, validation service
+- **Support Contact:** KPD@dzs.hr
+- **Documented in:** CROATIAN_COMPLIANCE.md section 2.3
+
+**2025-11-09: e-Reporting Monthly Obligation**
+- **Decision:** Implement automated monthly e-reporting module (deadline: 20th of following month)
+- **Scope:** Payment data (issuers), rejection data (recipients)
+- **Submission Method:** ePorezna portal or API (API specs TBD)
+- **Rationale:** Mandatory per Fiskalizacija 2.0, penalties 1,320-26,540 EUR for non-compliance
+- **Impact:** Reporting service, data aggregation pipeline, notification system
+- **Documented in:** CROATIAN_COMPLIANCE.md section 4.3, TBD.md section 9.3
+
+**2025-11-09: Immutable Storage Architecture**
+- **Decision:** S3-compatible object storage (DigitalOcean Spaces) with WORM characteristics
+- **Archive Tier:** Cold storage after 1 year
+- **Encryption:** AES-256 minimum
+- **Rationale:** 11-year retention + compliance requirement for immutability
+- **Remaining:** Geographic region selection (EU data residency)
+- **Documented in:** TBD.md section 4.1
+
+**2025-11-09: Timeline Constraints Identified**
+- **Hard Deadline:** 1 January 2026 - Mandatory compliance for VAT entities
+- **Testing Window:** 1 Sept 2025 - 31 Dec 2025 (transition period)
+- **Certificate Acquisition:** Must start by mid-December 2025 (5-10 day processing)
+- **Rationale:** Regulatory mandate, no extension possible
+- **Impact:** Aggressive development schedule, prioritized sprint planning, risk mitigation
+- **Documented in:** CROATIAN_COMPLIANCE.md section 10.1
 
 ---
 
