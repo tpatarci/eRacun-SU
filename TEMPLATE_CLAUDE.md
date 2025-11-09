@@ -581,30 +581,115 @@ CREATE INDEX [index_name] ON [table_name]([field]);
 
 ## 7. TESTING REQUIREMENTS
 
+**⚠️ ELEVATED STANDARDS: This is a mission-critical five-nines system. Testing requirements are non-negotiable.**
+
+**Target Coverage:** **100% line coverage, 100% branch coverage, 100% function coverage**
+
+**Test Philosophy:**
+- Zero untested code paths
+- Every error condition explicitly tested
+- Real data + mock data + mutated data
+- Test with malicious inputs (fuzzing)
+- Test under resource constraints
+- Test with production-scale data volumes
+
+---
+
 ### 7.1 Unit Tests
 
-**Target Coverage:** 85% minimum
+**Coverage Requirements:**
+- [ ] **100% line coverage** - Every line executed in tests
+- [ ] **100% branch coverage** - Every if/else, switch case tested
+- [ ] **100% function coverage** - Every function called
+- [ ] **Mutation testing score ≥95%** - Tests detect code mutations
 
-**Test Categories:**
-- [ ] **Happy path:** [All expected inputs produce correct outputs]
-- [ ] **Edge cases:** [Empty input, max size, special characters, etc.]
-- [ ] **Error cases:** [Invalid input, resource exhaustion, etc.]
-- [ ] **Business rules:** [Each business rule has dedicated test]
+**Test Categories (ALL MANDATORY):**
+
+#### 7.1.1 Happy Path Tests
+- [ ] **Minimal valid input** - Smallest possible valid request
+- [ ] **Typical valid input** - Representative real-world data
+- [ ] **Maximal valid input** - Largest allowed valid request
+- [ ] **All optional fields populated** - Full feature coverage
+- [ ] **All optional fields omitted** - Minimal feature coverage
+
+#### 7.1.2 Edge Cases
+- [ ] **Empty input** - "", null, undefined, empty arrays/objects
+- [ ] **Boundary values** - Min/max integers, string lengths, array sizes
+- [ ] **Off-by-one** - Exactly at limit, one below, one above
+- [ ] **Special characters** - Unicode, Croatian (čćžšđ), emoji, control chars
+- [ ] **Whitespace variations** - Leading/trailing spaces, tabs, newlines
+- [ ] **Numeric edge cases** - Zero, negative, infinity, NaN, floating point precision
+- [ ] **Date/time edge cases** - Leap years, DST transitions, time zones, Y2K38
+
+#### 7.1.3 Invalid Input Tests
+- [ ] **Wrong type** - String instead of number, number instead of object
+- [ ] **Missing required fields** - Each mandatory field tested independently
+- [ ] **Invalid format** - Bad email, OIB, IBAN, date format
+- [ ] **Out of range** - Negative where positive required, future dates where past required
+- [ ] **Too large** - Exceeds size limits (test at limit+1)
+- [ ] **Too small** - Below minimum (test at limit-1)
+- [ ] **Invalid enum values** - Values not in allowed set
+- [ ] **Malformed XML/JSON** - Syntax errors, unclosed tags
+
+#### 7.1.4 Malicious Input Tests (Security)
+- [ ] **SQL injection attempts** - `' OR 1=1 --`, `'; DROP TABLE;`
+- [ ] **XSS attempts** - `<script>alert('XSS')</script>`
+- [ ] **XXE attacks** - External entity declarations in XML
+- [ ] **Billion laughs** - Exponential entity expansion
+- [ ] **Path traversal** - `../../etc/passwd`
+- [ ] **Command injection** - `; rm -rf /`
+- [ ] **Buffer overflow attempts** - Extremely long strings
+- [ ] **Null byte injection** - `\0` in strings
+- [ ] **Unicode exploits** - Right-to-left override, zero-width chars
+
+#### 7.1.5 Business Rule Tests
+- [ ] **Each business rule has 3+ tests** - Valid case, invalid case, boundary case
+- [ ] **Complex conditionals decomposed** - Test each branch independently
+- [ ] **Rule interactions** - Test rules that affect each other
+- [ ] **Regulatory compliance** - Each regulation mapped to tests
+
+#### 7.1.6 Error Handling Tests
+- [ ] **Every error code tested** - All possible error responses
+- [ ] **Error message quality** - Helpful, actionable, no sensitive data leaked
+- [ ] **Partial failures** - What if step 3 of 5 fails?
+- [ ] **Rollback scenarios** - Compensation transactions work correctly
+- [ ] **Idempotency under errors** - Retry after failure produces same result
 
 **Test Structure:**
 ```typescript
 describe('[FunctionName]', () => {
-  describe('when [condition]', () => {
-    it('should [expected behavior]', () => {
-      // Arrange
-      const input = ...;
+  describe('Happy Path', () => {
+    it('should handle minimal valid input', () => { /* ... */ });
+    it('should handle typical valid input', () => { /* ... */ });
+    it('should handle maximal valid input', () => { /* ... */ });
+  });
 
-      // Act
-      const result = functionUnderTest(input);
+  describe('Edge Cases', () => {
+    it('should handle empty input', () => { /* ... */ });
+    it('should handle boundary values', () => { /* ... */ });
+    // ... all edge cases
+  });
 
-      // Assert
-      expect(result).toEqual(expected);
-    });
+  describe('Invalid Input', () => {
+    it('should reject wrong type', () => { /* ... */ });
+    it('should reject missing required field', () => { /* ... */ });
+    // ... all invalid cases
+  });
+
+  describe('Security', () => {
+    it('should prevent SQL injection', () => { /* ... */ });
+    it('should prevent XXE attacks', () => { /* ... */ });
+    // ... all malicious inputs
+  });
+
+  describe('Business Rules', () => {
+    it('should enforce BR-001: OIB checksum', () => { /* ... */ });
+    // ... all business rules
+  });
+
+  describe('Error Handling', () => {
+    it('should return ERROR_CODE_X when condition Y', () => { /* ... */ });
+    // ... all error paths
   });
 });
 ```
@@ -612,85 +697,615 @@ describe('[FunctionName]', () => {
 **Example Test Cases:**
 
 ```
-TEST: validate_ubl_xml_valid
-  Input: Valid UBL 2.1 XML (test_data/valid_invoice.xml)
-  Expected: is_valid=true, errors=[]
+TEST SUITE: validateOIB()
 
-TEST: validate_ubl_xml_missing_id
-  Input: UBL XML without <cbc:ID> element
-  Expected: is_valid=false, error_code="MISSING_REQUIRED_FIELD", xpath="/Invoice/cbc:ID"
+Happy Path:
+  TEST: valid_oib_11_digits
+    Input: "12345678901" (valid checksum)
+    Expected: { valid: true }
 
-TEST: validate_ubl_xml_too_large
-  Input: 15MB XML file (exceeds 10MB limit)
-  Expected: error_code="REQUEST_TOO_LARGE" before parsing
+Edge Cases:
+  TEST: oib_exactly_11_digits
+    Input: "10000000000" (boundary: min valid)
+    Expected: { valid: true }
+
+  TEST: oib_with_leading_zero
+    Input: "01234567890"
+    Expected: { valid: true }
+
+Invalid Input:
+  TEST: oib_10_digits
+    Input: "1234567890" (too short)
+    Expected: { valid: false, error: "OIB_INVALID_LENGTH" }
+
+  TEST: oib_12_digits
+    Input: "123456789012" (too long)
+    Expected: { valid: false, error: "OIB_INVALID_LENGTH" }
+
+  TEST: oib_invalid_checksum
+    Input: "12345678900" (checksum should be 1, not 0)
+    Expected: { valid: false, error: "OIB_INVALID_CHECKSUM" }
+
+  TEST: oib_non_numeric
+    Input: "1234567890A"
+    Expected: { valid: false, error: "OIB_INVALID_FORMAT" }
+
+Malicious Input:
+  TEST: oib_sql_injection
+    Input: "' OR 1=1 --"
+    Expected: { valid: false, error: "OIB_INVALID_FORMAT" }
+
+  TEST: oib_null_byte
+    Input: "12345678\0901"
+    Expected: { valid: false, error: "OIB_INVALID_FORMAT" }
+
+Business Rules:
+  TEST: oib_checksum_algorithm_iso_7064
+    Input: "12345678901"
+    Algorithm verification:
+      - Sum = 1*10 + 2*9 + 3*8 + 4*7 + 5*6 + 6*5 + 7*4 + 8*3 + 9*2 = 165
+      - Checksum = (10 - (165 mod 10)) mod 10 = 1
+      - Expected: digit[10] = 1 ✓
 ```
 
 ---
 
-### 7.2 Integration Tests
+### 7.2 Mock Data Tests
+
+**Purpose:** Test business logic without external dependencies
+
+**Mock Data Requirements:**
+- [ ] **Comprehensive fixtures** - Cover all data variations
+- [ ] **Realistic data** - Based on real production samples (anonymized)
+- [ ] **Edge case fixtures** - Boundary values, special cases
+- [ ] **Invalid fixtures** - Known bad data for negative tests
+
+**Mock Data Location:**
+`services/[layer]/[service-name]/test-data/mocks/`
+
+**File Structure:**
+```
+mocks/
+├── valid/
+│   ├── minimal.json          # Smallest valid input
+│   ├── typical.json          # Representative sample
+│   ├── maximal.json          # All fields populated
+│   └── all_vat_rates.json    # Tests all VAT categories
+├── invalid/
+│   ├── missing_id.json
+│   ├── wrong_type.json
+│   ├── out_of_range.json
+│   └── invalid_checksum.json
+├── edge_cases/
+│   ├── empty_fields.json
+│   ├── special_chars.json
+│   ├── boundary_values.json
+│   └── unicode_croatian.json
+└── malicious/
+    ├── sql_injection.json
+    ├── xxe_attack.xml
+    └── billion_laughs.xml
+```
+
+**Mock Service Responses:**
+```typescript
+// Mock upstream service responses
+const mockValidatorResponse = {
+  success: { is_valid: true, errors: [] },
+  failure: { is_valid: false, errors: [{ code: 'ERROR_X', message: '...' }] },
+  timeout: new Error('ETIMEDOUT'),
+  serverError: { status: 500, message: 'Internal Server Error' }
+};
+```
+
+---
+
+### 7.3 Real Data Tests
+
+**Purpose:** Validate against actual production-like data
+
+**Real Data Sources:**
+- [ ] **Anonymized production data** - Real invoices with PII removed
+- [ ] **Tax Authority samples** - Official UBL 2.1 examples from Porezna uprava
+- [ ] **OASIS UBL samples** - Reference implementations
+- [ ] **Partner data** - Sample invoices from integration partners (with permission)
+
+**Real Data Location:**
+`services/[layer]/[service-name]/test-data/real/`
+
+**Data Sanitization:**
+- [ ] **PII removed** - No real OIBs, names, addresses
+- [ ] **Amounts randomized** - Financial data obscured
+- [ ] **Dates adjusted** - Relative to test date
+- [ ] **Companies anonymized** - Use fictional company names
+
+**Real Data Test Cases:**
+```
+TEST: validate_real_croatian_invoice
+  Input: test-data/real/sample_invoice_hr.xml
+  Source: Anonymized from partner XYZ
+  Expected: Passes all validation layers
+
+TEST: validate_oasis_ubl_sample
+  Input: test-data/real/oasis_ubl_2.1_invoice.xml
+  Source: https://docs.oasis-open.org/ubl/os-UBL-2.1/xml/
+  Expected: Passes XSD and Schematron validation
+```
+
+---
+
+### 7.4 Mutation Testing
+
+**Purpose:** Ensure tests actually detect bugs, not just pass
+
+**Tool:** [Stryker, PITest, Mutmut]
+
+**Mutation Operators:**
+- [ ] **Arithmetic:** `+` → `-`, `*` → `/`, `++` → `--`
+- [ ] **Relational:** `<` → `<=`, `==` → `!=`, `>` → `>=`
+- [ ] **Logical:** `&&` → `||`, `!x` → `x`
+- [ ] **Statement deletion:** Remove lines, see if tests fail
+- [ ] **Constant mutation:** `0` → `1`, `true` → `false`
+- [ ] **Return value mutation:** Change return values
+
+**Mutation Score Target:** ≥95% (mutants killed by tests)
+
+**Example:**
+```
+Original:  if (age >= 18) return "adult";
+Mutant 1:  if (age > 18) return "adult";   // Should be caught by test with age=18
+Mutant 2:  if (age >= 18) return "child";  // Should be caught by assertion
+```
+
+---
+
+### 7.5 Data Mutation Tests
+
+**Purpose:** Test robustness against data corruption and variations
+
+**Mutation Strategies:**
+- [ ] **Field omission** - Remove optional fields one at a time
+- [ ] **Field reordering** - Change XML/JSON element order
+- [ ] **Type coercion** - "123" → 123, "true" → true
+- [ ] **Whitespace variations** - Add/remove spaces, newlines
+- [ ] **Encoding changes** - UTF-8 → UTF-16, Windows-1252
+- [ ] **Case sensitivity** - Uppercase/lowercase field names
+- [ ] **Numeric precision** - 1.0 → 1.00, 10 → 10.0
+- [ ] **Date format variations** - ISO 8601 variants
+
+**Example Mutations:**
+```
+Original:
+<Invoice>
+  <ID>123</ID>
+  <IssueDate>2026-01-15</IssueDate>
+</Invoice>
+
+Mutation 1 (reordering):
+<Invoice>
+  <IssueDate>2026-01-15</IssueDate>
+  <ID>123</ID>
+</Invoice>
+Expected: Still valid (XML order shouldn't matter if schema allows)
+
+Mutation 2 (whitespace):
+<Invoice>
+  <ID>  123  </ID>
+  <IssueDate>2026-01-15</IssueDate>
+</Invoice>
+Expected: Should trim whitespace, still valid
+
+Mutation 3 (encoding):
+<Invoice encoding="UTF-16">
+  <ID>123</ID>
+  <IssueDate>2026-01-15</IssueDate>
+</Invoice>
+Expected: Handle UTF-16, still valid
+```
+
+---
+
+### 7.6 Integration Tests
 
 **Test Scope:**
-- [ ] **External API calls:** [Test against mock/test servers]
-- [ ] **Database operations:** [Use Testcontainers]
-- [ ] **Message bus:** [Test event publishing/consuming]
+- [ ] **External API calls** - Test against mock servers AND test environments
+- [ ] **Database operations** - Use Testcontainers for real DB
+- [ ] **Message bus** - Test event publishing/consuming with real broker
+- [ ] **File I/O** - Test with real file system (temp directories)
+- [ ] **Network failures** - Simulate timeouts, connection refused
 
 **Example Integration Tests:**
 
 ```
 TEST: validate_with_real_xsd_schema
-  Setup: Load actual UBL 2.1 XSD files
-  Input: Sample invoices (valid and invalid)
-  Verify: Correct validation results
+  Setup: Load actual UBL 2.1 XSD files from disk
+  Input: 100 sample invoices (valid and invalid mix)
+  Verify:
+    - All valid invoices pass
+    - All invalid invoices fail with correct error codes
+    - XPath in error messages is accurate
+  Performance: Complete in <10 seconds
 
 TEST: publish_validation_completed_event
-  Setup: Start mock message bus (Testcontainers RabbitMQ)
-  Action: Complete validation
-  Verify: Event published to correct topic with correct schema
+  Setup: Start Testcontainers RabbitMQ
+  Action: Complete validation, trigger event publication
+  Verify:
+    - Event published to correct exchange + routing key
+    - Event schema matches Protocol Buffer definition
+    - Event payload contains all required fields
+    - Idempotency key prevents duplicate processing
+
+TEST: call_upstream_validator_with_retry
+  Setup: Mock upstream service with failure sequence: [500, 500, 200]
+  Action: Call validator
+  Verify:
+    - Service retries 2x after failures
+    - Circuit breaker doesn't open (under threshold)
+    - Final response is success (200)
+    - Total time includes backoff delays
 ```
 
 ---
 
-### 7.3 Contract Tests
+### 7.7 Contract Tests
 
-**Provider Contract Tests:**
-[If this service provides an API]
-- [ ] **Tool:** [Pact, Pactflow]
-- [ ] **Consumers:** [List services that depend on this API]
-- [ ] **Contract verification:** [CI pipeline step]
+**Provider Contract Tests (if this service provides an API):**
+- [ ] **Tool:** Pact, Spring Cloud Contract, or equivalent
+- [ ] **Consumers:** [List all services that depend on this API]
+- [ ] **Contract verification:** Run in CI on every commit
+- [ ] **Breaking change detection:** Alert if contract changes incompatibly
 
-**Consumer Contract Tests:**
-[If this service calls other APIs]
-- [ ] **Providers:** [List services this depends on]
-- [ ] **Mock providers:** [Use Pact mocks in tests]
+**Consumer Contract Tests (if this service calls other APIs):**
+- [ ] **Providers:** [List all services this depends on]
+- [ ] **Mock providers:** Use consumer-driven contract mocks
+- [ ] **Contract updates:** Verify compatibility when provider changes
+
+**Example Pact Test:**
+```typescript
+describe('XSD Validator Contract', () => {
+  it('should validate UBL XML and return result', async () => {
+    // Consumer expectation
+    await provider.addInteraction({
+      state: 'XSD schema is loaded',
+      uponReceiving: 'a validation request',
+      withRequest: {
+        method: 'POST',
+        path: '/validate',
+        body: { xml_content: '...', schema_version: 'UBL-2.1' }
+      },
+      willRespondWith: {
+        status: 200,
+        body: { is_valid: true, errors: [] }
+      }
+    });
+
+    // Actual test
+    const result = await xsdValidator.validate(sampleXML);
+    expect(result.is_valid).toBe(true);
+  });
+});
+```
 
 ---
 
-### 7.4 Performance Tests
+### 7.8 Performance Tests
 
 **Load Testing:**
 ```
-Tool: [k6, Gatling, Locust]
+Tool: k6 (preferred), Gatling, Locust
 
 Scenarios:
-1. Normal load: [e.g., 100 req/sec for 10 minutes]
-2. Peak load: [e.g., 1000 req/sec for 5 minutes]
-3. Stress test: [e.g., Ramp up to failure point]
+1. Baseline: 10 req/sec for 1 minute (warm-up)
+2. Normal load: [e.g., 100 req/sec for 10 minutes]
+3. Peak load: [e.g., 1000 req/sec for 5 minutes]
+4. Spike test: [e.g., 0 → 5000 req/sec → 0 in 2 minutes]
+5. Soak test: [e.g., 500 req/sec for 1 hour] (detect memory leaks)
+6. Stress test: Ramp up until failure (find breaking point)
 
 Success criteria:
+- p50 latency < [threshold from section 3.1]
 - p95 latency < [threshold]
-- Error rate < 0.1%
-- No memory leaks
+- p99 latency < [threshold]
+- p99.9 latency < [threshold]
+- Error rate < 0.01% (1 in 10,000)
+- No memory leaks (heap stable during soak test)
+- Throughput ≥ [target from section 3.1]
+- CPU < 80% sustained
+- Memory < 80% of limit
+```
+
+**Performance Test Data:**
+- [ ] **Varied payload sizes** - Small, medium, large invoices
+- [ ] **Realistic distribution** - 70% small, 25% medium, 5% large
+- [ ] **Concurrent users** - Simulate N parallel clients
+
+**k6 Script Example:**
+```javascript
+import http from 'k6/http';
+import { check, sleep } from 'k6';
+
+export let options = {
+  stages: [
+    { duration: '1m', target: 10 },   // Warm-up
+    { duration: '5m', target: 100 },  // Normal load
+    { duration: '2m', target: 1000 }, // Peak load
+    { duration: '2m', target: 0 },    // Ramp down
+  ],
+  thresholds: {
+    'http_req_duration': ['p(95)<100', 'p(99)<200'],
+    'http_req_failed': ['rate<0.01'],
+  },
+};
+
+export default function() {
+  const payload = JSON.stringify({ xml_content: '...' });
+  const params = { headers: { 'Content-Type': 'application/json' } };
+
+  let res = http.post('http://xsd-validator:50051/validate', payload, params);
+
+  check(res, {
+    'status is 200': (r) => r.status === 200,
+    'response time < 100ms': (r) => r.timings.duration < 100,
+  });
+
+  sleep(1);
+}
 ```
 
 ---
 
-### 7.5 Chaos Testing
+### 7.9 Stress Testing
 
-**Failure Injection:**
-- [ ] **Network latency:** [Add 1s delay, service should timeout gracefully]
-- [ ] **Dependency failure:** [Upstream service returns 500, should circuit break]
-- [ ] **Resource exhaustion:** [Limit memory to 50MB, should handle gracefully]
-- [ ] **CPU throttling:** [Limit to 100m cores, should slow but not crash]
+**Resource Exhaustion Tests:**
+- [ ] **Memory limit:** Run with 50% of normal memory, should degrade gracefully
+- [ ] **CPU throttle:** Limit to 50% of normal CPU, should slow but not crash
+- [ ] **Disk full:** Fill disk to 99%, should handle write failures
+- [ ] **Connection exhaustion:** Max out database connections, should queue
+- [ ] **File descriptor limit:** Open max files, should close old ones
+
+**Concurrency Stress:**
+- [ ] **Thundering herd:** 10,000 requests simultaneously
+- [ ] **Race conditions:** Concurrent updates to same resource
+- [ ] **Deadlock detection:** Competing transactions
+
+**Example:**
+```bash
+# Memory stress test
+docker run --memory=128m [service-image]
+# Expected: Service starts, handles reduced throughput, logs warnings
+
+# CPU stress test
+docker run --cpus=0.5 [service-image]
+# Expected: Slower but stable, no crashes
+
+# Connection exhaustion
+for i in {1..1000}; do curl http://service:50051/validate & done
+# Expected: Queue requests, return 503 when overloaded, recover after spike
+```
+
+---
+
+### 7.10 Chaos Testing
+
+**Failure Injection (use Chaos Mesh, Gremlin, or manual):**
+
+#### Network Chaos:
+- [ ] **Latency injection:** Add 1-5 second delay
+- [ ] **Packet loss:** 10% packet drop rate
+- [ ] **Bandwidth limit:** Throttle to 10 Kbps
+- [ ] **Network partition:** Isolate service from dependencies
+- [ ] **DNS failures:** Resolve to wrong IP
+
+#### Infrastructure Chaos:
+- [ ] **Pod kill:** Random pod termination
+- [ ] **CPU spike:** Consume 100% CPU for 30 seconds
+- [ ] **Memory spike:** Allocate memory until near OOM
+- [ ] **Disk I/O saturation:** Flood disk with reads/writes
+- [ ] **Clock skew:** Advance system time by 1 hour
+
+#### Dependency Chaos:
+- [ ] **Upstream failure:** Mock service returns 500
+- [ ] **Upstream timeout:** Mock service never responds
+- [ ] **Upstream slow:** Mock service responds after 30s
+- [ ] **Database failure:** Kill database pod
+- [ ] **Message bus failure:** Stop RabbitMQ/Kafka
+
+**Expected Behaviors:**
+- [ ] Circuit breaker opens after N failures
+- [ ] Retry with exponential backoff
+- [ ] Graceful degradation (skip non-critical features)
+- [ ] Health check fails appropriately
+- [ ] Service recovers automatically when dependency recovers
+- [ ] No cascading failures to other services
+- [ ] Logs contain actionable error context
+
+**Example Chaos Test:**
+```yaml
+# Chaos Mesh experiment
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: network-delay-test
+spec:
+  action: delay
+  mode: one
+  selector:
+    namespaces:
+      - default
+    labelSelectors:
+      app: xsd-validator
+  delay:
+    latency: "1s"
+    correlation: "100"
+  duration: "5m"
+  scheduler:
+    cron: "@every 1h"
+```
+
+---
+
+### 7.11 Fuzz Testing
+
+**Purpose:** Discover crashes and vulnerabilities with random inputs
+
+**Tools:** [AFL++, libFuzzer, Jazzer, Atheris]
+
+**Fuzz Targets:**
+- [ ] **XML parsing** - Random XML documents
+- [ ] **JSON parsing** - Random JSON payloads
+- [ ] **Protocol Buffer parsing** - Random binary data
+- [ ] **String validation** - Random strings for OIB, IBAN, etc.
+- [ ] **Arithmetic operations** - Random numbers for calculations
+
+**Fuzz Duration:** 24 hours minimum per target
+
+**Example Fuzz Test:**
+```typescript
+// Using fast-check for property-based fuzzing
+import fc from 'fast-check';
+
+describe('OIB Validation Fuzz Test', () => {
+  it('should never crash on any string input', () => {
+    fc.assert(
+      fc.property(fc.string(), (input) => {
+        // Should not throw exception, should return valid or invalid
+        expect(() => {
+          const result = validateOIB(input);
+          expect(typeof result.valid).toBe('boolean');
+        }).not.toThrow();
+      }),
+      { numRuns: 10000 } // Run 10k random inputs
+    );
+  });
+});
+```
+
+---
+
+### 7.12 Regression Testing
+
+**Purpose:** Ensure bug fixes stay fixed
+
+**Process:**
+- [ ] **Every bug gets a test** - Before fixing, write failing test
+- [ ] **Test captures root cause** - Not just symptom
+- [ ] **Regression test suite** - All bug-fix tests in separate suite
+- [ ] **Run on every commit** - Prevent re-introduction
+
+**Example:**
+```
+BUG-123: Validator crashes on XML with BOM (Byte Order Mark)
+
+Regression Test:
+TEST: validate_xml_with_bom
+  Input: \xEF\xBB\xBF<?xml version="1.0"?><Invoice>...</Invoice>
+  Expected: BOM stripped, validation succeeds
+  Previously: Crashed with "Unexpected character"
+  Fixed in: commit abc123
+```
+
+---
+
+### 7.13 Test Data Management
+
+**Generating Test Data:**
+- [ ] **Faker libraries** - Realistic fake data (names, addresses, dates)
+- [ ] **Data builders** - Fluent APIs for constructing complex objects
+- [ ] **Snapshot testing** - Capture known-good outputs
+
+**Test Data Version Control:**
+- [ ] **Committed to repo** - Test data in `test-data/` directory
+- [ ] **Large files in LFS** - Use Git LFS for files >1MB
+- [ ] **Data generation scripts** - Reproducible data generation
+
+**Example Data Builder:**
+```typescript
+class InvoiceBuilder {
+  private data: Partial<Invoice> = {};
+
+  withID(id: string): this {
+    this.data.id = id;
+    return this;
+  }
+
+  withIssueDate(date: string): this {
+    this.data.issueDate = date;
+    return this;
+  }
+
+  withVATRate(rate: number): this {
+    this.data.vatRate = rate;
+    return this;
+  }
+
+  build(): Invoice {
+    // Apply defaults for missing fields
+    return {
+      id: this.data.id ?? 'INV-001',
+      issueDate: this.data.issueDate ?? '2026-01-15',
+      vatRate: this.data.vatRate ?? 25,
+      // ... all required fields with sensible defaults
+    };
+  }
+}
+
+// Usage in tests
+const invoice = new InvoiceBuilder()
+  .withID('TEST-123')
+  .withVATRate(13)
+  .build();
+```
+
+---
+
+### 7.14 Test Execution Requirements
+
+**CI Pipeline:**
+- [ ] **Unit tests:** Run on every commit (<2 minutes)
+- [ ] **Integration tests:** Run on every commit (<5 minutes)
+- [ ] **Contract tests:** Run on every commit (<3 minutes)
+- [ ] **Performance tests:** Run on PRs to main (<10 minutes)
+- [ ] **Stress tests:** Run nightly (<30 minutes)
+- [ ] **Chaos tests:** Run weekly in staging (manual trigger)
+- [ ] **Fuzz tests:** Run continuously (dedicated fuzzing server)
+
+**Pre-Commit Hooks:**
+- [ ] **Linter** - No warnings allowed
+- [ ] **Type checker** - No type errors
+- [ ] **Fast unit tests** - Critical path only (<30 seconds)
+
+**Pre-Merge Requirements:**
+- [ ] All tests pass (unit, integration, contract)
+- [ ] Coverage ≥ 100%
+- [ ] Mutation score ≥ 95%
+- [ ] No new security vulnerabilities (Snyk/Trivy)
+- [ ] Performance tests pass (if service-specific)
+
+**Pre-Deploy Requirements:**
+- [ ] All tests pass in staging environment
+- [ ] Smoke tests pass (critical user journeys)
+- [ ] Load tests pass (production-scale traffic)
+- [ ] Rollback procedure tested
+
+---
+
+## 7.15 Test Quality Standards
+
+**Test Code Quality:**
+- [ ] **Tests are readable** - Clear arrange/act/assert structure
+- [ ] **Tests are maintainable** - No code duplication, use helpers
+- [ ] **Tests are fast** - Unit tests <100ms each
+- [ ] **Tests are isolated** - No shared state, can run in parallel
+- [ ] **Tests are deterministic** - Same input always produces same result
+
+**Test Anti-Patterns to AVOID:**
+- ❌ **Flaky tests** - Tests that randomly fail
+- ❌ **Slow tests** - Tests that take >1 second (unless integration/performance)
+- ❌ **Unclear assertions** - `expect(result).toBeTruthy()` (be specific!)
+- ❌ **Testing implementation details** - Test behavior, not internals
+- ❌ **One giant test** - Split into focused tests
+- ❌ **No assertions** - Every test must assert something
+- ❌ **Brittle tests** - Break when refactoring (test interface, not implementation)
 
 ---
 
