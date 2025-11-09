@@ -3,8 +3,23 @@
 **Status:** 🔴 CRITICAL - Must address before any service implementation
 **Priority:** P0 (Blocking)
 **Created:** 2025-11-09
+**Updated:** 2025-11-09 (deployment context added)
 **Identified By:** Architecture review
 **Blocks:** All service development (services need config to run)
+
+---
+
+## Deployment Context (UPDATED)
+
+**Target Environment:** DigitalOcean dedicated droplet (Linux)
+**Philosophy:** Classic Unix conventions (filesystem, systemd, POSIX standards)
+**Preferences:** Open source, free or affordable solutions
+
+**Implications:**
+- **Not Kubernetes initially** - Use systemd for service orchestration
+- **Single server deployment** - No container orchestration overhead
+- **Unix-native tools** - /etc/ for configs, file permissions for security, systemd credentials
+- **Simplicity preferred** - Avoid complex external dependencies (Vault overkill for single droplet)
 
 ---
 
@@ -25,36 +40,118 @@
 
 ---
 
-## Scope of Decision Required
+## Recommended Solution (Unix/Droplet Optimized)
 
-### 1. Secrets Management Tool Selection
+### Configuration Strategy
 
-**Options:**
-- **HashiCorp Vault** (mentioned in CLAUDE.md section 3.4)
-  - ✅ Enterprise-grade, mature
-  - ✅ Dynamic secrets (auto-rotation)
-  - ✅ Audit logging
-  - ⚠️ Operational overhead (requires Vault cluster)
+**Filesystem-based with Unix permissions:**
 
-- **Kubernetes Secrets Only**
-  - ✅ Simple, native to K8s
-  - ✅ Encrypted at rest (if K8s configured)
-  - ⚠️ No rotation, no audit trail
-  - ⚠️ Less secure (secrets in etcd)
+```
+/etc/eracun/
+├── platform.conf              # Global settings (YAML, world-readable 644)
+├── services/
+│   ├── email-worker.conf      # Service configs (644)
+│   ├── xsd-validator.conf
+│   └── signature-service.conf
+├── environment.conf           # Environment override (staging/production, 644)
+└── secrets/                   # Restricted directory (700, root:eracun)
+    ├── fina-cert.p12          # FINA certificate (600, eracun:eracun)
+    ├── fina-cert.pass         # Certificate password (600)
+    ├── database.env           # DB credentials (600)
+    └── api-keys.env           # External API keys (600)
+```
 
-- **SOPS (Secrets OPerationS)**
-  - ✅ Encrypted files in Git
-  - ✅ Simple, no external service
-  - ⚠️ Manual rotation
-  - ⚠️ Key management still needed
+**Security model:**
+- Public configs: `/etc/eracun/*.conf` (mode 644, readable by all services)
+- Secrets: `/etc/eracun/secrets/*` (mode 600, owned by `eracun` service user)
+- Systemd services run as `eracun` user (not root)
+- File permissions enforced by systemd `ProtectSystem=strict`
 
-- **Cloud Provider Managed**
-  - DigitalOcean Managed Databases (auto-inject credentials)
-  - AWS Secrets Manager / Azure Key Vault integration
-  - ✅ Managed service (less ops burden)
-  - ⚠️ Vendor lock-in
+### Secrets Management Tool
 
-**Recommendation:** HashiCorp Vault (aligns with CLAUDE.md, best security posture)
+**RECOMMENDED: SOPS (Secrets OPerationS) + age encryption**
+
+**Why:**
+- ✅ **Open source** (Mozilla project, free)
+- ✅ **Unix-native** (encrypts files, stores in git)
+- ✅ **Simple** (single binary, no external service)
+- ✅ **Age encryption** (modern, simple key management)
+- ✅ **Git-friendly** (encrypted secrets tracked, no drift)
+- ✅ **Developer-friendly** (decrypt once, use environment variables)
+
+**How it works:**
+```bash
+# Encrypt secrets file
+sops -e --age <public_key> secrets/database.env > secrets/database.env.enc
+
+# Decrypt at deployment (systemd ExecStartPre)
+sops -d secrets/database.env.enc > /run/eracun/database.env
+
+# Service reads from /run/eracun/*.env (tmpfs, cleared on reboot)
+```
+
+**Alternative: systemd Credentials (systemd 250+)**
+- Native systemd secret management
+- Encrypted credentials passed to services
+- No external dependencies
+- Requires systemd 250+ (Ubuntu 22.04+, Debian 12+)
+
+### Environment Separation
+
+**Multiple DigitalOcean Droplets:**
+
+```
+dev.eracun.internal       (10.x.x.1)  - Development testing
+staging.eracun.internal   (10.x.x.2)  - Pre-production (cistest.apis-it.hr)
+production.eracun.hr      (x.x.x.x)   - Production (cis.porezna-uprava.hr)
+```
+
+**OR Single Droplet with systemd instances:**
+
+```
+eracun-email-worker@dev.service
+eracun-email-worker@staging.service
+eracun-email-worker@production.service
+```
+
+**Recommended:** Separate droplets (isolation, separate FINA certificates)
+
+---
+
+## Alternative Options (For Reference)
+
+### 1. HashiCorp Vault
+
+- ✅ Enterprise-grade, mature
+- ✅ Dynamic secrets (auto-rotation)
+- ✅ Audit logging
+- ❌ **Operational overhead** (requires Vault server, maintenance)
+- ❌ **Complexity overkill** for single droplet
+- ⚠️ Open source (free) but complex to operate
+
+**Verdict:** Too complex for initial deployment, consider for future scaling
+
+### 2. Kubernetes Secrets
+
+- ❌ **Not applicable** (not using Kubernetes initially)
+
+### 3. File-based with GPG
+
+- ✅ Traditional Unix approach
+- ✅ GPG widely available
+- ⚠️ GPG key management complex
+- ⚠️ SOPS is better modern alternative
+
+**Verdict:** SOPS replaces this (simpler key management with age)
+
+### 4. pass (passwordstore.org)
+
+- ✅ Unix password manager (GPG-based)
+- ✅ Git-backed storage
+- ⚠️ Designed for interactive use, not automation
+- ⚠️ GPG complexity
+
+**Verdict:** Good for manual secrets, SOPS better for automation
 
 ---
 
@@ -358,75 +455,323 @@ export async function loadConfig() {
 
 ---
 
-## Open Questions
+## Unix/Droplet Implementation Details
 
-1. **Vault Deployment:** Self-hosted or managed service? DigitalOcean doesn't offer managed Vault.
-2. **Vault HA:** Single instance (dev) or HA cluster (production)?
-3. **Secret Injection:** Vault Agent sidecar or init container?
-4. **Config Changes:** How to handle live config reloads without restarting services?
-5. **Audit Requirements:** Are Vault audit logs sufficient for Croatian compliance?
-6. **Backup Strategy:** How to backup Vault secrets? Encrypted snapshots?
-7. **Developer Onboarding:** How do new developers get initial secrets for local dev?
+### Systemd Service Configuration
+
+**Service Template (eracun-email-worker.service):**
+
+```ini
+[Unit]
+Description=eRacun Email Ingestion Worker
+After=network.target postgresql.service rabbitmq-server.service
+Wants=postgresql.service rabbitmq-server.service
+
+[Service]
+Type=simple
+User=eracun
+Group=eracun
+WorkingDirectory=/opt/eracun/services/email-worker
+
+# Environment files (precedence: later overrides earlier)
+EnvironmentFile=/etc/eracun/platform.conf
+EnvironmentFile=/etc/eracun/environment.conf
+EnvironmentFile=/etc/eracun/services/email-worker.conf
+EnvironmentFile=/run/eracun/secrets.env  # Decrypted by ExecStartPre
+
+# Decrypt secrets before starting service (SOPS)
+ExecStartPre=/usr/local/bin/decrypt-secrets.sh email-worker
+
+# Start service
+ExecStart=/usr/local/bin/node dist/index.js
+
+# Security hardening
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+ReadWritePaths=/var/log/eracun /var/lib/eracun
+
+# Resource limits
+MemoryMax=1G
+CPUQuota=200%
+
+# Restart policy
+Restart=on-failure
+RestartSec=5s
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### SOPS Decryption Script
+
+**/usr/local/bin/decrypt-secrets.sh:**
+
+```bash
+#!/bin/bash
+set -euo pipefail
+
+SERVICE_NAME="$1"
+AGE_KEY_FILE="/etc/eracun/.age-key"
+ENCRYPTED_SECRETS="/etc/eracun/secrets/${SERVICE_NAME}.env.enc"
+DECRYPTED_OUTPUT="/run/eracun/secrets.env"
+
+# Create runtime directory (tmpfs, cleared on reboot)
+mkdir -p /run/eracun
+chmod 700 /run/eracun
+
+# Decrypt secrets using age key
+if [ -f "$ENCRYPTED_SECRETS" ]; then
+  sops --decrypt --age "$(cat $AGE_KEY_FILE)" "$ENCRYPTED_SECRETS" > "$DECRYPTED_OUTPUT"
+  chmod 600 "$DECRYPTED_OUTPUT"
+  chown eracun:eracun "$DECRYPTED_OUTPUT"
+fi
+```
+
+### Directory Structure (Monorepo + System)
+
+**In Git (eRacun-development/):**
+
+```
+eRacun-development/
+├── config/
+│   ├── platform.conf.example      # Template for /etc/eracun/platform.conf
+│   ├── environment.conf.example   # Template for environment overrides
+│   └── services/
+│       ├── email-worker.conf.example
+│       └── xsd-validator.conf.example
+│
+├── secrets/                        # SOPS-encrypted secrets (IN GIT)
+│   ├── .sops.yaml                  # SOPS configuration (age keys)
+│   ├── database.env.enc            # Encrypted database credentials
+│   ├── fina-cert.p12.enc           # Encrypted FINA certificate
+│   └── api-keys.env.enc            # Encrypted API keys
+│
+├── deployment/
+│   ├── systemd/                    # Systemd unit files
+│   │   ├── eracun-email-worker.service
+│   │   ├── eracun-xsd-validator.service
+│   │   └── decrypt-secrets.sh
+│   └── ansible/                    # Deployment automation (optional)
+│       └── deploy-droplet.yml
+│
+└── .gitignore                      # Prevents committing decrypted secrets
+```
+
+**On Droplet (/etc/eracun/):**
+
+```
+/etc/eracun/
+├── platform.conf                   # Deployed from config/platform.conf.example
+├── environment.conf                # Staging or production values
+├── services/
+│   ├── email-worker.conf
+│   └── xsd-validator.conf
+├── secrets/                        # Decrypted secrets (NOT in git)
+│   ├── fina-cert.p12               # Decrypted FINA certificate
+│   ├── database.env                # Plaintext DB credentials
+│   └── api-keys.env
+└── .age-key                        # Age private key (decrypt SOPS secrets)
+```
+
+### Configuration Loading (TypeScript)
+
+```typescript
+// services/email-worker/src/config/loader.ts
+import fs from 'fs';
+import yaml from 'js-yaml';
+import dotenv from 'dotenv';
+
+export function loadConfig() {
+  // 1. Load platform config (YAML)
+  const platformConf = yaml.load(
+    fs.readFileSync('/etc/eracun/platform.conf', 'utf8')
+  ) as Record<string, any>;
+
+  // 2. Load service-specific config (YAML)
+  const serviceConf = yaml.load(
+    fs.readFileSync('/etc/eracun/services/email-worker.conf', 'utf8')
+  ) as Record<string, any>;
+
+  // 3. Load secrets (env format, decrypted by systemd ExecStartPre)
+  const secrets = dotenv.parse(
+    fs.readFileSync('/run/eracun/secrets.env', 'utf8')
+  );
+
+  // 4. Merge with precedence (later overrides earlier)
+  return {
+    ...platformConf,
+    ...serviceConf,
+    ...secrets,
+    ...process.env,  // Environment variables highest priority
+  };
+}
+```
+
+### Deployment Workflow
+
+**Initial Droplet Setup:**
+
+```bash
+# 1. Create service user
+sudo useradd -r -s /bin/false eracun
+
+# 2. Create directories
+sudo mkdir -p /etc/eracun/{services,secrets}
+sudo mkdir -p /opt/eracun/services
+sudo mkdir -p /var/log/eracun
+sudo mkdir -p /var/lib/eracun
+
+# 3. Set permissions
+sudo chown -R eracun:eracun /etc/eracun /opt/eracun /var/log/eracun /var/lib/eracun
+sudo chmod 700 /etc/eracun/secrets
+
+# 4. Install SOPS and age
+sudo apt-get install age  # Modern encryption tool
+wget https://github.com/mozilla/sops/releases/download/v3.8.1/sops_3.8.1_amd64.deb
+sudo dpkg -i sops_3.8.1_amd64.deb
+
+# 5. Generate age key pair (one-time)
+age-keygen -o /etc/eracun/.age-key
+sudo chmod 600 /etc/eracun/.age-key
+sudo chown eracun:eracun /etc/eracun/.age-key
+
+# 6. Copy public key to repository .sops.yaml
+age-keygen -y /etc/eracun/.age-key  # Output: age1xxxxxx...
+```
+
+**Deployment Process:**
+
+```bash
+# 1. Build services locally or in CI
+npm run build
+
+# 2. Deploy to droplet
+rsync -avz --exclude node_modules services/ deploy@droplet:/opt/eracun/services/
+
+# 3. Copy configs
+sudo cp config/platform.conf.example /etc/eracun/platform.conf
+sudo cp config/environment-production.conf /etc/eracun/environment.conf
+
+# 4. Decrypt secrets
+sudo /usr/local/bin/decrypt-secrets.sh email-worker
+
+# 5. Install systemd units
+sudo cp deployment/systemd/*.service /etc/systemd/system/
+sudo systemctl daemon-reload
+
+# 6. Start services
+sudo systemctl enable eracun-email-worker
+sudo systemctl start eracun-email-worker
+```
 
 ---
 
-## Deliverables Required
+## Open Questions (Unix/Droplet Context)
+
+1. **Environment Count:** Single droplet (staging + prod via systemd instances) or separate droplets? **Recommend:** Separate droplets
+2. **Database:** PostgreSQL on same droplet or DigitalOcean Managed Database? **Recommend:** Managed DB (less ops burden)
+3. **Message Bus:** RabbitMQ on droplet or DigitalOcean Managed Kafka? **Recommend:** Self-hosted RabbitMQ (FOSS, lower cost)
+4. **Monitoring:** Prometheus + Grafana on droplet or external SaaS? **Recommend:** Self-hosted (cost, data sovereignty)
+5. **Age Key Backup:** Where to securely backup age private key? **Recommend:** Encrypted USB drive + password manager
+6. **Config Changes:** Restart services or implement live reload (SIGHUP)? **Recommend:** Restart (simpler, safer)
+7. **Developer Onboarding:** How to share age private key with team? **Recommend:** Per-developer age keys in .sops.yaml, master key for CI/CD
+
+---
+
+## Deliverables Required (UPDATED)
 
 **When this issue is resolved, we need:**
 
-1. **ADR-001:** Configuration Management Strategy
-2. **ADR-002:** Secrets Management with HashiCorp Vault
-3. **Updated CLAUDE.md** section 3.4 with specific implementation
+1. **ADR-001:** Configuration Management Strategy (Unix filesystem-based)
+2. **ADR-002:** Secrets Management with SOPS + age
+3. **Updated CLAUDE.md** section 3.4 with Unix/systemd details
 4. **Directory structure creation:**
-   - `config/` with platform configs
-   - `infrastructure/vault/` with policies
-   - `.gitignore` updates
+   - `config/` with .conf.example templates
+   - `secrets/` with .sops.yaml configuration
+   - `deployment/systemd/` with service units
+   - `.gitignore` updates (prevent decrypted secrets)
 5. **Template files:**
-   - `.env.example` (platform)
-   - `config/secrets.example.yaml`
-   - Service-level `.env.example` template
-6. **Pre-commit hook** for secret detection
-7. **Vault setup guide** (`docs/operations/vault-setup.md`)
-8. **Developer onboarding guide** (`docs/operations/developer-setup.md`)
+   - `config/platform.conf.example`
+   - `config/environment-{staging,production}.conf.example`
+   - `secrets/database.env.enc` (SOPS-encrypted template)
+6. **Scripts:**
+   - `decrypt-secrets.sh` (systemd ExecStartPre)
+   - `deploy-droplet.sh` (deployment automation)
+7. **Documentation:**
+   - `docs/operations/droplet-setup.md` (initial server setup)
+   - `docs/operations/secrets-management.md` (SOPS + age guide)
+   - `docs/operations/deployment.md` (deployment process)
+8. **Security:**
+   - Pre-commit hook for secret detection
+   - Age key generation guide
 
 ---
 
 ## Dependencies
 
 **Blocks:**
-- All service implementation (services can't run without config)
-- FINA certificate integration
-- Database deployment
-- Message bus setup
+- All service implementation (services need config to run)
+- FINA certificate integration (.p12 file storage)
+- Database deployment (connection string configuration)
+- Message bus setup (RabbitMQ URL configuration)
 
 **Blocked By:**
 - None (can be addressed immediately)
 
 ---
 
-## Recommendation
+## Recommendation (UPDATED)
 
-**Priority:** Address THIS WEEK before any service coding begins.
+**Priority:** Address NOW (P0 blocker resolved)
 
-**Approach:**
-1. Make architectural decisions (Vault vs alternatives, hierarchy, formats)
-2. Create ADRs documenting decisions
-3. Implement directory structure and templates
-4. Set up Vault (dev instance for testing)
-5. Document in CLAUDE.md
-6. Then proceed with first service specification
+**Approach (Unix/Droplet):**
 
-**Estimated Effort:** 1-2 days for documentation + structure, 1-2 days for Vault setup
+1. **Create ADRs** (1 hour)
+   - ADR-001: Configuration strategy (filesystem-based)
+   - ADR-002: Secrets management (SOPS + age)
+
+2. **Implement directory structure** (2 hours)
+   - Create `config/`, `secrets/`, `deployment/systemd/`
+   - Add `.gitignore` rules
+   - Create example config templates
+
+3. **Write systemd units** (2 hours)
+   - Template service file
+   - `decrypt-secrets.sh` script
+   - Test on local VM or DigitalOcean test droplet
+
+4. **Document procedures** (2 hours)
+   - Droplet setup guide
+   - SOPS + age usage guide
+   - Deployment process
+
+5. **Update CLAUDE.md** (1 hour)
+   - Replace Vault/K8s references with SOPS/systemd
+   - Add Unix conventions section
+
+**Total Estimated Effort:** 8 hours (1 day)
+
+**Tools Required:**
+- SOPS (https://github.com/mozilla/sops) - Free, open source
+- age (https://age-encryption.org/) - Free, open source, modern
+- systemd (built into Linux) - Free
+
+**Total Cost:** €0 (all FOSS)
 
 ---
 
-## References
+## References (UPDATED)
 
-- **CLAUDE.md** section 3.4 (mentions Vault, K8s secrets)
-- **12-Factor App:** https://12factor.net/config (industry best practices)
-- **HashiCorp Vault:** https://www.vaultproject.io/
-- **Kubernetes Secrets:** https://kubernetes.io/docs/concepts/configuration/secret/
+- **SOPS:** https://github.com/mozilla/sops (Mozilla secrets encryption)
+- **age:** https://age-encryption.org/ (Modern encryption tool)
+- **systemd:** https://systemd.io/ (Service management)
+- **12-Factor App:** https://12factor.net/config (Config best practices)
+- **CLAUDE.md** section 3.4 (will be updated with Unix approach)
 
 ---
 
-**Next Action:** User decision on approach, then create ADRs and implementation.
+**Next Action:** User approval to proceed with Unix/SOPS approach, then create ADRs and implement structure.
+
+**Decision Required:** Confirm SOPS + age + systemd approach is acceptable before proceeding.
