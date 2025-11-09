@@ -402,12 +402,14 @@ AS4 Message
 ## Version Control
 
 **This directory tracks CIUS-HR specification evolution.**
+**This directory contains IMMUTABLE reference materials.**
 
 **Update Policy:**
-- ✅ Add official Schematron files when published (Oct 30, 2025)
-- ✅ Document all specification changes with dates
-- ✅ Track regulatory updates in decision log
-- ❌ Do NOT modify official Schematron rules
+- ❌ Do NOT rewrite or "clarify" official HR-BT/HR-BR rule text.
+- ❌ Do NOT modify official Schematron rules once committed.
+- ✅ Add official Schematron files when published (Oct 30, 2025).
+- ✅ Document all specification changes with dates.
+- ✅ Track regulatory updates in decision log and reference official bulletins in commit messages.
 
 **Version Tracking:**
 ```bash

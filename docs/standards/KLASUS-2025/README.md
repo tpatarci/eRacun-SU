@@ -165,6 +165,14 @@ code,description_hr,description_en,status,parent_code,effective_date
 - Check for updates quarterly
 - Re-download registry before each major release
 
+**This directory contains IMMUTABLE reference materials.**
+
+**Update Policy:**
+- ❌ Do NOT edit or prune historical registry snapshots once committed.
+- ❌ Do NOT transcribe codes manually—always import the official CSV.
+- ✅ When DZS publishes a new registry, add a timestamped CSV (e.g., `kpd_registry-20251109.csv`) and update references.
+- ✅ Document the download date and official announcement link in commit messages and `TBD.md`.
+
 **Version Control:**
 ```bash
 # Tag registry with download date
