@@ -474,6 +474,70 @@ refactor/<service-name>/<improvement>
 9. E2E smoke tests
 10. Deploy to production (manual approval gate)
 
+### 9.4 Critical Issue Tracking (MANDATORY)
+
+**⚠️ CONSTITUTIONAL MANDATE:** All identified critical gaps MUST be tracked in `PENDING.md`
+
+**Purpose:** Prevent critical work from being forgotten when deferred for higher priorities.
+
+**When to Create PENDING Item:**
+- ✅ Critical architectural gap identified (blocks or risks significant work)
+- ✅ Scope is clear (known what needs deciding/building)
+- ✅ Can't address immediately due to higher priority work
+- ❌ Simple bugs (use GitHub issues or fix immediately)
+- ❌ Vague concerns without clear scope (discuss first)
+
+**Workflow (NON-NEGOTIABLE):**
+
+1. **Identify Gap**
+   - During architecture review, development, or design
+   - Recognize it blocks or creates risk for other work
+
+2. **Create Detailed Specification**
+   - File: `docs/pending/{number}-{slug}.md`
+   - Number sequentially (001, 002, 003...)
+   - Must include:
+     - Problem statement (what's missing/wrong)
+     - Scope (what needs deciding/building)
+     - Open questions requiring decisions
+     - Deliverables required to close
+     - What it blocks
+     - Why deferred (what was higher priority)
+     - Estimated effort
+
+3. **Track in PENDING.md**
+   - Add to appropriate priority section
+   - Link to detailed file
+   - Note blockers and dependencies
+
+4. **Resolve When Priority Allows**
+   - Complete deliverables (ADRs, implementation, docs)
+   - Update related documents (CLAUDE.md, TBD.md)
+   - Move from "Active Items" to "Completed Items"
+
+**Priority Levels (P0-P3):**
+- **🔴 P0 (Critical):** Blocks all work, resolve immediately
+- **🟡 P1 (High):** Blocks significant work, resolve this sprint
+- **🟢 P2 (Medium):** Important but not blocking, resolve soon
+- **⚪ P3 (Low):** Nice to have, address when convenient
+
+**PENDING.md vs TBD.md:**
+- **TBD.md** = Questions without answers (architectural exploration)
+- **PENDING.md** = Work with known scope (implementation deferred)
+
+**Review Cadence:** Weekly triage required
+- Re-prioritize as work evolves
+- Promote P1→P0 if blocking increases
+- Close P2/P3 if no longer relevant
+
+**Git Integration:**
+- Commit messages: `fix(pending-001): implement configuration strategy`
+- ADRs reference: `See PENDING-001 for background`
+
+**Violation Consequences:**
+- Critical gaps not tracked = forgotten work = system risk
+- This is **NON-NEGOTIABLE** project hygiene
+
 ---
 
 ## 10. PERFORMANCE BUDGETS
