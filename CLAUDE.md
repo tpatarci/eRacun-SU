@@ -42,14 +42,25 @@ eRacun-development/
 │   ├── validation-core/    # Reusable validation primitives
 │   ├── messaging/          # Message bus abstractions
 │   └── observability/      # Logging, tracing, metrics
-├── infrastructure/         # IaC, deployment configs, K8s manifests
-│   ├── terraform/          # DigitalOcean infrastructure
-│   ├── kubernetes/         # Service deployments
-│   └── systemd/            # Critical daemon configurations
-├── docs/                   # Architectural Decision Records (ADRs)
-│   ├── adr/                # Architecture decisions
+├── config/                 # Configuration templates (see ADR-001)
+│   ├── platform.conf.example        # Global settings
+│   ├── environment-*.conf.example   # Environment overrides
+│   └── services/                    # Service-specific configs
+├── secrets/                # SOPS-encrypted secrets (see ADR-002)
+│   ├── .sops.yaml          # age public keys for encryption
+│   ├── *.env.enc           # Encrypted secrets (safe in git)
+│   └── *.env.example       # Secret templates
+├── deployment/             # Deployment automation
+│   ├── systemd/            # systemd service units
+│   ├── ansible/            # Ansible playbooks (optional)
+│   └── terraform/          # DigitalOcean infrastructure (optional)
+├── docs/                   # Documentation and decisions
+│   ├── adr/                # Architecture Decision Records
+│   ├── operations/         # Operational runbooks
+│   ├── standards/          # Regulatory standards (UBL, CIUS-HR, etc.)
+│   ├── research/           # Implementation guides (OIB, VAT, XMLDSig)
 │   ├── api-contracts/      # OpenAPI/gRPC specs
-│   └── diagrams/           # System architecture visuals
+│   └── pending/            # Deferred critical issues (PENDING.md)
 └── scripts/                # Build, deployment, orchestration scripts
 ```
 
@@ -150,14 +161,32 @@ Every service MUST implement:
 **Zero Trust Architecture:**
 - No service trusts incoming data without validation
 - All inter-service communication authenticated (mTLS in production)
-- Secrets managed via HashiCorp Vault or K8s secrets
+- Secrets managed via SOPS + age encryption (see ADR-002)
 - Input sanitization at every boundary
+
+**Secrets Management (Unix/systemd):**
+- **SOPS + age:** Encrypted secrets in git (Mozilla open source, €0 cost)
+- **Filesystem-based:** `/etc/eracun/secrets/` with 600 permissions
+- **systemd integration:** ExecStartPre decrypts before service start
+- **tmpfs storage:** Decrypted secrets in `/run/eracun/` (cleared on reboot)
+- **File permissions:** Services run as `eracun` user (not root)
+- **Never in git:** `.p12`, `.key`, `.pem`, `.env` (protected by .gitignore)
+- **See:** ADR-001 (Configuration), ADR-002 (Secrets), `deployment/systemd/`
 
 **XML Security (Critical for e-invoice processing):**
 - XXE (XML External Entity) attacks prevented
 - Schema validation before parsing
 - Size limits enforced (max 10MB per document)
 - Billion laughs attack protection
+
+**systemd Hardening:**
+- `ProtectSystem=strict` - Read-only filesystem
+- `ProtectHome=true` - No access to user directories
+- `PrivateTmp=true` - Isolated /tmp directory
+- `NoNewPrivileges=true` - Prevent privilege escalation
+- `CapabilityBoundingSet=` - Drop all Linux capabilities
+- `SystemCallFilter=@system-service` - Restrict system calls
+- `InaccessiblePaths=/etc/eracun/.age-key` - Hide encryption keys
 
 ---
 
@@ -236,22 +265,48 @@ Every service MUST implement:
 
 ### 6.1 Target Environment
 
-**Platform:** DigitalOcean Kubernetes (DOKS)
-**Orchestrator:** Kubernetes 1.28+
-**Workflow Engine:** Temporal (distributed saga orchestration)
-**Service Mesh:** Istio (observability, traffic management)
+**Platform:** DigitalOcean Dedicated Droplets (Linux)
+**Operating System:** Ubuntu 22.04 LTS or Debian 12+
+**Orchestrator:** systemd (native Linux service manager)
+**Architecture:** Unix-native, filesystem-based configuration
+**Philosophy:** Classic Unix conventions (POSIX standards, FHS compliance)
+
+**Environment Separation:**
+- **Development:** `dev.eracun.internal` (local or dedicated droplet)
+- **Staging:** `staging.eracun.internal` (FINA test environment: cistest.apis-it.hr)
+- **Production:** `production.eracun.hr` (FINA production: cis.porezna-uprava.hr)
+
+**Infrastructure Components:**
+- **Message Bus:** RabbitMQ (self-hosted on droplet)
+- **Database:** PostgreSQL (DigitalOcean Managed Database recommended)
+- **Observability:** Prometheus + Grafana (self-hosted)
+- **Workflow Engine:** Temporal (future consideration for complex sagas)
+
+**Future Scaling:** Kubernetes migration possible if horizontal scaling requirements exceed single-server capacity.
 
 ### 6.2 Deployment Strategy
 
-**Blue-Green Deployments:**
-- Zero-downtime releases
-- Instant rollback capability
-- Health checks gate traffic switching
+**systemd Service Deployment:**
+- Services deployed as systemd units to `/etc/systemd/system/`
+- Service code deployed to `/opt/eracun/services/{service-name}/`
+- Configuration in `/etc/eracun/` (platform/environment/service hierarchy)
+- Secrets decrypted via systemd `ExecStartPre` hook
 
-**Canary Releases:**
-- High-risk changes deployed to 5% traffic
-- Automated rollback on error rate increase
-- Gradual rollout over 24 hours
+**Rolling Deployment Process:**
+1. Build service locally or in CI/CD pipeline
+2. rsync built artifacts to droplet `/opt/eracun/services/`
+3. Update configuration files in `/etc/eracun/` if needed
+4. Reload systemd: `systemctl daemon-reload`
+5. Restart service: `systemctl restart eracun-{service-name}`
+6. Verify health: `systemctl status eracun-{service-name}`
+
+**Zero-Downtime Strategy:**
+- Run multiple service instances behind nginx/HAProxy
+- Drain connections before restart (systemd `ExecStop` with graceful shutdown)
+- Health checks prevent routing to restarting services
+- Rollback: `systemctl stop new-service && systemctl start old-service`
+
+**See:** `deployment/systemd/README.md` for complete deployment procedures
 
 ### 6.3 System-Level Services
 
