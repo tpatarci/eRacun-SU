@@ -1,4 +1,111 @@
+# Python
 __pycache__/
 *.pyc
-.env
 venv/
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+.pnp/
+.pnp.js
+
+# Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# Environment files (secrets)
+.env
+.env.local
+.env.*.local
+!.env.example
+!.env.*.example
+
+# Secrets and certificates (CRITICAL - never commit these)
+*.p12
+*.pfx
+*.key
+*.pem
+*.crt
+*.der
+*.jks
+*.keystore
+
+# age encryption private keys
+.age-key
+*.age-key
+
+# SOPS decrypted files (encrypted *.enc files ARE safe to commit)
+secrets/*.env
+secrets/*.yaml
+secrets/*.json
+secrets/*.p12
+!secrets/*.enc
+!secrets/*.example
+
+# Configuration files with real values (templates .example ARE safe)
+config/*.conf
+config/**/*.conf
+!config/*.example
+!config/**/*.example
+
+# Logs
+*.log
+logs/
+*.log.*
+
+# OS files
+.DS_Store
+Thumbs.db
+.directory
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Coverage reports
+coverage/
+.nyc_output/
+*.lcov
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+.terraformrc
+terraform.tfvars
+
+# Docker
+docker-compose.override.yml
+
+# macOS
+*.DS_Store
+.AppleDouble
+.LSOverride
+
+# Linux
+*~
+.nfs*
+
+# Windows
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/

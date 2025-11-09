@@ -1,0 +1,118 @@
+# eRacun Platform Configuration (Global Settings)
+#
+# This file contains platform-wide settings shared by all services.
+# Deploy to: /etc/eracun/platform.conf (mode 644)
+#
+# Format: YAML
+# Precedence: Lowest (overridden by environment.conf, service.conf, secrets.env, env vars)
+
+---
+
+# Platform Metadata
+platform:
+  name: eRacun Invoice Processing Platform
+  version: 1.0.0
+  environment: OVERRIDE_IN_ENVIRONMENT_CONF  # dev, staging, production
+
+# Message Bus (RabbitMQ)
+rabbitmq:
+  url: amqp://localhost:5672
+  vhost: /eracun
+  exchange_prefix: eracun
+  queue_prefix: eracun
+  connection_timeout_ms: 10000
+  heartbeat_interval_seconds: 60
+
+# Event Store (Kafka) - Future use
+kafka:
+  enabled: false
+  brokers:
+    - localhost:9092
+  client_id: eracun-platform
+  topic_prefix: eracun
+
+# Database (PostgreSQL)
+database:
+  host: localhost
+  port: 5432
+  name: eracun_dev
+  # Credentials in secrets.env: DB_USER, DB_PASSWORD
+  pool:
+    min: 2
+    max: 10
+    idle_timeout_ms: 30000
+  ssl:
+    enabled: false
+    reject_unauthorized: true
+
+# Observability - Metrics (Prometheus)
+prometheus:
+  enabled: true
+  port: 9090
+  metrics_path: /metrics
+  scrape_interval_seconds: 15
+
+# Observability - Tracing (Jaeger)
+jaeger:
+  enabled: true
+  endpoint: http://localhost:14268/api/traces
+  service_name: OVERRIDE_IN_SERVICE_CONF
+  sampler:
+    type: probabilistic
+    param: 0.1  # 10% sampling
+
+# Observability - Logging
+logging:
+  level: info  # debug, info, warn, error
+  format: json
+  destination: stdout
+  structured: true
+  include_trace_id: true
+
+# Global Timeouts
+timeouts:
+  default_request_timeout_ms: 5000
+  message_processing_timeout_ms: 30000
+  http_client_timeout_ms: 10000
+  db_query_timeout_ms: 30000
+
+# Retry Policy (Exponential Backoff)
+retry:
+  max_attempts: 3
+  initial_delay_ms: 1000
+  max_delay_ms: 10000
+  backoff_multiplier: 2.0
+  jitter: true
+
+# Circuit Breaker
+circuit_breaker:
+  failure_threshold: 5
+  success_threshold: 2
+  timeout_ms: 60000
+  half_open_requests: 3
+
+# Rate Limiting
+rate_limit:
+  enabled: true
+  window_ms: 60000
+  max_requests: 1000
+
+# Health Checks
+health:
+  port: 8080
+  path: /health
+  readiness_path: /ready
+  liveness_path: /alive
+
+# Feature Flags
+features:
+  ai_validation: true
+  triple_redundancy: true
+  chaos_testing: false
+  fuzz_testing: false
+
+# Performance Budgets
+performance:
+  max_latency_ms: 200
+  max_validation_time_ms: 5000
+  max_xml_generation_time_ms: 1000

@@ -1,0 +1,95 @@
+# eRacun Email Ingestion Worker Configuration
+#
+# Service: email-worker
+# Purpose: Monitor email accounts for incoming invoices (PDF/XML attachments)
+# Deploy to: /etc/eracun/services/email-worker.conf (mode 644)
+
+---
+
+# Service Metadata
+service:
+  name: email-worker
+  port: 3001
+  version: 1.0.0
+
+# Email Account Monitoring
+email:
+  # IMAP Connection
+  imap:
+    host: imap.gmail.com
+    port: 993
+    tls: true
+    # Credentials in secrets: EMAIL_USER, EMAIL_PASSWORD
+
+  # Polling Configuration
+  poll_interval_seconds: 60
+  max_emails_per_poll: 50
+
+  # Attachment Processing
+  attachments:
+    max_per_email: 10
+    max_size_mb: 10
+    allowed_extensions:
+      - .pdf
+      - .xml
+      - .zip
+    download_path: /var/lib/eracun/email-attachments
+
+  # Email Filtering
+  filters:
+    from_whitelist:
+      - "@trusted-partner.hr"
+      - "invoices@vendor.com"
+    subject_patterns:
+      - "Invoice"
+      - "Račun"
+      - "Faktura"
+
+# Dependencies
+dependencies:
+  upstream:
+    - imap-server
+  downstream:
+    - file-parser
+    - document-store
+    - invoice-workflow
+
+# Message Queue
+queue:
+  name: email-worker.incoming
+  durable: true
+  prefetch_count: 10
+  dead_letter:
+    enabled: true
+    exchange: eracun.dead-letter
+    ttl_ms: 86400000  # 24 hours
+
+# Observability
+observability:
+  jaeger:
+    service_name: eracun-email-worker
+  metrics:
+    port: 9091
+    labels:
+      service: email-worker
+      environment: OVERRIDE_FROM_ENVIRONMENT_CONF
+
+# Resource Limits (service-specific)
+resources:
+  max_memory_mb: 512
+  max_cpu_percent: 100
+
+# Retry Policy (service-specific overrides)
+retry:
+  max_attempts: 5
+  initial_delay_ms: 2000
+
+# Health Checks
+health:
+  port: 8001
+  interval_seconds: 30
+  timeout_ms: 5000
+  checks:
+    - imap_connection
+    - rabbitmq_connection
+    - disk_space
