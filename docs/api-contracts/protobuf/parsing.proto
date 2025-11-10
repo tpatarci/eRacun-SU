@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package eracun.v1.parsing;
+
+import "common.proto";
+
+// Command: Classify file type
+message ClassifyFileCommand {
+  common.RequestContext context = 1;
+  bytes file_content = 2;
+  string filename = 3;
+}
+
+// Response: File classification result
+message ClassifyFileResponse {
+  common.InvoiceId invoice_id = 1;
+  FileType detected_type = 2;
+  float confidence = 3; // 0.0 - 1.0
+}
+
+enum FileType {
+  FILE_TYPE_UNSPECIFIED = 0;
+  PDF = 1;
+  XML = 2;
+  IMAGE_PNG = 3;
+  IMAGE_JPEG = 4;
+}
+
+// Command: Parse PDF invoice
+message ParsePDFCommand {
+  common.RequestContext context = 1;
+  common.InvoiceId invoice_id = 2;
+  bytes pdf_content = 3;
+}
+
+// Response: Extracted text
+message ParsePDFResponse {
+  common.InvoiceId invoice_id = 1;
+  string extracted_text = 2;
+  int32 page_count = 3;
+}
+
+// Command: OCR scanned image
+message OCRImageCommand {
+  common.RequestContext context = 1;
+  common.InvoiceId invoice_id = 2;
+  bytes image_content = 3;
+  FileType image_type = 4;
+}
+
+// Response: OCR result
+message OCRImageResponse {
+  common.InvoiceId invoice_id = 1;
+  string recognized_text = 2;
+  float confidence = 3; // Average OCR confidence
+}

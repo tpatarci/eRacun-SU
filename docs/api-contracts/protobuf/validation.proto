@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package eracun.v1.validation;
+
+import "common.proto";
+
+// Command: Validate XML against XSD schema
+message ValidateXSDCommand {
+  common.RequestContext context = 1;
+  common.InvoiceId invoice_id = 2;
+  bytes xml_content = 3;
+  SchemaType schema_type = 4;
+}
+
+enum SchemaType {
+  SCHEMA_TYPE_UNSPECIFIED = 0;
+  UBL_2_1 = 1;
+  CII_2_0 = 2;
+}
+
+// Response: XSD validation result
+message ValidateXSDResponse {
+  common.InvoiceId invoice_id = 1;
+  ValidationStatus status = 2;
+  repeated common.Error errors = 3;
+}
+
+enum ValidationStatus {
+  VALIDATION_STATUS_UNSPECIFIED = 0;
+  VALID = 1;
+  INVALID = 2;
+  ERROR = 3; // System error (not validation failure)
+}
+
+// Command: Apply Schematron business rules
+message ValidateSchematronCommand {
+  common.RequestContext context = 1;
+  common.InvoiceId invoice_id = 2;
+  bytes xml_content = 3;
+  string cius_version = 4; // Croatian CIUS version
+}
+
+// Response: Schematron validation result
+message ValidateSchematronResponse {
+  common.InvoiceId invoice_id = 1;
+  ValidationStatus status = 2;
+  repeated SchematronError errors = 3;
+}
+
+message SchematronError {
+  string rule_id = 1; // Schematron rule ID (e.g., "BR-CO-04")
+  string message = 2;
+  string xpath = 3; // XPath to problematic element
+  Severity severity = 4;
+}
+
+enum Severity {
+  SEVERITY_UNSPECIFIED = 0;
+  ERROR = 1;
+  WARNING = 2;
+  INFO = 3;
+}
+
+// Command: Validate KPD codes
+message ValidateKPDCommand {
+  common.RequestContext context = 1;
+  common.InvoiceId invoice_id = 2;
+  repeated common.KPDCode kpd_codes = 3;
+}
+
+// Response: KPD validation result
+message ValidateKPDResponse {
+  common.InvoiceId invoice_id = 1;
+  repeated KPDValidationResult results = 2;
+}
+
+message KPDValidationResult {
+  common.KPDCode code = 1;
+  bool is_valid = 2;
+  string description = 3; // Product description from KLASUS
+  string error_message = 4; // If invalid
+}
