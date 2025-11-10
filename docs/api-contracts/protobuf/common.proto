@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package eracun.v1.common;
+
+// Unique identifier for invoices (idempotency key)
+message InvoiceId {
+  string uuid = 1; // UUID v4
+}
+
+// Invoice transaction types
+enum InvoiceType {
+  INVOICE_TYPE_UNSPECIFIED = 0;
+  B2C = 1; // Business to Consumer
+  B2B = 2; // Business to Business
+  B2G = 3; // Business to Government
+}
+
+// Processing stages
+enum ProcessingStage {
+  PROCESSING_STAGE_UNSPECIFIED = 0;
+  INGESTED = 1;
+  PARSED = 2;
+  VALIDATED = 3;
+  SIGNED = 4;
+  SUBMITTED = 5;
+  ARCHIVED = 6;
+  FAILED = 7;
+}
+
+// Croatian OIB (tax number)
+message OIB {
+  string value = 1; // 11 digits
+}
+
+// KPD product classification code
+message KPDCode {
+  string value = 1; // Minimum 6 digits
+}
+
+// Request context (propagated through all services)
+message RequestContext {
+  string request_id = 1; // UUID for tracing
+  string user_id = 2; // Authenticated user (if applicable)
+  int64 timestamp_ms = 3; // Unix timestamp in milliseconds
+  InvoiceType invoice_type = 4;
+}
+
+// Error details
+message Error {
+  string code = 1; // Error code (e.g., "XSD_VALIDATION_FAILED")
+  string message = 2; // Human-readable message
+  string field = 3; // Field that caused error (if applicable)
+  repeated string details = 4; // Additional context
+}
