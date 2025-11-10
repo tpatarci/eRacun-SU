@@ -29,12 +29,14 @@ Before we can define business logic for individual bounded contexts, we need to 
    - Map all business processes from CROATIAN_COMPLIANCE.md
    - Identify distinct responsibilities (invoice parsing, validation, transformation, submission, archiving)
    - Apply Domain-Driven Design bounded context identification patterns
+   - Classify data ownership boundaries (source of truth per aggregate)
 
 2. **Decomposition Strategy:**
    - Apply Single Responsibility Principle (each service = ONE clear purpose)
    - Enforce 2,500 LOC limit per service (CLAUDE.md section 2.2)
    - Ensure each context can fit in AI assistant context window
    - Group by business capability vs. technical layer
+   - Record "service guardians" (accountable owners) to enforce stewardship
 
 3. **Catalog Structure:**
    ```
@@ -46,6 +48,7 @@ Before we can define business logic for individual bounded contexts, we need to 
    - Clear input/output boundaries
    - Can be developed independently
    - Has measurable business value
+   - Storage and regulatory responsibilities clearly enumerated
 
 **Rationale:**
 
@@ -77,6 +80,8 @@ Before we can define business logic for individual bounded contexts, we need to 
 - ADR-003 Section 1: Complete Service Catalog
 - Table with all bounded contexts, responsibilities, complexity estimates
 - Service dependency matrix (preliminary)
+- Context map highlighting upstream/downstream relationships
+- Stewardship roster (owner + escalation contacts)
 
 ---
 
@@ -116,11 +121,17 @@ Before we can define business logic for individual bounded contexts, we need to 
    - Use semantic versioning for Protobuf packages
    - Backward compatibility required for minor versions
    - Breaking changes require major version bump + migration plan
+   - Maintain change log per schema with rationale and rollout strategy
 
 5. **Catalog Structure:**
    ```
    Message Name | Type | Producer | Consumers | Purpose | Schema Version
    ```
+
+6. **Verification:**
+   - Create automated schema compatibility checks (buf, protovalidate)
+   - Define contract-testing templates for commands, events, and queries
+   - Capture sample payloads for integration smoke tests
 
 **Rationale:**
 
@@ -153,6 +164,7 @@ Before we can define business logic for individual bounded contexts, we need to 
 - Protocol Buffer schema files in `/docs/api-contracts/protobuf/`
 - Message taxonomy document
 - Versioning strategy guide
+- Contract-testing playbook (tooling, CI integration)
 
 ---
 
@@ -173,6 +185,7 @@ Before we can define business logic for individual bounded contexts, we need to 
    - For each bounded context, list downstream consumers (services that call it)
    - Use Graphviz/PlantUML to visualize dependency graph
    - Identify critical paths (longest dependency chains)
+   - Annotate edges with latency/SLA expectations and data classification (PII/non-PII)
 
 2. **Message Routing Design:**
    - **RabbitMQ Topology:**
@@ -196,12 +209,14 @@ Before we can define business logic for individual bounded contexts, we need to 
      - Event-driven communication (pub/sub instead of RPC)
      - Mediator pattern (introduce orchestrator service)
      - Data duplication (eventual consistency)
+   - Document trade-offs and risk mitigations for each resolved cycle
 
 5. **Topology Diagrams:**
    - Service dependency graph (Graphviz)
    - Message flow diagram (sequence diagrams)
    - RabbitMQ topology diagram (exchanges, queues, bindings)
    - Kafka topic map (topics, partitions, consumer groups)
+   - Resiliency overlay (fallback paths, circuit breakers, DLQs)
 
 **Rationale:**
 
@@ -236,6 +251,7 @@ Before we can define business logic for individual bounded contexts, we need to 
 - RabbitMQ topology specification (exchanges, queues, routing keys)
 - Kafka topic map (topics, partitions, consumer groups)
 - Sequence diagrams for key workflows
+- Resiliency playbook (fallback/circuit breaker plan)
 
 ---
 
@@ -270,6 +286,7 @@ Before we can define business logic for individual bounded contexts, we need to 
    - **Error Handling Pipeline:**
      - Dead Letter Queue → Error classification → Manual review queue
      - → Correction workflow → Resubmission → Retry with backoff
+     - → Post-incident review with root-cause analysis template
 
 2. **Saga Pattern Design:**
    - Identify long-running transactions (multi-step processes that can fail partially)
@@ -282,16 +299,19 @@ Before we can define business logic for individual bounded contexts, we need to 
    - Every operation uses idempotency keys (invoice_id as primary key)
    - Duplicate requests produce identical results (no side effects)
    - State machines track processing stages (prevent partial completion)
+   - Persist replay-safe audit log entries with immutable event history
 
 4. **Retry Strategy:**
    - Transient failures: Exponential backoff with jitter (3 retries max)
    - Network errors: Retry with circuit breaker (prevent thundering herd)
    - Business validation errors: No retry (move to manual review)
+   - Define human escalation paths when automated retries exhausted
 
 5. **Pipeline Documentation:**
    - Swimlane diagrams (services across horizontal lanes, time flows down)
    - State transition diagrams (invoice lifecycle states)
    - Failure scenario documentation (what happens when each step fails)
+   - Observability specification (metrics, traces, structured logs per stage)
 
 **Rationale:**
 
@@ -332,6 +352,7 @@ Before we can define business logic for individual bounded contexts, we need to 
 - Saga pattern specifications (choreography vs. orchestration)
 - Error handling flowcharts
 - Idempotency and retry strategy documentation
+- Observability runbook (alerts, dashboards, log taxonomy)
 
 ---
 
@@ -351,6 +372,8 @@ Before we can define business logic for individual bounded contexts, we need to 
 - Create CSV/table: rows = services, columns = services
 - Mark cells with dependency type (sync RPC, async message, event subscription)
 - Calculate metrics (fan-in count, fan-out count)
+- Include qualitative risk flags (e.g., regulatory, financial, security impact)
+- Highlight latency-sensitive dependencies and required SLAs
 
 **Rationale:**
 - High fan-in services need extra reliability (many consumers affected by failures)
@@ -360,6 +383,7 @@ Before we can define business logic for individual bounded contexts, we need to 
 **Deliverable:**
 - Service dependency matrix (CSV + visualization)
 - Analysis of critical services (high fan-in)
+- Hotspot remediation backlog with suggested mitigations
 
 ---
 
@@ -380,6 +404,8 @@ Before we can define business logic for individual bounded contexts, we need to 
   - Rate limits
   - Error response codes
 - Create integration test plan for each external system
+- Capture data residency/compliance requirements per integration
+- Define credential rotation procedures and certificate renewal calendar
 
 **Rationale:**
 - External systems are outside our control (need defensive programming)
@@ -389,6 +415,49 @@ Before we can define business logic for individual bounded contexts, we need to 
 **Deliverable:**
 - External integration catalog (markdown table)
 - Integration test specifications per external system
+- Credential lifecycle management checklist
+
+---
+
+### TODO-008: Define Cross-Cutting Concerns (Security, Observability, Compliance)
+
+**Status:** ⏳ Not Started
+**Depends On:** TODO-001 through TODO-004
+
+**Objective:**
+- Document shared architectural requirements that every bounded context must implement
+- Standardize security controls (authentication, authorization, encryption)
+- Establish observability baselines (metrics, logs, traces)
+- Map regulatory requirements to technical controls (GDPR, Croatian e-invoice mandates)
+
+**Methodology:**
+1. **Security Architecture:**
+   - Define service-to-service authentication (mTLS, JWT scopes)
+   - Specify authorization patterns (ABAC vs. RBAC) and enforcement points
+   - Catalog data classification levels and required encryption (in transit, at rest)
+   - Document secrets management approach (Vault, KMS) and rotation cadence
+
+2. **Observability Standards:**
+   - Define required metrics per service (latency, throughput, error rates)
+   - Standardize trace propagation (W3C Trace Context) and sampling strategy
+   - Enumerate structured logging fields and retention policies
+   - Establish alerting thresholds and on-call escalation procedures
+
+3. **Compliance Mapping:**
+   - Link CROATIAN_COMPLIANCE.md obligations to concrete controls/services
+   - Define audit evidence requirements and reporting cadence
+   - Identify data retention rules and deletion workflows
+   - Ensure privacy impact assessment templates exist per bounded context
+
+**Rationale:**
+- Cross-cutting concerns, if left ad-hoc, cause inconsistent security posture and observability gaps
+- Shared standards accelerate development and reduce operational toil
+- Regulatory fines for non-compliance are material; proactive mapping mitigates risk
+
+**Deliverable:**
+- Cross-cutting concerns handbook (security, observability, compliance sections)
+- Control matrix linking regulations to technical implementations
+- Checklist to be embedded in Definition of Done for all services
 
 ---
 
@@ -466,6 +535,9 @@ Before proceeding to bounded context implementation, verify:
 - [ ] **TODO-002 Complete:** All message schemas defined in Protocol Buffers
 - [ ] **TODO-003 Complete:** Service dependency graph created, no circular dependencies
 - [ ] **TODO-004 Complete:** B2C, B2B, B2G pipelines fully specified with error handling
+- [ ] **TODO-005 Complete:** Service dependency matrix analyzed and mitigation backlog created
+- [ ] **TODO-006 Complete:** External integration catalog finalized with credential lifecycle plan
+- [ ] **TODO-008 Complete:** Cross-cutting concern standards published and adopted
 - [ ] **ADR-003 Approved:** System-wide integration architecture reviewed and approved
 - [ ] **No architectural gaps:** All system-level design decisions documented
 - [ ] **Confidence level:** Can implement any bounded context without system-level questions
