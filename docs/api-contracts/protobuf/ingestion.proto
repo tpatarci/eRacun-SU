@@ -6,7 +6,7 @@ import "common.proto";
 
 // Command: Email worker publishes extracted attachment
 message ProcessEmailAttachmentCommand {
-  common.RequestContext context = 1;
+  eracun.v1.common.RequestContext context = 1;
   string email_id = 2; // Email message ID
   string attachment_filename = 3;
   bytes attachment_content = 4;
@@ -16,7 +16,7 @@ message ProcessEmailAttachmentCommand {
 
 // Command: API gateway publishes uploaded file
 message ProcessUploadedFileCommand {
-  common.RequestContext context = 1;
+  eracun.v1.common.RequestContext context = 1;
   string filename = 2;
   bytes file_content = 3;
   string content_type = 4;
@@ -25,7 +25,7 @@ message ProcessUploadedFileCommand {
 
 // Command: AS4 gateway publishes received invoice
 message ProcessAS4InvoiceCommand {
-  common.RequestContext context = 1;
+  eracun.v1.common.RequestContext context = 1;
   string as4_message_id = 2;
   bytes ubl_xml = 3; // Already XML
   string sender_oib = 4;

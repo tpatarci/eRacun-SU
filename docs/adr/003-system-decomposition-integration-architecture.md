@@ -681,13 +681,585 @@ message InvoiceData {
 
 ## Section 3: Integration Topology (Edges)
 
-**Completion:** 🚧 TODO-003 Not Started
+**Completion:** ✅ TODO-003 Complete
 
-*This section will document:*
-- Service dependency graph (Graphviz)
-- RabbitMQ topology (exchanges, queues, routing keys)
-- Kafka topics (partitioning strategy)
-- Circular dependency resolution
+### 3.1 Service Dependency Graph
+
+**Visualization Tool:** Graphviz DOT language
+
+#### 3.1.1 Complete Dependency Graph (DOT Format)
+
+```dot
+digraph eRacun_Architecture {
+  rankdir=LR;
+  node [shape=box, style=rounded];
+
+  // Layer 1: Ingestion
+  subgraph cluster_ingestion {
+    label="Layer 1: Ingestion";
+    style=filled;
+    color=lightblue;
+
+    email_worker [label="email-ingestion-worker"];
+    api_gateway [label="api-gateway"];
+    as4_receiver [label="as4-gateway-receiver"];
+    web_upload [label="web-upload-handler"];
+  }
+
+  // Layer 2: Parsing & Extraction
+  subgraph cluster_parsing {
+    label="Layer 2: Parsing";
+    style=filled;
+    color=lightgreen;
+
+    attachment_handler [label="attachment-handler"];
+    file_classifier [label="file-classifier"];
+    pdf_parser [label="pdf-parser"];
+    ocr_service [label="ocr-service"];
+  }
+
+  // Layer 3: Data Extraction
+  subgraph cluster_extraction {
+    label="Layer 3: Extraction";
+    style=filled;
+    color=lightyellow;
+
+    xml_parser [label="xml-parser"];
+    data_extractor [label="data-extractor"];
+    data_normalizer [label="data-normalizer"];
+  }
+
+  // Layer 4: Validation
+  subgraph cluster_validation {
+    label="Layer 4: Validation";
+    style=filled;
+    color=lightcoral;
+
+    xsd_validator [label="xsd-validator"];
+    schematron_validator [label="schematron-validator"];
+    kpd_validator [label="kpd-validator"];
+    oib_validator [label="oib-validator"];
+    business_rules [label="business-rules-engine"];
+    signature_verifier [label="signature-verifier"];
+    duplicate_detector [label="duplicate-detector"];
+  }
+
+  // Layer 5: Transformation
+  subgraph cluster_transformation {
+    label="Layer 5: Transformation";
+    style=filled;
+    color=lightgray;
+
+    ubl_transformer [label="ubl-transformer"];
+    metadata_enricher [label="metadata-enricher"];
+  }
+
+  // Layer 6: Cryptographic
+  subgraph cluster_crypto {
+    label="Layer 6: Cryptographic";
+    style=filled;
+    color=lightpink;
+
+    digital_signer [label="digital-signature-service"];
+    timestamp_service [label="timestamp-service"];
+    zki_calculator [label="zki-calculator"];
+  }
+
+  // Layer 7: Submission
+  subgraph cluster_submission {
+    label="Layer 7: Submission";
+    style=filled;
+    color=lightcyan;
+
+    submission_router [label="submission-router"];
+    fina_connector [label="fina-soap-connector"];
+    as4_sender [label="as4-gateway-sender"];
+    eporezna_connector [label="eporezna-connector"];
+    ams_client [label="ams-client"];
+  }
+
+  // Layer 8: Archiving
+  subgraph cluster_archive {
+    label="Layer 8: Archiving";
+    style=filled;
+    color=lavender;
+
+    archive_service [label="archive-service"];
+  }
+
+  // Layer 9: Infrastructure
+  subgraph cluster_infra {
+    label="Layer 9: Infrastructure";
+    style=filled;
+    color=wheat;
+
+    audit_logger [label="audit-logger"];
+    dead_letter_handler [label="dead-letter-handler"];
+    health_monitor [label="health-monitor"];
+    notification_service [label="notification-service"];
+    retry_scheduler [label="retry-scheduler"];
+  }
+
+  // Dependencies (Edges)
+
+  // Ingestion → Parsing
+  email_worker -> attachment_handler [label="RabbitMQ"];
+  attachment_handler -> file_classifier [label="RabbitMQ"];
+  api_gateway -> file_classifier [label="RabbitMQ"];
+  web_upload -> file_classifier [label="RabbitMQ"];
+  as4_receiver -> signature_verifier [label="RabbitMQ"];
+
+  // Parsing → Extraction
+  file_classifier -> pdf_parser [label="RabbitMQ"];
+  file_classifier -> ocr_service [label="RabbitMQ"];
+  file_classifier -> xml_parser [label="RabbitMQ"];
+  pdf_parser -> data_extractor [label="RabbitMQ"];
+  ocr_service -> data_extractor [label="RabbitMQ"];
+  data_extractor -> data_normalizer [label="RabbitMQ"];
+
+  // Extraction → Validation
+  xml_parser -> xsd_validator [label="RabbitMQ"];
+  data_normalizer -> xsd_validator [label="RabbitMQ"];
+
+  // Validation Pipeline (Sequential)
+  xsd_validator -> schematron_validator [label="RabbitMQ"];
+  schematron_validator -> kpd_validator [label="RabbitMQ"];
+  kpd_validator -> oib_validator [label="RabbitMQ"];
+  oib_validator -> business_rules [label="RabbitMQ"];
+  business_rules -> duplicate_detector [label="RabbitMQ"];
+
+  // Validation → Transformation
+  signature_verifier -> ubl_transformer [label="RabbitMQ"];
+  duplicate_detector -> ubl_transformer [label="RabbitMQ"];
+  ubl_transformer -> metadata_enricher [label="RabbitMQ"];
+
+  // Transformation → Cryptographic
+  metadata_enricher -> digital_signer [label="RabbitMQ"];
+  digital_signer -> timestamp_service [label="RabbitMQ"];
+  digital_signer -> zki_calculator [label="RabbitMQ (B2C only)"];
+
+  // Cryptographic → Submission
+  timestamp_service -> submission_router [label="RabbitMQ"];
+  submission_router -> fina_connector [label="RabbitMQ (B2C)"];
+  submission_router -> as4_sender [label="RabbitMQ (B2B)"];
+  submission_router -> eporezna_connector [label="RabbitMQ (reporting)"];
+  zki_calculator -> fina_connector [label="RabbitMQ"];
+
+  // AMS lookup (synchronous)
+  metadata_enricher -> ams_client [label="gRPC", style=dashed];
+  ams_client -> as4_sender [label="result", style=dashed];
+
+  // Submission → Archiving
+  fina_connector -> archive_service [label="RabbitMQ"];
+  as4_sender -> archive_service [label="RabbitMQ"];
+  eporezna_connector -> archive_service [label="RabbitMQ"];
+
+  // Event subscriptions (Kafka - all services publish to audit-logger)
+  email_worker -> audit_logger [label="Kafka", color=blue, style=dotted];
+  file_classifier -> audit_logger [label="Kafka", color=blue, style=dotted];
+  xsd_validator -> audit_logger [label="Kafka", color=blue, style=dotted];
+  business_rules -> audit_logger [label="Kafka", color=blue, style=dotted];
+  digital_signer -> audit_logger [label="Kafka", color=blue, style=dotted];
+  fina_connector -> audit_logger [label="Kafka", color=blue, style=dotted];
+  archive_service -> audit_logger [label="Kafka", color=blue, style=dotted];
+
+  // Error handling (all services → DLQ)
+  email_worker -> dead_letter_handler [label="DLQ", color=red, style=dotted];
+  pdf_parser -> dead_letter_handler [label="DLQ", color=red, style=dotted];
+  xsd_validator -> dead_letter_handler [label="DLQ", color=red, style=dotted];
+
+  // Monitoring
+  health_monitor -> email_worker [label="health check", style=dashed, dir=back];
+  health_monitor -> api_gateway [label="health check", style=dashed, dir=back];
+
+  // Notifications
+  dead_letter_handler -> notification_service [label="RabbitMQ"];
+  dead_letter_handler -> retry_scheduler [label="RabbitMQ"];
+}
+```
+
+**Render Command:**
+```bash
+dot -Tpng architecture.dot -o architecture.png
+dot -Tsvg architecture.dot -o architecture.svg
+```
+
+---
+
+#### 3.1.2 Dependency Matrix
+
+| Service | Fan-In (Consumers) | Fan-Out (Dependencies) | Critical Path | Notes |
+|---------|-------------------|------------------------|---------------|-------|
+| **email-ingestion-worker** | 0 | 1 | Yes | Entry point |
+| **api-gateway** | 0 | 1 | Yes | Entry point |
+| **as4-gateway-receiver** | 0 | 1 | Yes | Entry point |
+| **web-upload-handler** | 0 | 1 | Yes | Entry point |
+| **attachment-handler** | 1 | 1 | Yes | - |
+| **file-classifier** | 3 | 3 | Yes | High fan-in (3 ingestion sources) |
+| **pdf-parser** | 1 | 1 | Yes | - |
+| **ocr-service** | 1 | 1 | Yes | CPU-intensive |
+| **xml-parser** | 1 | 1 | No | XML bypass path |
+| **data-extractor** | 2 | 1 | Yes | - |
+| **data-normalizer** | 1 | 1 | Yes | - |
+| **xsd-validator** | 2 | 1 | Yes | First validator |
+| **schematron-validator** | 1 | 1 | Yes | - |
+| **kpd-validator** | 1 | 1 | Yes | - |
+| **oib-validator** | 1 | 1 | Yes | - |
+| **business-rules-engine** | 1 | 1 | Yes | Complex logic |
+| **signature-verifier** | 1 | 1 | Yes | AS4 entry validation |
+| **duplicate-detector** | 1 | 1 | Yes | - |
+| **ubl-transformer** | 2 | 1 | Yes | - |
+| **metadata-enricher** | 1 | 2 | Yes | Calls AMS (sync) |
+| **digital-signature-service** | 1 | 2 | Yes | Private key access |
+| **timestamp-service** | 1 | 1 | Yes | External TSA |
+| **zki-calculator** | 1 | 1 | No | B2C only |
+| **submission-router** | 1 | 3 | Yes | Routing logic |
+| **fina-soap-connector** | 2 | 1 | Yes | External API |
+| **as4-gateway-sender** | 1 | 1 | Yes | External API |
+| **eporezna-connector** | 1 | 1 | No | Reporting only |
+| **ams-client** | 1 | 0 | Yes | External lookup |
+| **archive-service** | 3 | 0 | Yes | High fan-in (3 submission sources) |
+| **audit-logger** | 40 | 0 | No | **Highest fan-in** (all services) |
+| **dead-letter-handler** | 40 | 2 | No | All services route errors |
+| **health-monitor** | 0 | 40 | No | Monitors all services |
+| **notification-service** | 2 | 0 | No | - |
+| **retry-scheduler** | 1 | 0 | No | - |
+
+**Critical Services (High Fan-In):**
+1. **audit-logger** (40 consumers) - System-wide event logging
+2. **dead-letter-handler** (40 consumers) - System-wide error handling
+3. **archive-service** (3 consumers) - Final destination for all invoices
+4. **file-classifier** (3 consumers) - Ingestion bottleneck
+
+**Analysis:**
+- **Longest critical path:** 15 services (email → attachment → classify → PDF → extract → normalize → XSD → Schematron → KPD → OIB → business rules → duplicate → UBL → metadata → sign → timestamp → router → FINA → archive)
+- **No circular dependencies detected** ✅
+- **Synchronous calls:** Only `metadata-enricher → ams-client` (acceptable for lookup)
+
+---
+
+### 3.2 RabbitMQ Topology
+
+#### 3.2.1 Exchange Design
+
+| Exchange Name | Type | Purpose | Durability |
+|---------------|------|---------|-----------|
+| `eracun.ingestion` | topic | Route ingestion events by channel (email, api, as4, web) | Durable |
+| `eracun.parsing` | topic | Route parsing commands by file type (pdf, xml, image) | Durable |
+| `eracun.validation` | direct | Sequential validation pipeline | Durable |
+| `eracun.transformation` | direct | UBL transformation pipeline | Durable |
+| `eracun.submission` | topic | Route to submission endpoint by invoice type (b2c, b2b, b2g) | Durable |
+| `eracun.dlx` | fanout | Dead Letter Exchange for failed messages | Durable |
+| `eracun.notifications` | fanout | Broadcast notifications to multiple channels | Durable |
+
+**Exchange Type Rationale:**
+- **Topic:** Flexible routing with wildcards (e.g., `ingestion.email.*`, `ingestion.api.*`)
+- **Direct:** Single queue per routing key (sequential processing)
+- **Fanout:** Broadcast to all bound queues (notifications, DLX)
+
+---
+
+#### 3.2.2 Queue Design
+
+**Naming Convention:** `eracun.{service-name}.{message-type}`
+
+| Queue Name | Bound Exchange | Routing Key | Consumer | DLQ | TTL |
+|------------|----------------|-------------|----------|-----|-----|
+| `eracun.attachment-handler.email` | eracun.ingestion | `ingestion.email` | attachment-handler | eracun.dlq.attachment-handler | 5min |
+| `eracun.file-classifier.uploads` | eracun.ingestion | `ingestion.upload.*` | file-classifier | eracun.dlq.file-classifier | 5min |
+| `eracun.pdf-parser.pdfs` | eracun.parsing | `parsing.pdf` | pdf-parser | eracun.dlq.pdf-parser | 10min |
+| `eracun.ocr-service.images` | eracun.parsing | `parsing.image.*` | ocr-service | eracun.dlq.ocr-service | 30min |
+| `eracun.xml-parser.xml` | eracun.parsing | `parsing.xml` | xml-parser | eracun.dlq.xml-parser | 2min |
+| `eracun.xsd-validator.xml` | eracun.validation | `validation.xsd` | xsd-validator | eracun.dlq.xsd-validator | 5min |
+| `eracun.schematron-validator.xml` | eracun.validation | `validation.schematron` | schematron-validator | eracun.dlq.schematron-validator | 10min |
+| `eracun.kpd-validator.codes` | eracun.validation | `validation.kpd` | kpd-validator | eracun.dlq.kpd-validator | 5min |
+| `eracun.oib-validator.oibs` | eracun.validation | `validation.oib` | oib-validator | eracun.dlq.oib-validator | 2min |
+| `eracun.business-rules.invoices` | eracun.validation | `validation.business-rules` | business-rules-engine | eracun.dlq.business-rules | 5min |
+| `eracun.duplicate-detector.invoices` | eracun.validation | `validation.duplicates` | duplicate-detector | eracun.dlq.duplicate-detector | 2min |
+| `eracun.ubl-transformer.invoices` | eracun.transformation | `transform.ubl` | ubl-transformer | eracun.dlq.ubl-transformer | 5min |
+| `eracun.metadata-enricher.invoices` | eracun.transformation | `transform.metadata` | metadata-enricher | eracun.dlq.metadata-enricher | 5min |
+| `eracun.digital-signer.invoices` | eracun.transformation | `transform.sign` | digital-signature-service | eracun.dlq.digital-signer | 10min |
+| `eracun.timestamp-service.invoices` | eracun.transformation | `transform.timestamp` | timestamp-service | eracun.dlq.timestamp-service | 5min |
+| `eracun.fina-connector.b2c` | eracun.submission | `submission.b2c` | fina-soap-connector | eracun.dlq.fina-connector | 10min |
+| `eracun.as4-sender.b2b` | eracun.submission | `submission.b2b` | as4-gateway-sender | eracun.dlq.as4-sender | 10min |
+| `eracun.eporezna-connector.reporting` | eracun.submission | `submission.reporting` | eporezna-connector | eracun.dlq.eporezna-connector | 60min |
+| `eracun.archive-service.invoices` | eracun.submission | `submission.*` | archive-service | eracun.dlq.archive-service | 10min |
+| `eracun.dead-letter-handler.failed` | eracun.dlx | `*` | dead-letter-handler | None | No TTL |
+| `eracun.notification-service.alerts` | eracun.notifications | `*` | notification-service | None | 1min |
+
+**Total Queues:** 20 primary + 19 DLQs = 39 queues
+
+**Queue Properties:**
+- **Durability:** All queues durable (survive broker restart)
+- **TTL:** Message Time-To-Live (prevents infinite queuing)
+- **DLQ:** Dead Letter Queue for failed message routing
+- **Prefetch:** 10 messages per consumer (prevent overload)
+
+---
+
+#### 3.2.3 Routing Key Patterns
+
+**Ingestion:**
+```
+ingestion.email                 → attachment-handler
+ingestion.upload.api            → file-classifier
+ingestion.upload.web            → file-classifier
+ingestion.as4                   → signature-verifier
+```
+
+**Parsing:**
+```
+parsing.pdf                     → pdf-parser
+parsing.xml                     → xml-parser
+parsing.image.png               → ocr-service
+parsing.image.jpeg              → ocr-service
+```
+
+**Validation (Sequential):**
+```
+validation.xsd                  → xsd-validator
+validation.schematron           → schematron-validator
+validation.kpd                  → kpd-validator
+validation.oib                  → oib-validator
+validation.business-rules       → business-rules-engine
+validation.duplicates           → duplicate-detector
+```
+
+**Submission:**
+```
+submission.b2c                  → fina-soap-connector
+submission.b2b                  → as4-gateway-sender
+submission.b2g                  → as4-gateway-sender (with approval)
+submission.reporting            → eporezna-connector
+submission.*                    → archive-service (wildcard)
+```
+
+---
+
+#### 3.2.4 Dead Letter Queue Configuration
+
+**DLQ Routing:**
+```yaml
+# Primary queue configuration
+queue:
+  name: eracun.xsd-validator.xml
+  durable: true
+  arguments:
+    x-dead-letter-exchange: eracun.dlx
+    x-dead-letter-routing-key: dlq.xsd-validator
+    x-message-ttl: 300000  # 5 minutes
+
+# DLQ configuration
+dead_letter_queue:
+  name: eracun.dlq.xsd-validator
+  bound_to: eracun.dlx
+  routing_key: dlq.xsd-validator
+  consumer: dead-letter-handler
+```
+
+**DLQ Processing Flow:**
+1. Message fails processing (exception thrown)
+2. Consumer NACKs message with `requeue=false`
+3. RabbitMQ routes to DLX via `x-dead-letter-exchange`
+4. DLQ receives message with failure metadata
+5. `dead-letter-handler` classifies error:
+   - **Transient:** Route to `retry-scheduler`
+   - **Business error:** Route to `notification-service` (manual review)
+   - **System error:** Log and alert
+
+---
+
+### 3.3 Kafka Topology
+
+#### 3.3.1 Topic Design
+
+| Topic Name | Partitions | Replication | Retention | Purpose |
+|------------|------------|-------------|-----------|---------|
+| `eracun.invoice-events` | 10 | 3 | 30 days | All invoice lifecycle events |
+| `eracun.audit-log` | 5 | 3 | 11 years | Immutable audit trail |
+| `eracun.system-metrics` | 3 | 2 | 7 days | Performance metrics, health checks |
+| `eracun.validation-results` | 5 | 3 | 90 days | Validation outcomes (for analytics) |
+
+**Partitioning Strategy:**
+- **Partition Key:** `invoice_id` (ensures ordered processing per invoice)
+- **Partitions:** 10 for `invoice-events` (enables 10 parallel consumers)
+- **Replication:** 3 replicas (fault tolerance)
+
+---
+
+#### 3.3.2 Event Producers and Consumers
+
+| Topic | Producers | Consumers | Consumer Group |
+|-------|-----------|-----------|----------------|
+| `eracun.invoice-events` | All 40 services | audit-logger, analytics-service (future) | `eracun-audit-consumers` |
+| `eracun.audit-log` | audit-logger | archive-service, retrieval-service | `eracun-archive-consumers` |
+| `eracun.system-metrics` | health-monitor | monitoring-dashboard (future) | `eracun-monitoring-consumers` |
+| `eracun.validation-results` | All validators | analytics-service (future), admin-portal-api | `eracun-analytics-consumers` |
+
+**Event Types on `invoice-events`:**
+- `InvoiceIngestedEvent`
+- `InvoiceParsedEvent`
+- `InvoiceValidatedEvent`
+- `InvoiceSignedEvent`
+- `InvoiceSubmittedEvent`
+- `InvoiceArchivedEvent`
+- `InvoiceFailedEvent`
+
+---
+
+#### 3.3.3 Kafka vs. RabbitMQ Decision Matrix
+
+| Use Case | Technology | Rationale |
+|----------|------------|-----------|
+| **Sequential processing** | RabbitMQ | Work queues with acknowledgment |
+| **Event broadcasting** | Kafka | Multiple consumers, replay capability |
+| **Audit logging** | Kafka | Immutable log, 11-year retention |
+| **Request/response** | RabbitMQ RPC | Direct reply-to pattern |
+| **Analytics** | Kafka | Stream processing, time-series data |
+| **Error handling** | RabbitMQ DLQ | Dead letter queues, retry logic |
+
+**Rationale:**
+- **RabbitMQ:** Command processing (work queues, sequential pipelines)
+- **Kafka:** Event streaming (audit logs, metrics, analytics)
+
+---
+
+### 3.4 Communication Patterns
+
+#### 3.4.1 Asynchronous Commands (RabbitMQ)
+
+**Pattern:** Producer publishes command → Consumer processes → Publishes next command
+
+**Example:** PDF Parsing
+```
+file-classifier → [parsing.pdf queue] → pdf-parser → [extraction queue] → data-extractor
+```
+
+**Characteristics:**
+- Fire-and-forget (no blocking)
+- Acknowledgment after processing (at-least-once delivery)
+- Idempotent handling (same command processed multiple times = same result)
+
+---
+
+#### 3.4.2 Event Broadcasting (Kafka)
+
+**Pattern:** Service publishes event → Multiple consumers react independently
+
+**Example:** Invoice Validated
+```
+business-rules-engine → [invoice-events topic] → {
+  audit-logger (logs event)
+  notification-service (sends confirmation)
+  analytics-service (updates dashboard)
+}
+```
+
+**Characteristics:**
+- Decoupled producers and consumers
+- Multiple consumers per event
+- Event replay capability (reprocess from offset)
+
+---
+
+#### 3.4.3 Synchronous RPC (gRPC)
+
+**Pattern:** Service calls another service → Waits for response
+
+**Example:** AMS Lookup
+```
+metadata-enricher → (gRPC) → ams-client → (external AMS API) → returns Access Point URL
+```
+
+**Characteristics:**
+- Blocking call (request waits for response)
+- Used sparingly (only for lookups)
+- Circuit breaker required (prevent cascading failures)
+
+**Acceptable Sync Calls:**
+1. `metadata-enricher` → `ams-client` (Address lookup)
+2. `admin-portal-api` → Any service (user queries)
+3. `health-monitor` → All services (health checks)
+
+**Prohibited Sync Calls:**
+- No service-to-service sync calls in critical path (except AMS lookup)
+- All validation pipeline: async RabbitMQ (prevents cascading failures)
+
+---
+
+### 3.5 Circular Dependency Analysis
+
+**Result:** ✅ **No circular dependencies detected**
+
+**Validation Method:**
+1. Topological sort of dependency graph
+2. Check for back edges in directed acyclic graph (DAG)
+3. Manual review of all service dependencies
+
+**Potential Risks (Monitored):**
+- `metadata-enricher` → `ams-client` (external dependency, not circular but single point of failure)
+- `dead-letter-handler` → `retry-scheduler` → (re-queues to original service) - Not circular because retry goes back to RabbitMQ queue, not direct service call
+
+**Anti-Pattern Prevention:**
+- **No bidirectional sync calls** (Service A calls B, B calls A)
+- **No circular event loops** (Event A triggers B, B triggers A)
+- **Event-driven breaks cycles** (Use pub/sub instead of RPC)
+
+---
+
+### 3.6 Latency Budget and SLA Expectations
+
+| Service | p95 Latency | p99 Latency | Timeout | Notes |
+|---------|-------------|-------------|---------|-------|
+| **file-classifier** | 10ms | 50ms | 1s | Fast (magic number detection) |
+| **pdf-parser** | 200ms | 500ms | 10s | Depends on PDF size |
+| **ocr-service** | 2s | 5s | 30s | CPU-intensive |
+| **xsd-validator** | 50ms | 200ms | 5s | XML parsing + validation |
+| **schematron-validator** | 100ms | 300ms | 10s | Complex XSLT rules |
+| **kpd-validator** | 20ms | 50ms | 2s | Database lookup |
+| **oib-validator** | 5ms | 10ms | 1s | Checksum calculation |
+| **business-rules-engine** | 50ms | 100ms | 5s | In-memory calculations |
+| **digital-signature-service** | 100ms | 300ms | 10s | Cryptographic operations |
+| **timestamp-service** | 500ms | 2s | 10s | External TSA call |
+| **fina-soap-connector** | 1s | 3s | 10s | External SOAP API |
+| **as4-gateway-sender** | 1s | 3s | 10s | External AS4 gateway |
+| **archive-service** | 200ms | 500ms | 5s | S3 upload |
+
+**End-to-End SLA:**
+- **B2C (PDF):** <10 seconds (p95), <20 seconds (p99)
+- **B2B (XML):** <5 seconds (p95), <10 seconds (p99)
+- **B2C (Image/OCR):** <15 seconds (p95), <30 seconds (p99)
+
+**Critical Path Bottlenecks:**
+1. **OCR service** (2s p95) - Optimize with GPU acceleration
+2. **External APIs** (FINA, AS4, TSA) - Circuit breakers required
+3. **Schematron validation** (100ms) - Cache compiled XSLT
+
+---
+
+### 3.7 Data Classification and Security Zones
+
+| Service | PII Access | Encryption Required | Security Zone |
+|---------|------------|---------------------|---------------|
+| **Ingestion services** | Yes (raw invoices) | TLS in transit | DMZ |
+| **Parsing services** | Yes (invoice content) | TLS in transit | Internal |
+| **Validation services** | Yes (OIB, names) | TLS in transit | Internal |
+| **Cryptographic services** | Yes (full invoice) | TLS + at-rest | Secure |
+| **Submission services** | Yes (full invoice) | TLS + mTLS (external) | Secure |
+| **Archive service** | Yes (full invoice) | AES-256 at rest | Secure |
+| **Infrastructure services** | No (metadata only) | TLS in transit | Internal |
+
+**PII Elements:**
+- OIB (Croatian tax number)
+- Company names, addresses
+- Invoice amounts, payment details
+- Contact information
+
+**Security Measures:**
+- **Network segmentation:** DMZ → Internal → Secure zones
+- **mTLS:** Service-to-service authentication (production)
+- **Encryption at rest:** Archive storage (AES-256)
+- **Audit logging:** All PII access logged
 
 ---
 
