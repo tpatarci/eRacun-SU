@@ -1265,14 +1265,846 @@ metadata-enricher → (gRPC) → ams-client → (external AMS API) → returns A
 
 ## Section 4: Processing Pipelines
 
-**Completion:** 🚧 TODO-004 Not Started
+**Completion:** ✅ TODO-004 Complete
 
-*This section will document:*
-- B2C invoice pipeline (email → OCR → validation → FINA SOAP)
-- B2B invoice pipeline (API → validation → AS4)
-- B2G invoice pipeline (with approval workflow)
-- Error handling pipeline (DLQ → manual review → retry)
-- Saga patterns (choreography vs. orchestration)
+### 4.1 Invoice Lifecycle State Machine
+
+**States:**
+```
+RECEIVED → PARSING → EXTRACTED → VALIDATING → VALIDATED → TRANSFORMING →
+TRANSFORMED → SIGNING → SIGNED → TIMESTAMPING → TIMESTAMPED → SUBMITTING →
+SUBMITTED → ARCHIVING → ARCHIVED
+
+Alternative paths:
+RECEIVED → PARSING → PARSING_FAILED → MANUAL_REVIEW
+VALIDATING → VALIDATION_FAILED → MANUAL_REVIEW
+SUBMITTING → SUBMISSION_FAILED → RETRY_QUEUE
+MANUAL_REVIEW → CORRECTED → RECEIVED (retry from start)
+```
+
+**State Transitions:**
+
+| From State | To State | Trigger | Service Responsible |
+|------------|----------|---------|---------------------|
+| RECEIVED | PARSING | File classified | file-classifier |
+| PARSING | EXTRACTED | Text extracted | pdf-parser, ocr-service, xml-parser |
+| PARSING | PARSING_FAILED | Extraction error | pdf-parser, ocr-service |
+| EXTRACTED | VALIDATING | Normalization complete | data-normalizer |
+| VALIDATING | VALIDATED | All validators pass | business-rules-engine (last validator) |
+| VALIDATING | VALIDATION_FAILED | Any validator fails | Any validator |
+| VALIDATED | TRANSFORMING | Duplicate check pass | duplicate-detector |
+| TRANSFORMING | TRANSFORMED | UBL generation complete | ubl-transformer |
+| TRANSFORMED | SIGNING | Metadata enriched | metadata-enricher |
+| SIGNING | SIGNED | Signature applied | digital-signature-service |
+| SIGNED | TIMESTAMPING | Signature verification pass | digital-signature-service |
+| TIMESTAMPING | TIMESTAMPED | Timestamp obtained | timestamp-service |
+| TIMESTAMPED | SUBMITTING | Routing decision made | submission-router |
+| SUBMITTING | SUBMITTED | Tax authority confirms | fina-soap-connector, as4-gateway-sender |
+| SUBMITTING | SUBMISSION_FAILED | Network/API error | fina-soap-connector, as4-gateway-sender |
+| SUBMITTED | ARCHIVING | Confirmation received | fina-soap-connector, as4-gateway-sender |
+| ARCHIVING | ARCHIVED | S3 upload complete | archive-service |
+| PARSING_FAILED | MANUAL_REVIEW | Auto-retry exhausted | dead-letter-handler |
+| VALIDATION_FAILED | MANUAL_REVIEW | Business error | dead-letter-handler |
+| SUBMISSION_FAILED | RETRY_QUEUE | Transient error | dead-letter-handler |
+| MANUAL_REVIEW | CORRECTED | Human intervention | admin-portal-api |
+| CORRECTED | RECEIVED | Re-submission | admin-portal-api |
+
+**Idempotency Keys:**
+- Primary: `invoice_id` (UUID v4, generated at RECEIVED)
+- Secondary: `invoice_number + issuer_oib + issue_date` (business key)
+- All state transitions atomic (single database transaction)
+
+---
+
+### 4.2 B2C Invoice Pipeline (Business-to-Consumer)
+
+**Entry Points:**
+1. Email (IMAP polling)
+2. Web upload (portal)
+
+**Full Pipeline (15 services):**
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Layer 1: Ingestion                                                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ [1] email-ingestion-worker                                                  │
+│     → Polls IMAP mailbox every 30s                                          │
+│     → Extracts attachments (PDF, XML, images)                               │
+│     → Publishes ProcessEmailAttachmentCommand                               │
+│     → State: RECEIVED                                                       │
+│     → SLA: <5s from email receipt                                           │
+│                                                                              │
+│ [2] attachment-handler                                                      │
+│     → MIME parsing, virus scan (ClamAV)                                     │
+│     → Publishes ClassifyFileCommand                                         │
+│     → SLA: <2s                                                              │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Layer 2: Parsing                                                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ [3] file-classifier                                                         │
+│     → Magic number detection (PDF, XML, PNG, JPEG)                          │
+│     → Routes to appropriate parser                                          │
+│     → State: PARSING                                                        │
+│     → SLA: <50ms p95                                                        │
+│                                                                              │
+│ [4a] pdf-parser (if PDF)                                                    │
+│     → PDF.js or pdfplumber for text extraction                              │
+│     → Publishes extracted text                                              │
+│     → SLA: <500ms p95 (small PDFs)                                          │
+│     → Fallback: If text extraction fails → route to OCR                     │
+│                                                                              │
+│ [4b] ocr-service (if image or scanned PDF)                                  │
+│     → Tesseract OCR with image preprocessing                                │
+│     → Confidence threshold: >80% (else → MANUAL_REVIEW)                     │
+│     → State: EXTRACTED or PARSING_FAILED                                    │
+│     → SLA: <5s p95                                                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Layer 3: Data Extraction                                                    │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ [5] data-extractor                                                          │
+│     → Regex + NLP for field extraction                                      │
+│     → Fields: invoice_number, dates, OIB, amounts, line items               │
+│     → Confidence scoring per field                                          │
+│     → SLA: <1s                                                              │
+│                                                                              │
+│ [6] data-normalizer                                                         │
+│     → Maps extracted data to UBL-compatible format                          │
+│     → OIB validation (checksum)                                             │
+│     → Date parsing (ISO 8601)                                               │
+│     → State: VALIDATING                                                     │
+│     → SLA: <200ms                                                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Layer 4: Validation Pipeline (Sequential)                                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ [7] xsd-validator                                                           │
+│     → XML schema validation (UBL 2.1)                                       │
+│     → Fail fast if malformed XML                                            │
+│     → SLA: <200ms p95                                                       │
+│                                                                              │
+│ [8] schematron-validator                                                    │
+│     → Croatian CIUS business rules                                          │
+│     → 150+ Schematron assertions                                            │
+│     → SLA: <300ms p95                                                       │
+│                                                                              │
+│ [9] kpd-validator                                                           │
+│     → KLASUS 2025 product code validation                                   │
+│     → Database lookup (cached)                                              │
+│     → SLA: <50ms p95                                                        │
+│                                                                              │
+│ [10] oib-validator                                                          │
+│     → OIB checksum algorithm                                                │
+│     → Issuer + recipient OIB validation                                     │
+│     → SLA: <10ms p95                                                        │
+│                                                                              │
+│ [11] business-rules-engine                                                  │
+│     → VAT calculation verification                                          │
+│     → Total amount consistency                                              │
+│     → Payment terms validation                                              │
+│     → State: VALIDATED or VALIDATION_FAILED                                 │
+│     → SLA: <100ms p95                                                       │
+│                                                                              │
+│ [12] duplicate-detector                                                     │
+│     → Check invoice_number + OIB uniqueness                                 │
+│     → PostgreSQL unique constraint                                          │
+│     → State: TRANSFORMING                                                   │
+│     → SLA: <50ms                                                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Layer 5-6: Transformation & Cryptographic                                   │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ [13] ubl-transformer                                                        │
+│     → Generate final UBL 2.1 XML                                            │
+│     → Croatian CIUS extensions                                              │
+│     → SLA: <500ms                                                           │
+│                                                                              │
+│ [14] metadata-enricher                                                      │
+│     → Add submission metadata                                               │
+│     → Calculate totals                                                      │
+│     → State: SIGNING                                                        │
+│     → SLA: <100ms                                                           │
+│                                                                              │
+│ [15] digital-signature-service                                              │
+│     → XMLDSig with FINA certificate                                         │
+│     → State: SIGNED                                                         │
+│     → SLA: <300ms                                                           │
+│                                                                              │
+│ [16] zki-calculator (B2C only)                                              │
+│     → MD5 hash for protective code                                          │
+│     → Signed with private key                                               │
+│     → Printed on receipt                                                    │
+│     → SLA: <50ms                                                            │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Layer 7: Submission                                                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ [17] submission-router                                                      │
+│     → Routes to FINA SOAP (B2C)                                             │
+│     → State: SUBMITTING                                                     │
+│     → SLA: <10ms                                                            │
+│                                                                              │
+│ [18] fina-soap-connector                                                    │
+│     → SOAP request to FINA fiscalization service                            │
+│     → Receives JIR (Unique Invoice Identifier)                              │
+│     → Retry: 3 attempts with exponential backoff                            │
+│     → Circuit breaker: Open after 5 consecutive failures                    │
+│     → State: SUBMITTED or SUBMISSION_FAILED                                 │
+│     → SLA: <3s p99                                                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ Layer 8: Archiving                                                          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ [19] archive-service                                                        │
+│     → S3-compatible storage (DigitalOcean Spaces)                           │
+│     → 11-year retention (immutable)                                         │
+│     → Encryption: AES-256                                                   │
+│     → State: ARCHIVED                                                       │
+│     → SLA: <500ms                                                           │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**End-to-End SLA:**
+- **PDF invoice:** <10s (p95), <20s (p99)
+- **Image/OCR invoice:** <15s (p95), <30s (p99)
+
+**Failure Scenarios:**
+
+| Failure Point | Error Type | Recovery Action | Max Retries | Human Intervention |
+|---------------|------------|-----------------|-------------|--------------------|
+| Email parsing | Transient | Retry after 1min | 3 | After 3 failures |
+| OCR confidence <80% | Business | Manual review | 0 | Immediate |
+| XSD validation | Business | Manual review | 0 | Immediate |
+| KPD invalid code | Business | Manual review | 0 | Immediate |
+| FINA SOAP timeout | Transient | Exponential backoff (2s, 4s, 8s) | 3 | After 3 failures |
+| FINA SOAP 500 error | Transient | Exponential backoff | 3 | After 3 failures |
+| FINA SOAP 400 error | Business | Manual review | 0 | Immediate |
+| Archive S3 error | Transient | Retry after 10s | 5 | After 5 failures |
+
+---
+
+### 4.3 B2B Invoice Pipeline (Business-to-Business)
+
+**Entry Points:**
+1. API upload (REST/gRPC)
+2. AS4 gateway (external Access Point)
+
+**Optimized Pipeline (12 services, skips OCR/extraction):**
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ B2B Pipeline (XML already structured)                                       │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ [1] api-gateway OR as4-gateway-receiver                                     │
+│     → State: RECEIVED                                                       │
+│     → SLA: <100ms                                                           │
+│                                                                              │
+│ [2] signature-verifier (AS4 only)                                           │
+│     → Verify sender's digital signature                                     │
+│     → Certificate chain validation                                          │
+│     → State: PARSING                                                        │
+│     → SLA: <500ms                                                           │
+│                                                                              │
+│ [3] xml-parser                                                              │
+│     → Parse UBL 2.1 XML                                                     │
+│     → Extract invoice data                                                  │
+│     → State: VALIDATING                                                     │
+│     → SLA: <100ms                                                           │
+│                                                                              │
+│ [4-9] Validation Pipeline (Same as B2C)                                     │
+│     → xsd-validator → schematron-validator → kpd-validator →                │
+│       oib-validator → business-rules-engine → duplicate-detector            │
+│     → State: VALIDATED                                                      │
+│     → SLA: <1s cumulative                                                   │
+│                                                                              │
+│ [10] ubl-transformer (if needed)                                            │
+│     → Transform to Croatian CIUS format                                     │
+│     → Add required extensions                                               │
+│     → State: TRANSFORMING → TRANSFORMED                                     │
+│     → SLA: <300ms                                                           │
+│                                                                              │
+│ [11] metadata-enricher                                                      │
+│     → AMS lookup (gRPC to ams-client)                                       │
+│     → Get recipient Access Point URL                                        │
+│     → Add routing metadata                                                  │
+│     → State: SIGNING                                                        │
+│     → SLA: <200ms (AMS lookup: <1s)                                         │
+│                                                                              │
+│ [12] digital-signature-service                                              │
+│     → Apply company's digital signature                                     │
+│     → State: SIGNED                                                         │
+│     → SLA: <300ms                                                           │
+│                                                                              │
+│ [13] timestamp-service                                                      │
+│     → eIDAS-compliant qualified timestamp                                   │
+│     → External TSA call                                                     │
+│     → State: TIMESTAMPED                                                    │
+│     → SLA: <2s p99                                                          │
+│                                                                              │
+│ [14] submission-router                                                      │
+│     → Routes to AS4 gateway (B2B)                                           │
+│     → State: SUBMITTING                                                     │
+│     → SLA: <10ms                                                            │
+│                                                                              │
+│ [15] as4-gateway-sender                                                     │
+│     → AS4 protocol (OASIS ebMS 3.0)                                         │
+│     → Four-corner model routing                                             │
+│     → Waits for delivery receipt (MDN)                                      │
+│     → State: SUBMITTED                                                      │
+│     → SLA: <3s p99                                                          │
+│                                                                              │
+│ [16] archive-service                                                        │
+│     → S3 storage (11 years)                                                 │
+│     → State: ARCHIVED                                                       │
+│     → SLA: <500ms                                                           │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**End-to-End SLA:**
+- **B2B (XML):** <5s (p95), <10s (p99)
+
+**B2B-Specific Considerations:**
+- **Sender Authentication:** mTLS or digital signature verification
+- **Recipient Verification:** AMS lookup to find recipient's Access Point
+- **Non-Repudiation:** Qualified timestamp + delivery receipt (MDN)
+- **Rejection Handling:** Recipient can reject within 5 working days
+
+---
+
+### 4.4 B2G Invoice Pipeline (Business-to-Government)
+
+**Similar to B2B with Additional Steps:**
+
+```
+[1-13] Same as B2B pipeline (API → validation → signing → timestamping)
+                              ↓
+[14] budget-verifier (B2G only)
+     → Verify budget availability
+     → Query government budget system
+     → SLA: <2s
+     → State: BUDGET_VERIFIED or BUDGET_UNAVAILABLE
+                              ↓
+[15] approval-workflow-engine (B2G only)
+     → Multi-step approval (department head → finance → director)
+     → State: PENDING_APPROVAL
+     → Human intervention required
+     → Timeout: 72 hours (escalation)
+                              ↓
+[16] submission-router
+     → Routes to ePorezna portal (B2G)
+     → State: SUBMITTING
+                              ↓
+[17] eporezna-connector
+     → REST API to ePorezna
+     → State: SUBMITTED
+     → SLA: <5s
+                              ↓
+[18] archive-service
+     → State: ARCHIVED
+```
+
+**B2G-Specific Requirements:**
+- **Budget Verification:** Must confirm budget line item exists
+- **Approval Workflow:** 2-5 approvers depending on amount
+- **Escalation:** Auto-escalate if no response within 72 hours
+- **Audit Trail:** Full approval chain logged
+
+**End-to-End SLA:**
+- **B2G (with approval):** <5s technical processing + human approval time (excluded from SLA)
+
+---
+
+### 4.5 Error Handling Pipeline
+
+**Dead Letter Queue Flow:**
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│ Error Classification & Recovery                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│ [1] Any Service Failure                                                     │
+│     → Consumer NACKs message with requeue=false                             │
+│     → Message routed to Dead Letter Exchange (eracun.dlx)                   │
+│     → Failure metadata attached (service, timestamp, error code, stack)     │
+│                                                                              │
+│ [2] dead-letter-handler                                                     │
+│     → Consumes from all DLQs                                                │
+│     → Classifies error type:                                                │
+│                                                                              │
+│     ┌─ Transient Error (network timeout, rate limit, 503)                  │
+│     │  → Retry with exponential backoff                                     │
+│     │  → Max retries: 3                                                     │
+│     │  → Backoff: 2s, 4s, 8s (with jitter)                                 │
+│     │  → After 3 failures → Manual Review                                   │
+│     │                                                                        │
+│     ├─ Business Error (validation failure, invalid OIB, bad KPD)            │
+│     │  → No retry (immediate failure)                                       │
+│     │  → Route to Manual Review Queue                                       │
+│     │  → Notification sent to user                                          │
+│     │                                                                        │
+│     ├─ System Error (database down, S3 unavailable)                         │
+│     │  → Circuit breaker: Stop processing until system recovers             │
+│     │  → Alert on-call engineer (PagerDuty)                                 │
+│     │  → Queue messages for later processing                                │
+│     │                                                                        │
+│     └─ Unclassified Error                                                   │
+│        → Log full context                                                   │
+│        → Route to Manual Review                                             │
+│        → Alert engineering team                                             │
+│                                                                              │
+│ [3] retry-scheduler                                                         │
+│     → Receives transient errors from DLQ handler                            │
+│     → Implements exponential backoff with jitter                            │
+│     → Re-publishes to original queue after delay                            │
+│     → Tracks retry count per message                                        │
+│     → SLA: <100ms scheduling overhead                                       │
+│                                                                              │
+│ [4] notification-service                                                    │
+│     → Sends email/SMS alerts for business errors                            │
+│     → Template: "Invoice {invoice_number} failed validation: {reason}"      │
+│     → Action link to admin portal for manual correction                     │
+│     → SLA: <5s                                                              │
+│                                                                              │
+│ [5] admin-portal-api (Manual Review Queue)                                  │
+│     → Web UI for manual invoice correction                                  │
+│     → Shows failed invoices with error details                              │
+│     → Human operator corrects data                                          │
+│     → Re-submits to pipeline (state: CORRECTED → RECEIVED)                  │
+│     → Audit log: who corrected, what changed, when                          │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Error Classification Rules:**
+
+| Error Code | Classification | Action | Max Retries |
+|------------|----------------|--------|-------------|
+| ETIMEDOUT | Transient | Retry with backoff | 3 |
+| ECONNREFUSED | Transient | Retry with backoff | 3 |
+| HTTP 429 (Rate Limit) | Transient | Retry after Retry-After header | 5 |
+| HTTP 500, 502, 503 | Transient | Retry with backoff | 3 |
+| HTTP 400 (Bad Request) | Business | Manual review | 0 |
+| HTTP 401 (Unauthorized) | System | Alert + circuit breaker | 0 |
+| HTTP 404 (Not Found) | Business | Manual review | 0 |
+| XSD_VALIDATION_FAILED | Business | Manual review | 0 |
+| KPD_INVALID_CODE | Business | Manual review | 0 |
+| OIB_CHECKSUM_FAILED | Business | Manual review | 0 |
+| DUPLICATE_INVOICE | Business | Manual review | 0 |
+| OCR_LOW_CONFIDENCE | Business | Manual review | 0 |
+| DATABASE_UNAVAILABLE | System | Circuit breaker | 0 |
+| S3_UNAVAILABLE | System | Retry with backoff | 5 |
+
+**Circuit Breaker Configuration:**
+
+```yaml
+circuit_breaker:
+  failure_threshold: 5          # Open after 5 consecutive failures
+  success_threshold: 2          # Close after 2 consecutive successes
+  timeout_ms: 30000             # Half-open after 30 seconds
+  monitor_services:
+    - fina-soap-connector
+    - as4-gateway-sender
+    - timestamp-service
+    - ams-client
+    - eporezna-connector
+```
+
+---
+
+### 4.6 Saga Patterns
+
+**Decision: Choreography-Based Saga (Event-Driven)**
+
+**Rationale:**
+- **Decentralized:** No single point of failure (no orchestrator service)
+- **Scalable:** Each service independently subscribes to events
+- **Resilient:** Failure in one service doesn't block others
+- **Audit:** Kafka event log provides complete saga history
+
+**Rejected Alternative:** Orchestration-Based Saga (Temporal/Workflow Engine)
+**Why Rejected:** Adds operational complexity, not needed for linear pipelines
+
+---
+
+#### 4.6.1 Saga: B2C Invoice Submission
+
+**Participants:**
+1. digital-signature-service (Sign invoice)
+2. zki-calculator (Calculate protective code)
+3. fina-soap-connector (Submit to FINA)
+4. archive-service (Archive submitted invoice)
+
+**Happy Path (Choreography):**
+
+```
+[1] digital-signature-service completes
+    → Publishes InvoiceSignedEvent (Kafka)
+    → State: SIGNED
+
+[2] zki-calculator subscribes to InvoiceSignedEvent
+    → Calculates ZKI code
+    → Publishes ZKICalculatedEvent
+    → State: ZKI_CALCULATED
+
+[3] fina-soap-connector subscribes to ZKICalculatedEvent
+    → Submits to FINA SOAP API
+    → Receives JIR
+    → Publishes InvoiceSubmittedEvent
+    → State: SUBMITTED
+
+[4] archive-service subscribes to InvoiceSubmittedEvent
+    → Stores invoice + JIR in S3
+    → Publishes InvoiceArchivedEvent
+    → State: ARCHIVED
+```
+
+**Compensating Transactions (Rollback):**
+
+| Step | Failure | Compensating Action | Result |
+|------|---------|---------------------|--------|
+| [2] ZKI calculation fails | N/A (stateless calculation) | Retry | - |
+| [3] FINA submission fails | Transient error | Retry 3 times, then manual review | Invoice not fiscalized |
+| [3] FINA submission fails | Business error (invalid data) | Mark as VALIDATION_FAILED, manual review | Invoice not fiscalized |
+| [4] Archive fails | S3 unavailable | Retry 5 times, alert if still fails | Invoice fiscalized but not archived (CRITICAL) |
+
+**Critical Failure Scenario: Archive Fails After Submission**
+
+```
+Problem: Invoice submitted to FINA (JIR received), but S3 archiving fails
+Impact: Regulatory non-compliance (11-year retention requirement)
+Mitigation:
+  1. Store JIR + XML in PostgreSQL (temporary backup)
+  2. Background job retries S3 upload every 10 minutes
+  3. Alert on-call engineer if not resolved in 1 hour
+  4. Manual verification: Query FINA to confirm JIR exists
+  5. Archive to cold storage after confirmation
+```
+
+---
+
+#### 4.6.2 Saga: B2B Invoice Exchange
+
+**Participants:**
+1. digital-signature-service (Sign invoice)
+2. timestamp-service (Add qualified timestamp)
+3. as4-gateway-sender (Send via AS4)
+4. archive-service (Archive)
+
+**Happy Path:**
+
+```
+[1] digital-signature-service completes
+    → Publishes InvoiceSignedEvent
+    → State: SIGNED
+
+[2] timestamp-service subscribes to InvoiceSignedEvent
+    → Calls external TSA (eIDAS-compliant)
+    → Adds qualified timestamp
+    → Publishes InvoiceTimestampedEvent
+    → State: TIMESTAMPED
+
+[3] as4-gateway-sender subscribes to InvoiceTimestampedEvent
+    → Sends AS4 message to recipient Access Point
+    → Waits for MDN (Message Disposition Notification)
+    → Publishes InvoiceSubmittedEvent
+    → State: SUBMITTED
+
+[4] archive-service subscribes to InvoiceSubmittedEvent
+    → Stores invoice + MDN in S3
+    → Publishes InvoiceArchivedEvent
+    → State: ARCHIVED
+```
+
+**Compensating Transactions:**
+
+| Step | Failure | Compensating Action | Result |
+|------|---------|---------------------|--------|
+| [2] TSA unavailable | External dependency down | Retry 3 times, fallback to cached timestamp | Timestamp added (cached) |
+| [2] TSA rejects | Invalid certificate | Alert + manual intervention | Invoice not submitted |
+| [3] AS4 send fails | Network timeout | Retry 3 times with exponential backoff | - |
+| [3] Recipient rejects | Business error (validation) | Store rejection reason, notify sender | Invoice rejected |
+| [4] Archive fails | S3 unavailable | Same critical mitigation as B2C | - |
+
+**Rejection Handling (Recipient-Side):**
+
+```
+Recipient receives AS4 invoice
+    → Validates against own rules
+    → If invalid:
+        → Sends rejection notification (AS4 negative MDN)
+        → Reason code (e.g., "INVALID_OIB", "MISSING_KPD")
+        → Sender notified via InvoiceRejectedEvent
+        → State: REJECTED
+        → Human reviews rejection, corrects, resubmits
+```
+
+---
+
+### 4.7 Idempotency Strategy
+
+**Problem:** Network retries can cause duplicate processing (same invoice submitted twice)
+
+**Solution:** Idempotency keys + database constraints
+
+**Implementation:**
+
+```sql
+-- PostgreSQL table for invoice tracking
+CREATE TABLE invoices (
+  invoice_id UUID PRIMARY KEY,                    -- System-generated UUID
+  invoice_number VARCHAR(50) NOT NULL,            -- Business invoice number
+  issuer_oib CHAR(11) NOT NULL,                   -- Issuer tax number
+  issue_date DATE NOT NULL,                       -- Invoice date
+  state VARCHAR(50) NOT NULL,                     -- Current state
+  jir VARCHAR(100),                               -- FINA confirmation (B2C)
+  as4_message_id VARCHAR(100),                    -- AS4 message ID (B2B)
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+
+  -- Idempotency constraint (prevent duplicate invoices)
+  CONSTRAINT unique_business_invoice UNIQUE (invoice_number, issuer_oib, issue_date)
+);
+
+CREATE INDEX idx_invoices_state ON invoices(state);
+CREATE INDEX idx_invoices_jir ON invoices(jir);
+```
+
+**Idempotent Message Processing:**
+
+```typescript
+async function processValidateXSDCommand(command: ValidateXSDCommand): Promise<void> {
+  const { invoice_id, xml_content } = command;
+
+  // Check if already processed (SELECT FOR UPDATE prevents race conditions)
+  const existingRecord = await db.query(
+    'SELECT state FROM invoices WHERE invoice_id = $1 FOR UPDATE',
+    [invoice_id]
+  );
+
+  if (existingRecord && existingRecord.state === 'VALIDATED') {
+    // Already processed, return success (idempotent)
+    logger.info({ invoice_id }, 'XSD validation already completed (idempotent)');
+    return;
+  }
+
+  // Perform validation
+  const result = await validateXSD(xml_content);
+
+  // Update state atomically
+  await db.query(
+    'UPDATE invoices SET state = $1, updated_at = NOW() WHERE invoice_id = $2',
+    [result.isValid ? 'VALIDATED' : 'VALIDATION_FAILED', invoice_id]
+  );
+
+  // Publish event (exactly-once semantics)
+  if (result.isValid) {
+    await kafka.produce('invoice-events', {
+      type: 'InvoiceValidatedEvent',
+      invoice_id,
+      // ... other fields
+    });
+  }
+}
+```
+
+**Idempotency Key Propagation:**
+
+```
+All RabbitMQ messages include:
+  - invoice_id (primary idempotency key)
+  - request_id (for distributed tracing)
+
+All Kafka events include:
+  - invoice_id (partition key, ensures ordering)
+  - event_id (UUID, deduplication)
+```
+
+---
+
+### 4.8 Retry Strategy
+
+**Exponential Backoff with Jitter:**
+
+```typescript
+async function retryWithBackoff<T>(
+  fn: () => Promise<T>,
+  maxRetries: number = 3,
+  baseDelayMs: number = 1000
+): Promise<T> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (attempt === maxRetries) {
+        throw error; // Max retries exceeded
+      }
+
+      // Exponential backoff: 2^attempt * baseDelay
+      const delayMs = Math.pow(2, attempt) * baseDelayMs;
+
+      // Add jitter (±25%) to prevent thundering herd
+      const jitter = delayMs * (Math.random() * 0.5 - 0.25);
+      const actualDelayMs = delayMs + jitter;
+
+      logger.warn({
+        attempt: attempt + 1,
+        maxRetries,
+        delayMs: actualDelayMs
+      }, 'Retrying after error');
+
+      await sleep(actualDelayMs);
+    }
+  }
+}
+
+// Usage in fina-soap-connector
+const jir = await retryWithBackoff(
+  () => finaClient.submitInvoice(invoice),
+  3,  // Max 3 retries
+  2000  // Start with 2 seconds (then 4s, 8s)
+);
+```
+
+**Retry Budget (Rate Limiting Retries):**
+
+```typescript
+// Prevent retry storms (too many retries overload external APIs)
+class RetryBudget {
+  private budget: number = 100; // Max 100 retries per minute
+  private window: number = 60000; // 1 minute window
+
+  canRetry(): boolean {
+    if (this.budget <= 0) {
+      logger.warn('Retry budget exhausted, circuit breaker opening');
+      return false;
+    }
+    this.budget--;
+    return true;
+  }
+
+  // Replenish budget every minute
+  constructor() {
+    setInterval(() => {
+      this.budget = 100;
+    }, this.window);
+  }
+}
+```
+
+**Retry Decision Tree:**
+
+```
+Error Occurs
+    │
+    ├─ Transient? (timeout, 5xx, ECONNREFUSED)
+    │   ├─ Yes → Retry Budget Available?
+    │   │   ├─ Yes → Retry with Exponential Backoff (max 3)
+    │   │   └─ No → Circuit Breaker Open → Manual Review
+    │   └─ No (Business Error) → Manual Review
+    │
+    └─ Critical System Error? (Database down, Auth failure)
+        └─ Yes → Circuit Breaker Open → Alert On-Call → Stop Processing
+```
+
+---
+
+### 4.9 Observability & Monitoring
+
+**Per-Stage Metrics (Prometheus):**
+
+```prometheus
+# Counter: Total invoices processed per stage
+invoice_stage_total{stage="received", channel="email"} 1523
+invoice_stage_total{stage="validated", type="b2c"} 1498
+invoice_stage_total{stage="submitted", type="b2c"} 1490
+
+# Histogram: Processing time per stage (p95, p99)
+invoice_stage_duration_seconds{stage="xsd_validation", quantile="0.95"} 0.15
+invoice_stage_duration_seconds{stage="fina_submission", quantile="0.99"} 2.8
+
+# Counter: Errors per stage
+invoice_stage_errors_total{stage="ocr", error_type="low_confidence"} 25
+invoice_stage_errors_total{stage="fina_submission", error_type="timeout"} 3
+
+# Gauge: Invoices in each state
+invoice_state_count{state="validating"} 47
+invoice_state_count{state="manual_review"} 12
+invoice_state_count{state="archived"} 142089
+```
+
+**Distributed Tracing (Jaeger):**
+
+```
+Trace ID: 7f3a2b8c-4d5e-6f7a-8b9c-0d1e2f3a4b5c
+Span 1: email-ingestion-worker (5ms)
+Span 2: attachment-handler (2ms)
+Span 3: file-classifier (8ms)
+Span 4: pdf-parser (450ms)  ← Bottleneck
+Span 5: data-extractor (120ms)
+Span 6: xsd-validator (85ms)
+Span 7: schematron-validator (220ms)  ← Bottleneck
+Span 8: ... (12 more spans)
+Total: 8.5 seconds
+```
+
+**Structured Logging (JSON):**
+
+```json
+{
+  "timestamp": "2025-11-10T14:32:18.123Z",
+  "level": "info",
+  "service": "xsd-validator",
+  "request_id": "7f3a2b8c-4d5e-6f7a-8b9c-0d1e2f3a4b5c",
+  "invoice_id": "550e8400-e29b-41d4-a716-446655440000",
+  "message": "XSD validation completed",
+  "duration_ms": 85,
+  "result": "valid",
+  "schema_version": "UBL-2.1"
+}
+```
+
+**Alerting Rules:**
+
+| Alert | Condition | Severity | Action |
+|-------|-----------|----------|--------|
+| HighValidationErrorRate | >5% invoices fail validation in 5min | P1 | Page on-call + notify product |
+| FINASubmissionTimeout | >3 consecutive FINA timeouts | P0 | Page on-call + check FINA status |
+| ArchiveFailure | Any invoice submitted but not archived | P0 | Page on-call (regulatory risk) |
+| DLQBacklog | >100 messages in DLQ for >15min | P1 | Notify on-call |
+| OCRLowConfidence | >20% OCR results <80% confidence | P2 | Notify product team |
+| CircuitBreakerOpen | Any circuit breaker open >5min | P1 | Page on-call |
+
+---
+
+### 4.10 Pipeline Performance Summary
+
+**Service Count Per Pipeline:**
+
+| Pipeline | Services | Avg Latency (p95) | Max Latency (p99) |
+|----------|----------|-------------------|-------------------|
+| B2C (PDF) | 19 | <10s | <20s |
+| B2C (Image/OCR) | 19 | <15s | <30s |
+| B2B (XML) | 15 | <5s | <10s |
+| B2G (XML + Approval) | 17 | <5s + human | N/A (human in loop) |
+
+**Bottleneck Analysis:**
+
+1. **OCR Service** (2s p95) - Longest single-service latency
+   - Mitigation: GPU acceleration, parallel OCR workers
+
+2. **Schematron Validator** (300ms p99) - Complex XSLT rules
+   - Mitigation: Cache compiled stylesheets, optimize rules
+
+3. **External APIs** (FINA, AS4, TSA) - 1-3s each
+   - Mitigation: Circuit breakers, retry with backoff, fallback strategies
+
+**Throughput Capacity:**
+
+```
+Single-instance capacity:
+  - B2C (PDF): 100-200 invoices/hour
+  - B2C (OCR): 50-100 invoices/hour
+  - B2B (XML): 500-1000 invoices/hour
+
+Horizontal scaling (10 instances each):
+  - B2C (PDF): 1,000-2,000 invoices/hour
+  - B2B (XML): 5,000-10,000 invoices/hour
+```
 
 ---
 
