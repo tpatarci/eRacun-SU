@@ -179,7 +179,7 @@ function isValidCommand(obj: unknown): obj is ValidateXSDCommand {
 
 ```protobuf
 message LargeInvoiceCommand {
-  common.InvoiceId invoice_id = 1;
+  eracun.v1.common.InvoiceId invoice_id = 1;
   string storage_url = 2; // S3 URL to retrieve content
   int64 content_size_bytes = 3;
 }

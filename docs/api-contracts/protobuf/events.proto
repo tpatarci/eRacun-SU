@@ -6,16 +6,16 @@ import "common.proto";
 
 // Event: Invoice successfully ingested
 message InvoiceIngestedEvent {
-  common.InvoiceId invoice_id = 1;
-  common.RequestContext context = 2;
+  eracun.v1.common.InvoiceId invoice_id = 1;
+  eracun.v1.common.RequestContext context = 2;
   string source_channel = 3; // "email", "api", "as4", "web"
   int64 ingested_at_ms = 4;
 }
 
 // Event: Invoice parsing completed
 message InvoiceParsedEvent {
-  common.InvoiceId invoice_id = 1;
-  common.RequestContext context = 2;
+  eracun.v1.common.InvoiceId invoice_id = 1;
+  eracun.v1.common.RequestContext context = 2;
   ParsingMethod method = 3; // "pdf", "ocr", "xml"
   bool success = 4;
   int64 parsed_at_ms = 5;
@@ -30,8 +30,8 @@ enum ParsingMethod {
 
 // Event: Invoice validation completed
 message InvoiceValidatedEvent {
-  common.InvoiceId invoice_id = 1;
-  common.RequestContext context = 2;
+  eracun.v1.common.InvoiceId invoice_id = 1;
+  eracun.v1.common.RequestContext context = 2;
   bool is_valid = 3;
   repeated string failed_validators = 4; // "xsd", "schematron", "kpd", etc.
   int64 validated_at_ms = 5;
@@ -39,16 +39,16 @@ message InvoiceValidatedEvent {
 
 // Event: Invoice signed
 message InvoiceSignedEvent {
-  common.InvoiceId invoice_id = 1;
-  common.RequestContext context = 2;
+  eracun.v1.common.InvoiceId invoice_id = 1;
+  eracun.v1.common.RequestContext context = 2;
   string certificate_serial = 3;
   int64 signed_at_ms = 4;
 }
 
 // Event: Invoice submitted to Tax Authority
 message InvoiceSubmittedEvent {
-  common.InvoiceId invoice_id = 1;
-  common.RequestContext context = 2;
+  eracun.v1.common.InvoiceId invoice_id = 1;
+  eracun.v1.common.RequestContext context = 2;
   SubmissionDestination destination = 3;
   string confirmation_id = 4; // JIR for B2C, UUID for B2B
   int64 submitted_at_ms = 5;
@@ -63,8 +63,8 @@ enum SubmissionDestination {
 
 // Event: Invoice archived
 message InvoiceArchivedEvent {
-  common.InvoiceId invoice_id = 1;
-  common.RequestContext context = 2;
+  eracun.v1.common.InvoiceId invoice_id = 1;
+  eracun.v1.common.RequestContext context = 2;
   string storage_location = 3; // S3 URL
   int64 archived_at_ms = 4;
   int64 retention_expires_at_ms = 5; // 11 years from now
@@ -72,10 +72,10 @@ message InvoiceArchivedEvent {
 
 // Event: Invoice processing failed
 message InvoiceFailedEvent {
-  common.InvoiceId invoice_id = 1;
-  common.RequestContext context = 2;
-  common.ProcessingStage failed_at_stage = 3;
-  repeated common.Error errors = 4;
+  eracun.v1.common.InvoiceId invoice_id = 1;
+  eracun.v1.common.RequestContext context = 2;
+  eracun.v1.common.ProcessingStage failed_at_stage = 3;
+  repeated eracun.v1.common.Error errors = 4;
   bool retryable = 5;
   int64 failed_at_ms = 6;
 }
