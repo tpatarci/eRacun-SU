@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="hr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>eRacun - Kritična sustavna obavijest</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            line-height: 1.6;
+            color: #333;
+            max-width: 700px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .header {
+            background-color: #ff4444;
+            color: white;
+            padding: 20px;
+            text-align: center;
+            border-radius: 5px 5px 0 0;
+        }
+        .alert-icon {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+        .content {
+            background-color: #fff;
+            padding: 30px;
+            border: 3px solid #ff4444;
+            border-radius: 0 0 5px 5px;
+        }
+        .severity-critical {
+            background-color: #ff4444;
+            color: white;
+            padding: 10px;
+            text-align: center;
+            font-weight: bold;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .severity-high {
+            background-color: #ff9800;
+            color: white;
+            padding: 10px;
+            text-align: center;
+            font-weight: bold;
+            border-radius: 5px;
+            margin: 20px 0;
+        }
+        .alert-details {
+            background-color: #f5f5f5;
+            padding: 20px;
+            border-left: 5px solid #ff4444;
+            margin: 20px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+        .alert-details p {
+            margin: 8px 0;
+        }
+        .impact-box {
+            background-color: #fff3cd;
+            border-left: 5px solid #ffc107;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .action-items {
+            background-color: #e7f3ff;
+            border-left: 5px solid #0066cc;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        .footer {
+            text-align: center;
+            color: #666;
+            font-size: 12px;
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="alert-icon">🚨</div>
+        <h1>KRITIČNA SUSTAVNA OBAVIJEST</h1>
+    </div>
+
+    <div class="content">
+        <div class="severity-{{severity}}">
+            PRIORITET: {{uppercase severity}} | SUSTAV: {{service_name}}
+        </div>
+
+        <h2 style="color: #ff4444;">{{alert_title}}</h2>
+
+        <p><strong>Vrijeme detekcije:</strong> {{formatDate detection_time}}</p>
+
+        <div class="alert-details">
+            <p><strong>Servis:</strong> {{service_name}}</p>
+            <p><strong>Host:</strong> {{hostname}}</p>
+            <p><strong>Error:</strong> {{error_message}}</p>
+            <p><strong>Stack Trace:</strong></p>
+            <pre>{{stack_trace}}</pre>
+        </div>
+
+        <div class="impact-box">
+            <h3>📊 Utjecaj</h3>
+            <p>{{impact_description}}</p>
+            <ul>
+                <li><strong>Zahvaćeni korisnici:</strong> {{affected_users}}</li>
+                <li><strong>Zahvaćene usluge:</strong> {{affected_services}}</li>
+                <li><strong>Procijenjeno trajanje:</strong> {{estimated_duration}}</li>
+            </ul>
+        </div>
+
+        <div class="action-items">
+            <h3>🔧 Poduzete radnje</h3>
+            <ul>
+                <li>✓ Automatsko restartanje servisa</li>
+                <li>✓ Obavješten dežurni tim</li>
+                <li>✓ Uključen fallback mehanizam</li>
+                <li>⏳ Dijagnostika u tijeku...</li>
+            </ul>
+        </div>
+
+        <p><strong>Status:</strong> {{status}}</p>
+        <p><strong>Incident ID:</strong> <code>{{incident_id}}</code></p>
+
+        <p>Ovaj alert je automatski generiran sustavom za monitoring. Za više informacija kontaktirajte tim za podršku.</p>
+
+        <p><strong>eRacun DevOps Tim</strong></p>
+    </div>
+
+    <div class="footer">
+        <p>© 2025 eRacun Platform | Automated System Alert</p>
+        <p>⚠️ Ova obavijest zahtijeva hitnu pažnju ⚠️</p>
+    </div>
+</body>
+</html>
