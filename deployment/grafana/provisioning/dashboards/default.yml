@@ -1,0 +1,18 @@
+# Grafana Dashboard Provisioning
+#
+# This configuration tells Grafana where to find dashboard JSON files.
+# Dashboards are loaded automatically on startup.
+
+apiVersion: 1
+
+providers:
+  - name: 'eRacun Platform'
+    orgId: 1
+    folder: 'eRacun'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 10
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: true

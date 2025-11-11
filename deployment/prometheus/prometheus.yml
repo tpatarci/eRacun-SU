@@ -1,0 +1,153 @@
+# Prometheus Configuration for eRacun Platform
+#
+# This configuration scrapes metrics from all eRacun microservices.
+# Each service exposes Prometheus metrics on its dedicated metrics port.
+#
+# Usage:
+#   docker-compose up -d prometheus
+#   Open http://localhost:9090 to access Prometheus UI
+
+global:
+  scrape_interval: 15s      # Scrape targets every 15 seconds
+  evaluation_interval: 15s  # Evaluate rules every 15 seconds
+  external_labels:
+    cluster: 'eracun-dev'
+    environment: 'development'
+
+# Alertmanager configuration (optional - uncomment when setting up alerts)
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets:
+#           - alertmanager:9093
+
+# Load rules once and periodically evaluate them
+# rule_files:
+#   - "alerts/*.yml"
+
+# Scrape configuration
+scrape_configs:
+  # ============================================================================
+  # Infrastructure Monitoring
+  # ============================================================================
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+          layer: 'infrastructure'
+
+  # RabbitMQ metrics
+  - job_name: 'rabbitmq'
+    static_configs:
+      - targets: ['rabbitmq:15692']  # RabbitMQ Prometheus plugin
+        labels:
+          service: 'rabbitmq'
+          layer: 'infrastructure'
+
+  # PostgreSQL metrics (requires postgres_exporter)
+  # - job_name: 'postgres'
+  #   static_configs:
+  #     - targets: ['postgres-exporter:9187']
+  #       labels:
+  #         service: 'postgres'
+  #         layer: 'infrastructure'
+
+  # ============================================================================
+  # eRacun Microservices (Layer 1: Validation)
+  # ============================================================================
+
+  # XSD Validator Service
+  - job_name: 'xsd-validator'
+    static_configs:
+      - targets: ['host.docker.internal:9100']  # When running locally
+        labels:
+          service: 'xsd-validator'
+          layer: 'validation'
+          bounded_context: 'validation'
+
+  # Schematron Validator Service (future)
+  # - job_name: 'schematron-validator'
+  #   static_configs:
+  #     - targets: ['host.docker.internal:9101']
+  #       labels:
+  #         service: 'schematron-validator'
+  #         layer: 'validation'
+
+  # KPD Validator Service (future)
+  # - job_name: 'kpd-validator'
+  #   static_configs:
+  #     - targets: ['host.docker.internal:9102']
+  #       labels:
+  #         service: 'kpd-validator'
+  #         layer: 'validation'
+
+  # ============================================================================
+  # eRacun Microservices (Layer 2: Transformation)
+  # ============================================================================
+
+  # UBL Transformer Service (future)
+  # - job_name: 'ubl-transformer'
+  #   static_configs:
+  #     - targets: ['host.docker.internal:9200']
+  #       labels:
+  #         service: 'ubl-transformer'
+  #         layer: 'transformation'
+
+  # ============================================================================
+  # eRacun Microservices (Layer 3: Integration)
+  # ============================================================================
+
+  # FINA Connector Service (future)
+  # - job_name: 'fina-connector'
+  #   static_configs:
+  #     - targets: ['host.docker.internal:9300']
+  #       labels:
+  #         service: 'fina-connector'
+  #         layer: 'integration'
+
+  # ============================================================================
+  # Health Checks (additional monitoring)
+  # ============================================================================
+
+  # Blackbox exporter for HTTP health endpoints (future)
+  # - job_name: 'blackbox'
+  #   metrics_path: /probe
+  #   params:
+  #     module: [http_2xx]
+  #   static_configs:
+  #     - targets:
+  #       - http://host.docker.internal:8080/health  # xsd-validator
+  #   relabel_configs:
+  #     - source_labels: [__address__]
+  #       target_label: __param_target
+  #     - source_labels: [__param_target]
+  #       target_label: instance
+  #     - target_label: __address__
+  #       replacement: blackbox:9115
+
+# ============================================================================
+# Notes
+# ============================================================================
+#
+# Port Allocation Strategy:
+# - Infrastructure: 9090-9099 (Prometheus, Grafana, Jaeger)
+# - Layer 1 (Validation): 9100-9199
+# - Layer 2 (Transformation): 9200-9299
+# - Layer 3 (Integration): 9300-9399
+# - Layer 4 (Ingestion): 9400-9499
+# - Layer 5 (Application): 9500-9599
+#
+# Health Endpoints:
+# - All services expose /health on port 8080 + service_offset
+# - All services expose /metrics on dedicated Prometheus port
+#
+# Target Discovery:
+# - Development: host.docker.internal (services run locally)
+# - Staging/Production: Kubernetes service discovery or Consul
+#
+# Retention:
+# - Default: 15 days (configurable via --storage.tsdb.retention.time)
+# - Production: 90 days for regulatory compliance

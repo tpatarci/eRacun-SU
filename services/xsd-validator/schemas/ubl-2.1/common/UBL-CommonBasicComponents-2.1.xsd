@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Minimal UBL 2.1 Common Basic Components for Testing
+
+  NOTE: This is a SIMPLIFIED version for development/testing.
+  Production systems MUST use official OASIS UBL 2.1 schemas.
+  Download from: http://docs.oasis-open.org/ubl/os-UBL-2.1/
+-->
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+            xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"
+            targetNamespace="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2"
+            elementFormDefault="qualified">
+
+  <!-- Simple type definitions -->
+  <xsd:simpleType name="IdentifierType">
+    <xsd:restriction base="xsd:string"/>
+  </xsd:simpleType>
+
+  <xsd:simpleType name="TextType">
+    <xsd:restriction base="xsd:string"/>
+  </xsd:simpleType>
+
+  <xsd:simpleType name="DateType">
+    <xsd:restriction base="xsd:date"/>
+  </xsd:simpleType>
+
+  <xsd:simpleType name="CodeType">
+    <xsd:restriction base="xsd:string"/>
+  </xsd:simpleType>
+
+  <xsd:simpleType name="AmountType">
+    <xsd:restriction base="xsd:decimal"/>
+  </xsd:simpleType>
+
+  <!-- Basic component elements -->
+  <xsd:element name="UBLVersionID" type="cbc:IdentifierType"/>
+  <xsd:element name="ID" type="cbc:IdentifierType"/>
+  <xsd:element name="IssueDate" type="cbc:DateType"/>
+  <xsd:element name="InvoiceTypeCode" type="cbc:CodeType"/>
+  <xsd:element name="DocumentCurrencyCode" type="cbc:CodeType"/>
+  <xsd:element name="Name" type="cbc:TextType"/>
+  <xsd:element name="CompanyID" type="cbc:IdentifierType"/>
+  <xsd:element name="Note" type="cbc:TextType"/>
+
+  <!-- Amount elements with currency attribute -->
+  <xsd:complexType name="AmountTypeWithCurrency">
+    <xsd:simpleContent>
+      <xsd:extension base="cbc:AmountType">
+        <xsd:attribute name="currencyID" type="xsd:string"/>
+      </xsd:extension>
+    </xsd:simpleContent>
+  </xsd:complexType>
+
+  <xsd:element name="LineExtensionAmount" type="cbc:AmountTypeWithCurrency"/>
+  <xsd:element name="TaxExclusiveAmount" type="cbc:AmountTypeWithCurrency"/>
+  <xsd:element name="TaxInclusiveAmount" type="cbc:AmountTypeWithCurrency"/>
+  <xsd:element name="PayableAmount" type="cbc:AmountTypeWithCurrency"/>
+
+</xsd:schema>

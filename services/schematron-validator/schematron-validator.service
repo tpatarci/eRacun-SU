@@ -1,0 +1,88 @@
+# systemd service unit for Schematron Validator Service
+#
+# Installation:
+#   sudo cp schematron-validator.service /etc/systemd/system/eracun-schematron-validator.service
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable eracun-schematron-validator
+#   sudo systemctl start eracun-schematron-validator
+#
+# Management:
+#   sudo systemctl status eracun-schematron-validator
+#   sudo systemctl restart eracun-schematron-validator
+#   sudo journalctl -u eracun-schematron-validator -f
+
+[Unit]
+Description=eRacun Schematron Validator Service
+Documentation=https://github.com/eracun/platform
+After=network.target rabbitmq-server.service
+Wants=rabbitmq-server.service
+
+[Service]
+Type=simple
+User=eracun
+Group=eracun
+WorkingDirectory=/opt/eracun/services/schematron-validator
+
+# Environment configuration
+EnvironmentFile=/etc/eracun/services/schematron-validator.conf
+Environment=NODE_ENV=production
+
+# Decrypt secrets before starting (if using SOPS)
+ExecStartPre=/opt/eracun/scripts/decrypt-secrets.sh schematron-validator
+
+# Start service
+ExecStart=/usr/bin/node dist/index.js
+
+# Graceful shutdown (send SIGTERM, wait 30s, then SIGKILL)
+ExecStop=/bin/kill -TERM $MAINPID
+TimeoutStopSec=30
+
+# Restart policy
+Restart=always
+RestartSec=10s
+
+# Resource limits (TODO-008 compliance)
+MemoryMax=512M
+MemoryHigh=400M
+CPUQuota=150%
+
+# Security hardening (TODO-008 compliance)
+# Filesystem protection
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/eracun/services/schematron-validator/logs
+PrivateTmp=true
+NoNewPrivileges=true
+
+# Hide secrets from service
+InaccessiblePaths=/etc/eracun/.age-key
+
+# Namespace isolation
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+# Capability restrictions
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# System call filtering
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallErrorNumber=EPERM
+
+# Network restrictions (allow only network access)
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=schematron-validator
+
+[Install]
+WantedBy=multi-user.target
