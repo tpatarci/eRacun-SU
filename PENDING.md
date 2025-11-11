@@ -19,7 +19,24 @@
 
 ## Active Items
 
-_None - All critical blockers resolved!_
+### 🟢 [PENDING-002](docs/pending/002-test-execution-verification.md) - Test Execution Verification (xsd-validator)
+
+**Priority:** 🟢 P2 (Medium)
+**Created:** 2025-11-11
+**Estimated Effort:** 30 minutes
+
+**Problem:** Test suite written (65+ tests) but not executed to verify all pass and 85% coverage threshold met.
+
+**Blocks:**
+- Staging deployment (xsd-validator)
+- Production deployment (xsd-validator)
+
+**Does NOT Block:**
+- Implementing other services (can proceed in parallel)
+
+**Next Action:** Run `npm install && npm run test:coverage` in `services/xsd-validator/` before staging deployment
+
+**Deferred Because:** User prioritized "Continue building" over immediate verification
 
 ---
 
@@ -130,5 +147,5 @@ TBD Question → Decision Made → PENDING Implementation → Completed → Clos
 ---
 
 **Maintainer:** Technical Lead
-**Last Updated:** 2025-11-09 (PENDING-001 completed)
+**Last Updated:** 2025-11-11 (PENDING-002 added: test execution verification)
 **Review Cadence:** Weekly (during planning)
