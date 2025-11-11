@@ -1,0 +1,58 @@
+[Unit]
+Description=eRacun Retry Scheduler Service
+Documentation=https://github.com/eracun/retry-scheduler
+After=network-online.target rabbitmq-server.service postgresql.service
+Wants=network-online.target
+PartOf=eracun.target
+
+[Service]
+Type=simple
+User=eracun
+Group=eracun
+
+WorkingDirectory=/opt/eracun/services/retry-scheduler
+
+EnvironmentFile=/etc/eracun/retry-scheduler.env
+
+ExecStart=/usr/bin/node dist/index.js
+
+Restart=always
+RestartSec=10
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+MemoryMax=1G
+MemoryHigh=768M
+CPUQuota=100%
+
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/log/eracun
+
+NoNewPrivileges=true
+
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @mount
+SystemCallErrorNumber=EPERM
+
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+RestrictRealtime=true
+
+InaccessiblePaths=/etc/eracun/.age-key
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=eracun-retry-scheduler
+
+Nice=0
+OOMScoreAdjust=-100
+
+[Install]
+WantedBy=eracun.target multi-user.target
