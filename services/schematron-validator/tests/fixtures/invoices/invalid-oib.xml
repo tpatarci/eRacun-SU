@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Invalid invoice: OIB is only 9 digits instead of 11 (BR-HR-01) -->
+<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+         xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+         xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
+
+  <cbc:ID>INV-2025-003</cbc:ID>
+  <cbc:IssueDate>2025-11-11</cbc:IssueDate>
+  <cbc:DocumentCurrencyCode>EUR</cbc:DocumentCurrencyCode>
+
+  <cac:AccountingSupplierParty>
+    <cac:Party>
+      <cac:PartyTaxScheme>
+        <!-- INVALID: OIB should be 11 digits, but this is only 9 -->
+        <cbc:CompanyID>123456789</cbc:CompanyID>
+      </cac:PartyTaxScheme>
+    </cac:Party>
+  </cac:AccountingSupplierParty>
+
+  <cac:AccountingCustomerParty>
+    <cac:Party>
+      <cac:PartyName>
+        <cbc:Name>Test Customer</cbc:Name>
+      </cac:PartyName>
+    </cac:Party>
+  </cac:AccountingCustomerParty>
+
+  <cac:TaxTotal>
+    <cbc:TaxAmount currencyID="EUR">250.00</cbc:TaxAmount>
+    <cac:TaxSubtotal>
+      <cbc:TaxableAmount currencyID="EUR">1000.00</cbc:TaxableAmount>
+      <cbc:TaxAmount currencyID="EUR">250.00</cbc:TaxAmount>
+      <cac:TaxCategory>
+        <cbc:ID>S</cbc:ID>
+        <cbc:Percent>25</cbc:Percent>
+      </cac:TaxCategory>
+    </cac:TaxSubtotal>
+  </cac:TaxTotal>
+
+  <cac:LegalMonetaryTotal>
+    <cbc:PayableAmount currencyID="EUR">1250.00</cbc:PayableAmount>
+  </cac:LegalMonetaryTotal>
+
+</Invoice>

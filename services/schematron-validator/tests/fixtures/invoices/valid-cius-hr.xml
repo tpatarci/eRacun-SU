@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Valid Croatian CIUS invoice - passes all validation rules -->
+<Invoice xmlns="urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
+         xmlns:cac="urn:oasis:names:specification:ubl:schema:xsd:CommonAggregateComponents-2"
+         xmlns:cbc="urn:oasis:names:specification:ubl:schema:xsd:CommonBasicComponents-2">
+
+  <!-- BR-CO-01: Invoice ID (mandatory) -->
+  <cbc:ID>INV-2025-001</cbc:ID>
+
+  <!-- BR-CO-02: Issue date (mandatory) -->
+  <cbc:IssueDate>2025-11-11</cbc:IssueDate>
+
+  <!-- BR-HR-02: Currency (EUR or HRK) -->
+  <cbc:DocumentCurrencyCode>EUR</cbc:DocumentCurrencyCode>
+
+  <!-- BR-CO-03: Supplier party (mandatory) -->
+  <cac:AccountingSupplierParty>
+    <cac:Party>
+      <cac:PartyTaxScheme>
+        <!-- BR-HR-01: OIB must be 11 digits -->
+        <cbc:CompanyID>12345678901</cbc:CompanyID>
+      </cac:PartyTaxScheme>
+    </cac:Party>
+  </cac:AccountingSupplierParty>
+
+  <!-- Customer party -->
+  <cac:AccountingCustomerParty>
+    <cac:Party>
+      <cac:PartyName>
+        <cbc:Name>Test Customer</cbc:Name>
+      </cac:PartyName>
+    </cac:Party>
+  </cac:AccountingCustomerParty>
+
+  <!-- Tax totals -->
+  <cac:TaxTotal>
+    <cbc:TaxAmount currencyID="EUR">250.00</cbc:TaxAmount>
+    <cac:TaxSubtotal>
+      <cbc:TaxableAmount currencyID="EUR">1000.00</cbc:TaxableAmount>
+      <cbc:TaxAmount currencyID="EUR">250.00</cbc:TaxAmount>
+      <cac:TaxCategory>
+        <!-- BR-S-01: Standard rate (S) must be 25% -->
+        <cbc:ID>S</cbc:ID>
+        <cbc:Percent>25</cbc:Percent>
+      </cac:TaxCategory>
+    </cac:TaxSubtotal>
+  </cac:TaxTotal>
+
+  <!-- BR-E-01: Payable amount (mandatory) -->
+  <cac:LegalMonetaryTotal>
+    <cbc:LineExtensionAmount currencyID="EUR">1000.00</cbc:LineExtensionAmount>
+    <cbc:TaxExclusiveAmount currencyID="EUR">1000.00</cbc:TaxExclusiveAmount>
+    <cbc:TaxInclusiveAmount currencyID="EUR">1250.00</cbc:TaxInclusiveAmount>
+    <cbc:PayableAmount currencyID="EUR">1250.00</cbc:PayableAmount>
+  </cac:LegalMonetaryTotal>
+
+  <!-- Invoice line -->
+  <cac:InvoiceLine>
+    <cbc:ID>1</cbc:ID>
+    <cbc:InvoicedQuantity unitCode="EA">10</cbc:InvoicedQuantity>
+    <cbc:LineExtensionAmount currencyID="EUR">1000.00</cbc:LineExtensionAmount>
+    <cac:Item>
+      <cbc:Description>Test product</cbc:Description>
+      <cbc:Name>Product A</cbc:Name>
+    </cac:Item>
+    <cac:Price>
+      <cbc:PriceAmount currencyID="EUR">100.00</cbc:PriceAmount>
+    </cac:Price>
+  </cac:InvoiceLine>
+
+</Invoice>
