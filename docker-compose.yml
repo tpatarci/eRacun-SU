@@ -1,0 +1,196 @@
+# eRacun Platform - Local Development Environment
+#
+# This Docker Compose setup provides the complete infrastructure for local development:
+# - RabbitMQ (message broker)
+# - PostgreSQL (state database)
+# - Prometheus (metrics collection)
+# - Grafana (metrics visualization)
+# - Jaeger (distributed tracing)
+#
+# Usage:
+#   docker-compose up -d           # Start all services
+#   docker-compose logs -f         # View logs
+#   docker-compose down            # Stop all services
+#   docker-compose down -v         # Stop and remove volumes (clean slate)
+
+version: '3.8'
+
+services:
+  # ============================================================================
+  # Message Broker
+  # ============================================================================
+
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: eracun-rabbitmq
+    hostname: rabbitmq
+    ports:
+      - "5672:5672"    # AMQP
+      - "15672:15672"  # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: eracun
+      RABBITMQ_DEFAULT_PASS: dev_password_change_in_production
+      RABBITMQ_DEFAULT_VHOST: /
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - eracun
+
+  # ============================================================================
+  # Database
+  # ============================================================================
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: eracun-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: eracun
+      POSTGRES_PASSWORD: dev_password_change_in_production
+      POSTGRES_DB: eracun
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./deployment/postgres/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eracun"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - eracun
+
+  # ============================================================================
+  # Observability Stack
+  # ============================================================================
+
+  prometheus:
+    image: prom/prometheus:v2.48.0
+    container_name: eracun-prometheus
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./deployment/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - eracun
+
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: eracun-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_INSTALL_PLUGINS: grafana-piechart-panel
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./deployment/grafana/provisioning:/etc/grafana/provisioning
+      - ./deployment/grafana/dashboards:/var/lib/grafana/dashboards
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - eracun
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.51
+    container_name: eracun-jaeger
+    ports:
+      - "5775:5775/udp"  # Zipkin compact thrift
+      - "6831:6831/udp"  # Jaeger compact thrift
+      - "6832:6832/udp"  # Jaeger binary thrift
+      - "5778:5778"      # Serve configs
+      - "16686:16686"    # Jaeger UI
+      - "14268:14268"    # Jaeger collector HTTP
+      - "14250:14250"    # gRPC
+      - "9411:9411"      # Zipkin compatible endpoint
+    environment:
+      COLLECTOR_ZIPKIN_HOST_PORT: :9411
+      COLLECTOR_OTLP_ENABLED: "true"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:14269/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - eracun
+
+  # ============================================================================
+  # Services (commented out - run locally during development)
+  # ============================================================================
+
+  # Uncomment to run services in Docker (not recommended for active development)
+
+  # xsd-validator:
+  #   build:
+  #     context: ./services/xsd-validator
+  #     dockerfile: Dockerfile
+  #   container_name: eracun-xsd-validator
+  #   ports:
+  #     - "8080:8080"  # Health endpoint
+  #     - "9100:9100"  # Prometheus metrics
+  #   environment:
+  #     NODE_ENV: development
+  #     LOG_LEVEL: debug
+  #     RABBITMQ_URL: amqp://eracun:dev_password_change_in_production@rabbitmq:5672
+  #     RABBITMQ_QUEUE: eracun.xsd-validator.xml
+  #     SCHEMA_PATH: /app/schemas/ubl-2.1
+  #     PROMETHEUS_PORT: 9100
+  #     HEALTH_PORT: 8080
+  #     JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+  #   volumes:
+  #     - ./services/xsd-validator/schemas:/app/schemas
+  #   depends_on:
+  #     rabbitmq:
+  #       condition: service_healthy
+  #     jaeger:
+  #       condition: service_healthy
+  #   networks:
+  #     - eracun
+
+# ============================================================================
+# Networks
+# ============================================================================
+
+networks:
+  eracun:
+    driver: bridge
+    name: eracun-network
+
+# ============================================================================
+# Volumes
+# ============================================================================
+
+volumes:
+  rabbitmq_data:
+    name: eracun-rabbitmq-data
+  postgres_data:
+    name: eracun-postgres-data
+  prometheus_data:
+    name: eracun-prometheus-data
+  grafana_data:
+    name: eracun-grafana-data
