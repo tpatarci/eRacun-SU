@@ -1,0 +1,238 @@
+# =============================================
+# systemd Unit File: Audit Logger Service
+# =============================================
+# Location: /etc/systemd/system/eracun-audit-logger.service
+# Enable: systemctl enable eracun-audit-logger
+# Start: systemctl start eracun-audit-logger
+# Status: systemctl status eracun-audit-logger
+
+[Unit]
+Description=eRacun Audit Logger Service
+Documentation=https://github.com/eracun/platform/tree/main/services/audit-logger
+After=network-online.target postgresql.service kafka.service
+Wants=network-online.target
+Requires=postgresql.service
+
+# Restart dependencies if they fail
+PartOf=eracun-platform.target
+
+[Service]
+Type=simple
+User=eracun
+Group=eracun
+
+# Working directory
+WorkingDirectory=/opt/eracun/services/audit-logger
+
+# Environment file (contains secrets - protected by file permissions)
+EnvironmentFile=/etc/eracun/audit-logger.env
+
+# Decrypt secrets before starting (SOPS + age)
+# ExecStartPre=/usr/local/bin/sops -d /etc/eracun/secrets/audit-logger.env.enc > /run/eracun/audit-logger.env
+# ExecStartPre=/bin/chown eracun:eracun /run/eracun/audit-logger.env
+# ExecStartPre=/bin/chmod 600 /run/eracun/audit-logger.env
+
+# Start service
+ExecStart=/usr/bin/node dist/index.js
+
+# Graceful shutdown (SIGTERM)
+KillMode=mixed
+KillSignal=SIGTERM
+TimeoutStopSec=30s
+
+# Restart policy
+Restart=always
+RestartSec=10s
+StartLimitBurst=5
+StartLimitIntervalSec=60s
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=eracun-audit-logger
+
+# =============================================
+# Security Hardening (systemd v232+)
+# =============================================
+
+# Filesystem protection
+ProtectSystem=strict                      # Read-only /usr, /boot, /etc
+ProtectHome=true                          # No access to /home
+ReadWritePaths=/opt/eracun/services/audit-logger/logs
+ReadWritePaths=/run/eracun
+PrivateTmp=true                           # Isolated /tmp
+PrivateDevices=true                       # No access to /dev
+
+# Prevent privilege escalation
+NoNewPrivileges=true                      # Cannot gain new privileges
+CapabilityBoundingSet=                    # Drop all Linux capabilities
+AmbientCapabilities=                      # No ambient capabilities
+
+# Restrict kernel features
+ProtectKernelTunables=true                # Read-only /proc/sys, /sys
+ProtectKernelModules=true                 # Cannot load kernel modules
+ProtectKernelLogs=true                    # No access to kernel logs
+ProtectControlGroups=true                 # Read-only /sys/fs/cgroup
+
+# System call filtering
+SystemCallFilter=@system-service          # Allow only system service calls
+SystemCallFilter=~@privileged             # Block privileged operations
+SystemCallFilter=~@resources              # Block resource manipulation
+SystemCallFilter=~@mount                  # Block mount operations
+SystemCallErrorNumber=EPERM               # Return EPERM for blocked calls
+
+# Network restrictions
+RestrictAddressFamilies=AF_INET AF_INET6  # Only IPv4 and IPv6
+RestrictAddressFamilies=AF_UNIX           # Unix domain sockets
+IPAddressDeny=any                         # Deny all IPs by default
+IPAddressAllow=localhost                  # Allow localhost
+IPAddressAllow=10.0.0.0/8                 # Allow private network (adjust)
+IPAddressAllow=172.16.0.0/12              # Allow private network (adjust)
+IPAddressAllow=192.168.0.0/16             # Allow private network (adjust)
+
+# Hide sensitive paths
+InaccessiblePaths=/etc/eracun/.age-key    # Hide encryption keys
+InaccessiblePaths=/root                   # No access to root home
+
+# Memory protection
+MemoryDenyWriteExecute=true               # W^X: No writable+executable memory
+LockPersonality=true                      # Lock down personality syscall
+
+# Restrict realtime
+RestrictRealtime=true                     # No realtime scheduling
+
+# Restrict namespaces
+RestrictNamespaces=true                   # No new namespaces
+
+# Remove SUID/SGID
+RestrictSUIDSGID=true                     # No SUID/SGID execution
+
+# Limit file descriptors
+LimitNOFILE=65536                         # Max open files
+
+# Limit processes
+LimitNPROC=512                            # Max processes
+
+# Limit memory (optional - adjust based on load)
+# MemoryMax=1G                            # Hard limit
+# MemoryHigh=768M                         # Soft limit (throttle)
+
+# CPU limits (optional)
+# CPUQuota=200%                           # Max 2 cores
+
+# =============================================
+# Observability
+# =============================================
+
+# Watchdog (optional - requires WatchdogSec support in service)
+# WatchdogSec=60s
+
+# =============================================
+# Installation
+# =============================================
+
+[Install]
+WantedBy=multi-user.target
+WantedBy=eracun-platform.target
+
+# =============================================
+# Deployment Instructions
+# =============================================
+# 1. Create eracun user:
+#    sudo useradd -r -s /bin/false -U eracun
+#
+# 2. Create directories:
+#    sudo mkdir -p /opt/eracun/services/audit-logger
+#    sudo mkdir -p /etc/eracun
+#    sudo mkdir -p /run/eracun
+#    sudo mkdir -p /opt/eracun/services/audit-logger/logs
+#
+# 3. Set permissions:
+#    sudo chown -R eracun:eracun /opt/eracun/services/audit-logger
+#    sudo chown -R eracun:eracun /run/eracun
+#    sudo chmod 700 /etc/eracun
+#
+# 4. Deploy service files:
+#    sudo rsync -av dist/ /opt/eracun/services/audit-logger/dist/
+#    sudo rsync -av node_modules/ /opt/eracun/services/audit-logger/node_modules/
+#    sudo rsync -av proto/ /opt/eracun/services/audit-logger/proto/
+#    sudo rsync -av package.json /opt/eracun/services/audit-logger/
+#
+# 5. Create environment file:
+#    sudo cp .env.example /etc/eracun/audit-logger.env
+#    sudo nano /etc/eracun/audit-logger.env  # Edit with production values
+#    sudo chown root:eracun /etc/eracun/audit-logger.env
+#    sudo chmod 640 /etc/eracun/audit-logger.env
+#
+# 6. Install systemd unit:
+#    sudo cp deployment/eracun-audit-logger.service /etc/systemd/system/
+#    sudo systemctl daemon-reload
+#
+# 7. Enable and start:
+#    sudo systemctl enable eracun-audit-logger
+#    sudo systemctl start eracun-audit-logger
+#
+# 8. Verify:
+#    sudo systemctl status eracun-audit-logger
+#    sudo journalctl -u eracun-audit-logger -f
+
+# =============================================
+# Production Checklist
+# =============================================
+# [ ] eracun user created
+# [ ] Directories created with correct permissions
+# [ ] Service files deployed
+# [ ] Environment file configured (DATABASE_URL, KAFKA_BROKERS)
+# [ ] Secrets encrypted with SOPS (if using)
+# [ ] PostgreSQL accessible from service
+# [ ] Kafka accessible from service
+# [ ] Ports 8080 and 50051 not conflicting
+# [ ] Firewall rules configured (if applicable)
+# [ ] Log rotation configured (/etc/logrotate.d/)
+# [ ] Monitoring alerts configured (systemd service down)
+# [ ] Health check endpoint responding: curl http://localhost:8080/health
+# [ ] Metrics endpoint responding: curl http://localhost:8080/metrics
+
+# =============================================
+# Troubleshooting
+# =============================================
+# Service won't start:
+#   sudo journalctl -u eracun-audit-logger -n 50
+#
+# Check configuration:
+#   sudo systemd-analyze verify eracun-audit-logger.service
+#
+# Check file permissions:
+#   namei -l /opt/eracun/services/audit-logger/dist/index.js
+#
+# Test manually:
+#   sudo -u eracun bash
+#   cd /opt/eracun/services/audit-logger
+#   source /etc/eracun/audit-logger.env
+#   node dist/index.js
+#
+# Check network connectivity:
+#   sudo -u eracun curl -v http://localhost:8080/health
+#   sudo -u eracun pg_isready -h <db-host> -p <db-port> -U <db-user>
+
+# =============================================
+# Maintenance
+# =============================================
+# Restart service:
+#   sudo systemctl restart eracun-audit-logger
+#
+# View logs:
+#   sudo journalctl -u eracun-audit-logger -f
+#
+# View logs (last hour):
+#   sudo journalctl -u eracun-audit-logger --since "1 hour ago"
+#
+# Check service status:
+#   sudo systemctl status eracun-audit-logger
+#
+# Reload systemd after editing:
+#   sudo systemctl daemon-reload
+#
+# Disable service:
+#   sudo systemctl disable eracun-audit-logger
+#   sudo systemctl stop eracun-audit-logger

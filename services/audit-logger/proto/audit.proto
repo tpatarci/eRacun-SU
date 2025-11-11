@@ -1,0 +1,70 @@
+syntax = "proto3";
+
+package eracun.auditlogger;
+
+// Audit Logger gRPC Service
+service AuditLogService {
+  // Get complete audit trail for an invoice
+  rpc GetAuditTrail(GetAuditTrailRequest) returns (GetAuditTrailResponse);
+
+  // Query audit events with filters
+  rpc QueryAuditEvents(QueryAuditEventsRequest) returns (QueryAuditEventsResponse);
+
+  // Verify hash chain integrity
+  rpc VerifyIntegrity(VerifyIntegrityRequest) returns (VerifyIntegrityResponse);
+}
+
+// Request to get audit trail for specific invoice
+message GetAuditTrailRequest {
+  string invoice_id = 1;
+}
+
+// Response with audit trail
+message GetAuditTrailResponse {
+  repeated AuditEvent events = 1;
+  int32 total_events = 2;
+}
+
+// Audit event message
+message AuditEvent {
+  string event_id = 1;
+  string invoice_id = 2;
+  string service_name = 3;
+  string event_type = 4;
+  int64 timestamp_ms = 5;
+  string user_id = 6;
+  string request_id = 7;
+  string metadata = 8;  // JSON string
+  string previous_hash = 9;
+  string event_hash = 10;
+}
+
+// Request to query audit events with filters
+message QueryAuditEventsRequest {
+  string service_name = 1;  // Optional filter
+  string event_type = 2;    // Optional filter
+  int64 start_timestamp_ms = 3;  // Time range start
+  int64 end_timestamp_ms = 4;    // Time range end
+  int32 limit = 5;          // Max results (default 100)
+  int32 offset = 6;         // Pagination offset
+}
+
+// Response with filtered audit events
+message QueryAuditEventsResponse {
+  repeated AuditEvent events = 1;
+  int32 total_count = 2;
+}
+
+// Request to verify integrity
+message VerifyIntegrityRequest {
+  int64 start_timestamp_ms = 1;
+  int64 end_timestamp_ms = 2;
+}
+
+// Response with integrity verification result
+message VerifyIntegrityResponse {
+  bool integrity_valid = 1;
+  int32 total_events = 2;
+  repeated string broken_chains = 3;  // Event IDs with hash mismatches
+  int64 verification_time_ms = 4;
+}
