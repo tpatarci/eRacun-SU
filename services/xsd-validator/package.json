@@ -1,0 +1,57 @@
+{
+  "name": "@eracun/xsd-validator",
+  "version": "0.1.0",
+  "description": "XSD validation service for UBL 2.1 invoice documents",
+  "main": "dist/index.js",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "test": "NODE_OPTIONS='--experimental-vm-modules' jest",
+    "test:watch": "NODE_OPTIONS='--experimental-vm-modules' jest --watch",
+    "test:coverage": "NODE_OPTIONS='--experimental-vm-modules' jest --coverage",
+    "lint": "eslint src/**/*.ts",
+    "lint:fix": "eslint src/**/*.ts --fix",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "libxmljs2": "^0.33.0",
+    "amqplib": "^0.10.3",
+    "prom-client": "^15.1.0",
+    "@opentelemetry/api": "^1.7.0",
+    "@opentelemetry/sdk-node": "^0.45.1",
+    "@opentelemetry/exporter-jaeger": "^1.18.1",
+    "@opentelemetry/instrumentation": "^0.45.1",
+    "@opentelemetry/instrumentation-http": "^0.45.1",
+    "pino": "^8.16.2",
+    "pino-pretty": "^10.2.3",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/amqplib": "^0.10.4",
+    "@typescript-eslint/eslint-plugin": "^6.13.0",
+    "@typescript-eslint/parser": "^6.13.0",
+    "eslint": "^8.54.0",
+    "jest": "^29.7.0",
+    "@jest/globals": "^29.7.0",
+    "ts-jest": "^29.1.1",
+    "tsx": "^4.6.2",
+    "typescript": "^5.3.2"
+  },
+  "keywords": [
+    "eracun",
+    "invoice",
+    "validation",
+    "xsd",
+    "ubl",
+    "xml"
+  ],
+  "author": "eRacun Development Team",
+  "license": "UNLICENSED",
+  "private": true
+}
