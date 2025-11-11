@@ -151,7 +151,15 @@ export async function saveRetryTask(task: RetryTask): Promise<void> {
     await pool.query(
       `INSERT INTO retry_queue
        (message_id, original_payload, original_queue, error_reason, retry_count, max_retries, next_retry_at, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending')
+       ON CONFLICT (message_id) DO UPDATE
+         SET original_payload = EXCLUDED.original_payload,
+             original_queue = EXCLUDED.original_queue,
+             error_reason = EXCLUDED.error_reason,
+             retry_count = EXCLUDED.retry_count,
+             max_retries = EXCLUDED.max_retries,
+             next_retry_at = EXCLUDED.next_retry_at,
+             status = 'pending'`,
       [
         task.message_id,
         task.original_payload,
@@ -172,8 +180,9 @@ export async function saveRetryTask(task: RetryTask): Promise<void> {
         original_queue: task.original_queue,
         retry_count: task.retry_count,
         next_retry_at: task.next_retry_at,
+        operation: 'upsert',
       },
-      'Retry task saved'
+      'Retry task persisted'
     );
   } catch (error) {
     logger.error({ error, message_id: task.message_id }, 'Failed to save retry task');
