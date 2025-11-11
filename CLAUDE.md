@@ -593,6 +593,67 @@ refactor/<service-name>/<improvement>
 - Critical gaps not tracked = forgotten work = system risk
 - This is **NON-NEGOTIABLE** project hygiene
 
+### 9.5 Completion Reports (MANDATORY)
+
+**⚠️ NEW PRACTICE:** All significant completed work MUST be documented in completion reports.
+
+**Purpose:** Traceability, forensic analysis, audit trail, and knowledge transfer
+
+**Location:** `docs/reports/`
+
+**When to Write Completion Reports:**
+- ✅ After completing TODO items (especially Priority 1 items)
+- ✅ After completing PENDING items
+- ✅ After implementing bounded contexts or services
+- ✅ After deploying to staging or production
+- ✅ After investigating major incidents or bugs
+- ❌ For trivial changes (typo fixes, minor refactors)
+
+**File Naming Convention:**
+```
+YYYY-MM-DD-{task-id}-{short-description}.md
+```
+
+**Examples:**
+- `2025-11-10-TODO-006-completion.md`
+- `2025-12-05-xsd-validator-implementation.md`
+- `2026-01-01-production-launch.md`
+
+**Required Sections:**
+1. **Executive Summary** - Brief overview (2-3 sentences)
+2. **What Was Delivered** - Detailed breakdown with code examples
+3. **Git Status** - Commit hash, branch, files changed
+4. **Traceability** - Previous work, task duration, quality metrics
+5. **Next Steps** - Suggested follow-up work (if applicable)
+
+**Why This Practice Doesn't Exist in Standard IT:**
+- Gap in documentation standards (ADRs cover decisions, CHANGELOGs cover releases, but nothing covers work completion)
+- Critical for AI-assisted development (session continuity when context resets)
+- Essential for regulated industries (ISO 9000, Croatian fiscalization compliance)
+- Enables forensic analysis (understand what happened months later)
+
+**Integration with Other Documentation:**
+- **ADRs** (`/docs/adr/`) - Architectural **decisions** (why we chose X over Y)
+- **PENDING** (`/docs/pending/`) - **Deferred work** (what needs doing later)
+- **TODO.md** - **Active work** (what we're doing now)
+- **CHANGELOG.md** - **User-facing changes** (releases)
+- **Reports** (`/docs/reports/`) - **Completed work** (what we did and how)
+
+**Workflow:**
+1. Identify work → Add to TODO.md or PENDING
+2. Make decisions → Document in ADR
+3. Complete work → **Write completion report**
+4. Release → Update CHANGELOG.md
+
+**Retention Policy:** Forever (regulatory compliance, knowledge preservation)
+
+**Compliance Value:**
+- **ISO 9000:** Work records + quality verification
+- **Croatian Fiscalization Law:** Traceable system modifications
+- **Audit Trail:** Complete history of who did what and when
+
+**See:** `docs/reports/README.md` for template and best practices
+
 ---
 
 ## 10. PERFORMANCE BUDGETS
