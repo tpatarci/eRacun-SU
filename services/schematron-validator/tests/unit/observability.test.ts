@@ -30,8 +30,8 @@ import {
 
 describe('Observability', () => {
   beforeEach(() => {
-    // Reset metrics between tests
-    getMetricsRegistry().clear();
+    // Reset metric values between tests (keeps metrics registered)
+    getMetricsRegistry().resetMetrics();
   });
 
   // ==========================================================================
