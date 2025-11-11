@@ -168,11 +168,30 @@ describe('writer.ts', () => {
   });
 
   describe('writeAuditEvent', () => {
-    it('should write event with hash chain', async () => {
-      // Mock getLastEventHash
-      mockQuery
-        .mockResolvedValueOnce({ rows: [{ event_hash: 'previous-hash-123' }] }) // getLastEventHash
-        .mockResolvedValueOnce({ rows: [] }); // INSERT
+    let mockClient: any;
+    let mockClientQuery: jest.Mock;
+    let mockRelease: jest.Mock;
+
+    beforeEach(() => {
+      // Setup mock client for transaction
+      mockClientQuery = jest.fn();
+      mockRelease = jest.fn();
+      mockClient = {
+        query: mockClientQuery,
+        release: mockRelease,
+      };
+
+      // Mock pool.connect() to return our mock client
+      mockPool.connect = jest.fn().mockResolvedValue(mockClient);
+    });
+
+    it('should write event with hash chain using transaction', async () => {
+      // Mock transaction queries: BEGIN, SELECT FOR UPDATE, INSERT, COMMIT
+      mockClientQuery
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({ rows: [{ event_hash: 'previous-hash-123' }] }) // SELECT FOR UPDATE
+        .mockResolvedValueOnce({ rows: [] }) // INSERT
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
       const event: AuditEvent = {
         event_id: 'evt-001',
@@ -187,14 +206,23 @@ describe('writer.ts', () => {
 
       await writeAuditEvent(event);
 
-      // Verify INSERT was called with correct parameters
-      expect(mockQuery).toHaveBeenCalledTimes(2);
-      const insertCall = mockQuery.mock.calls[1];
-      expect(insertCall[0]).toContain('INSERT INTO audit_events');
+      // Verify transaction flow
+      expect(mockClientQuery).toHaveBeenCalledTimes(4);
+      expect(mockClientQuery.mock.calls[0][0]).toBe('BEGIN');
+      expect(mockClientQuery.mock.calls[1][0]).toContain('SELECT event_hash FROM audit_events');
+      expect(mockClientQuery.mock.calls[1][0]).toContain('FOR UPDATE');
+      expect(mockClientQuery.mock.calls[2][0]).toContain('INSERT INTO audit_events');
+      expect(mockClientQuery.mock.calls[3][0]).toBe('COMMIT');
+
+      // Verify INSERT parameters
+      const insertCall = mockClientQuery.mock.calls[2];
       expect(insertCall[1][0]).toBe('evt-001'); // event_id
       expect(insertCall[1][1]).toBe('inv-001'); // invoice_id
       expect(insertCall[1][8]).toBe('previous-hash-123'); // previous_hash
       expect(insertCall[1][9]).toMatch(/^[a-f0-9]{64}$/); // event_hash
+
+      // Verify client released
+      expect(mockRelease).toHaveBeenCalled();
 
       // Verify metrics were updated
       expect(observability.auditEventsWritten.inc).toHaveBeenCalledWith({
@@ -205,10 +233,12 @@ describe('writer.ts', () => {
     });
 
     it('should write first event with null previous_hash', async () => {
-      // Mock getLastEventHash returning null (no previous events)
-      mockQuery
-        .mockResolvedValueOnce({ rows: [] }) // getLastEventHash
-        .mockResolvedValueOnce({ rows: [] }); // INSERT
+      // Mock transaction queries for first event (no previous hash)
+      mockClientQuery
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({ rows: [] }) // SELECT FOR UPDATE (no rows = first event)
+        .mockResolvedValueOnce({ rows: [] }) // INSERT
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
       const event: AuditEvent = {
         event_id: 'evt-001',
@@ -222,14 +252,16 @@ describe('writer.ts', () => {
 
       await writeAuditEvent(event);
 
-      const insertCall = mockQuery.mock.calls[1];
+      const insertCall = mockClientQuery.mock.calls[2];
       expect(insertCall[1][8]).toBeNull(); // previous_hash should be null
     });
 
     it('should use provided event_hash if present', async () => {
-      mockQuery
-        .mockResolvedValueOnce({ rows: [] }) // getLastEventHash
-        .mockResolvedValueOnce({ rows: [] }); // INSERT
+      mockClientQuery
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({ rows: [] }) // SELECT FOR UPDATE
+        .mockResolvedValueOnce({ rows: [] }) // INSERT
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
       const customHash = 'a'.repeat(64);
       const event: AuditEvent = {
@@ -245,14 +277,15 @@ describe('writer.ts', () => {
 
       await writeAuditEvent(event);
 
-      const insertCall = mockQuery.mock.calls[1];
+      const insertCall = mockClientQuery.mock.calls[2];
       expect(insertCall[1][9]).toBe(customHash);
     });
 
-    it('should throw error on database failure', async () => {
-      mockQuery
-        .mockResolvedValueOnce({ rows: [] }) // getLastEventHash
-        .mockRejectedValueOnce(new Error('INSERT failed'));
+    it('should throw error on database failure and rollback', async () => {
+      mockClientQuery
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({ rows: [] }) // SELECT FOR UPDATE
+        .mockRejectedValueOnce(new Error('INSERT failed')); // INSERT fails
 
       const event: AuditEvent = {
         event_id: 'evt-001',
@@ -265,13 +298,22 @@ describe('writer.ts', () => {
       };
 
       await expect(writeAuditEvent(event)).rejects.toThrow('INSERT failed');
+
+      // Verify ROLLBACK was called
+      expect(mockClientQuery).toHaveBeenCalledWith('ROLLBACK');
+
+      // Verify client was released
+      expect(mockRelease).toHaveBeenCalled();
+
       expect(observability.setSpanError).toHaveBeenCalled();
     });
 
     it('should handle missing optional fields', async () => {
-      mockQuery
-        .mockResolvedValueOnce({ rows: [] })
-        .mockResolvedValueOnce({ rows: [] });
+      mockClientQuery
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({ rows: [] }) // SELECT FOR UPDATE
+        .mockResolvedValueOnce({ rows: [] }) // INSERT
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
 
       const event: AuditEvent = {
         event_id: 'evt-001',
@@ -286,8 +328,39 @@ describe('writer.ts', () => {
 
       await writeAuditEvent(event);
 
-      const insertCall = mockQuery.mock.calls[1];
+      const insertCall = mockClientQuery.mock.calls[2];
       expect(insertCall[1][5]).toBeNull(); // user_id should be null
+    });
+
+    it('should use SELECT FOR UPDATE to prevent race conditions', async () => {
+      // This test verifies the fix for the hash chain race condition
+      // See P1 review comment: concurrent writers must not read same previous_hash
+      mockClientQuery
+        .mockResolvedValueOnce({ rows: [] }) // BEGIN
+        .mockResolvedValueOnce({ rows: [{ event_hash: 'locked-hash' }] }) // SELECT FOR UPDATE
+        .mockResolvedValueOnce({ rows: [] }) // INSERT
+        .mockResolvedValueOnce({ rows: [] }); // COMMIT
+
+      const event: AuditEvent = {
+        event_id: 'evt-001',
+        invoice_id: 'inv-001',
+        service_name: 'xsd-validator',
+        event_type: 'VALIDATION_STARTED',
+        timestamp_ms: 1700000000000,
+        request_id: 'req-001',
+        metadata: {},
+      };
+
+      await writeAuditEvent(event);
+
+      // Verify SELECT FOR UPDATE was used (not just SELECT)
+      const selectQuery = mockClientQuery.mock.calls[1][0];
+      expect(selectQuery).toContain('FOR UPDATE');
+      expect(selectQuery).toContain('ORDER BY id DESC LIMIT 1');
+
+      // Verify the locked hash was used as previous_hash
+      const insertCall = mockClientQuery.mock.calls[2];
+      expect(insertCall[1][8]).toBe('locked-hash');
     });
   });
 

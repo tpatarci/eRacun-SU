@@ -136,16 +136,31 @@ export async function writeAuditEvent(event: AuditEvent): Promise<void> {
 
   const startTime = Date.now();
 
+  // CRITICAL: Use transaction with SELECT FOR UPDATE to prevent race conditions
+  // Without this, concurrent writes can create forked chains (both read same previous_hash)
+  const pool = getPool();
+  const client = await pool.connect();
+
   try {
-    // Get previous hash for chain linking
-    const previousHash = await getLastEventHash();
+    await client.query('BEGIN');
+
+    // Lock the last event row to serialize hash chain writes
+    // This prevents two concurrent writers from reading the same previous_hash
+    const result = await client.query(
+      `SELECT event_hash FROM audit_events
+       ORDER BY id DESC LIMIT 1
+       FOR UPDATE`
+    );
+    const previousHash = result.rows[0]?.event_hash || null;
 
     // Calculate event hash if not provided
-    const eventHash = event.event_hash || calculateEventHash({ ...event, previous_hash: previousHash || undefined });
+    const eventHash = event.event_hash || calculateEventHash({
+      ...event,
+      previous_hash: previousHash || undefined
+    });
 
-    // Write to database (INSERT only)
-    const pool = getPool();
-    await pool.query(
+    // Write to database (INSERT only - immutable)
+    await client.query(
       `INSERT INTO audit_events
        (event_id, invoice_id, service_name, event_type, timestamp_ms,
         user_id, request_id, metadata, previous_hash, event_hash)
@@ -164,6 +179,8 @@ export async function writeAuditEvent(event: AuditEvent): Promise<void> {
       ]
     );
 
+    await client.query('COMMIT');
+
     // Metrics
     const duration = (Date.now() - startTime) / 1000;
     auditWriteDuration.observe({ service: event.service_name }, duration);
@@ -180,6 +197,9 @@ export async function writeAuditEvent(event: AuditEvent): Promise<void> {
     }, 'Audit event written');
 
   } catch (error) {
+    // Rollback transaction on error
+    await client.query('ROLLBACK');
+
     setSpanError(span, error as Error);
     span.end();
 
@@ -192,6 +212,9 @@ export async function writeAuditEvent(event: AuditEvent): Promise<void> {
     }, 'Failed to write audit event');
 
     throw error;
+  } finally {
+    // Always release client back to pool
+    client.release();
   }
 }
 
