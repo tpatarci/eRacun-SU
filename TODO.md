@@ -393,7 +393,8 @@ Before we can define business logic for individual bounded contexts, we need to 
 
 ### TODO-006: Document External System Integration Points
 
-**Status:** ⏳ Not Started
+**Status:** ✅ Complete
+**Completed:** 2025-11-10
 
 **Objective:**
 - Catalog all external systems (FINA SOAP API, AS4 gateways, DZS KLASUS registry)
@@ -541,7 +542,7 @@ Before proceeding to bounded context implementation, verify:
 - [x] **TODO-003 Complete:** Service dependency graph created, no circular dependencies
 - [x] **TODO-004 Complete:** B2C, B2B, B2G pipelines fully specified with error handling
 - [ ] **TODO-005 Complete:** Service dependency matrix analyzed and mitigation backlog created
-- [ ] **TODO-006 Complete:** External integration catalog finalized with credential lifecycle plan
+- [x] **TODO-006 Complete:** External integration catalog finalized with credential lifecycle plan
 - [x] **TODO-008 Complete:** Cross-cutting concern standards published and adopted
 - [ ] **ADR-003 Approved:** System-wide integration architecture reviewed and approved
 - [ ] **No architectural gaps:** All system-level design decisions documented
