@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build output
+dist/
+*.js
+*.js.map
+*.d.ts
+!jest.config.js
+
+# Environment
+.env
+.env.local
+
+# Certificates (NEVER commit real certificates)
+*.p12
+*.pfx
+*.key
+*.pem
+!tests/fixtures/*.p12
+
+# Test coverage
+coverage/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+
+# Logs
+*.log
