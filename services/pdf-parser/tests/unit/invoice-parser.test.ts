@@ -105,6 +105,15 @@ describe('InvoiceParser', () => {
       expect(result.amounts.currency).toBe('EUR');
     });
 
+    it('should extract total amount in international format (comma as thousands)', () => {
+      const text = 'Total: 1,234.56 EUR';
+
+      const result = parser.parseInvoice(text);
+
+      expect(result.amounts.total).toBeCloseTo(1234.56, 2);
+      expect(result.amounts.currency).toBe('EUR');
+    });
+
     it('should extract VAT amount', () => {
       const text = `
         Ukupno: 1.000,00 kn
