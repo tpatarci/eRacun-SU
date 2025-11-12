@@ -57,7 +57,7 @@ Implement AS4 (OASIS ebMS 3.0) protocol integration for B2B invoice exchange via
 - [ ] Receive B2B invoice from test Access Point
 - [ ] Handle AS4 Receipt signals correctly
 - [ ] Handle AS4 Error signals with retry logic
-- [ ] 90%+ test coverage (Jest + integration tests)
+- [ ] 100% test coverage (Jest + integration tests)
 - [ ] OpenTelemetry tracing for message lifecycle
 - [ ] Prometheus metrics (message counts, latency, errors)
 - [ ] RUNBOOK.md with operational procedures
@@ -125,7 +125,7 @@ Automated monthly e-reporting (eIzvještavanje) to Tax Authority. Issuers report
 - [ ] Submit report to test environment (ePorezna sandbox)
 - [ ] Receive submission confirmation
 - [ ] Cron-based automated generation
-- [ ] 85%+ test coverage
+- [ ] 100% test coverage
 - [ ] Prometheus metrics (report size, submission time)
 - [ ] RUNBOOK.md with manual submission procedure
 
@@ -201,7 +201,7 @@ Validate OIB (Osobni Identifikacijski Broj) - Croatian personal and business ide
 - [ ] Reject non-numeric: `1234567890A`
 - [ ] Batch validation endpoint works
 - [ ] RabbitMQ message processing
-- [ ] 95%+ test coverage (critical validation logic)
+- [ ] 100% test coverage (critical validation logic)
 - [ ] Property-based testing (generate valid/invalid OIBs)
 - [ ] Prometheus metrics (validation rate, error rate)
 
@@ -262,7 +262,7 @@ Validate IBAN (International Bank Account Number) for Croatian bank accounts. Re
 - [ ] Reject wrong country code (non-HR)
 - [ ] Reject invalid bank code (not in registry)
 - [ ] Identify bank name from code
-- [ ] 95%+ test coverage
+- [ ] 100% test coverage
 - [ ] RabbitMQ integration
 - [ ] Update bank registry via cron (monthly)
 
@@ -535,7 +535,7 @@ Expose REST API for enterprise customers to submit invoices programmatically (al
 - [ ] Async processing with status tracking
 - [ ] Rate limiting works (429 Too Many Requests)
 - [ ] OpenAPI 3.1 spec generated
-- [ ] 85%+ test coverage
+- [ ] 100% test coverage
 - [ ] Load test: 1000 req/sec sustained
 
 ---
@@ -588,7 +588,7 @@ Extract text from scanned invoice images (JPEG, PNG, PDF scans) using OCR. Criti
 - [ ] Extract invoice number, date, total amount
 - [ ] Return confidence scores
 - [ ] Preprocess images correctly (deskew, denoise)
-- [ ] 85%+ test coverage
+- [ ] 100% test coverage
 - [ ] Benchmark: Process A4 page in <3 seconds
 - [ ] RabbitMQ integration
 
@@ -604,7 +604,7 @@ Extract text from scanned invoice images (JPEG, PNG, PDF scans) using OCR. Criti
 ### Code Quality Standards
 
 1. **TypeScript Strict Mode:** ALL services use `strict: true`
-2. **Test Coverage:** Minimum 85% (enforced by Jest)
+2. **Test Coverage:** 100% (enforced by Jest) - NON-NEGOTIABLE
 3. **Linting:** ESLint with Airbnb config + Prettier
 4. **Error Handling:** No silent failures, structured errors
 5. **Logging:** Pino JSON logs with request ID propagation
@@ -638,11 +638,48 @@ services/{service-name}/
 
 ### Testing Requirements
 
-1. **Unit Tests:** Mock all external dependencies
-2. **Integration Tests:** Use Testcontainers for PostgreSQL/RabbitMQ
-3. **Property-Based Tests:** Use `fast-check` for validators
-4. **Contract Tests:** Use Pact for service boundaries (future)
-5. **Performance Tests:** Benchmark critical paths (<100ms p95)
+**CRITICAL: 100% Test Coverage Required (Non-Negotiable)**
+
+This system handles legally binding financial documents where failures result in:
+- **66,360 EUR penalties** for non-compliance
+- **Loss of VAT deduction rights** (retroactive tax liability)
+- **11-year audit liability** (criminal prosecution)
+- **Zero error tolerance** (Tax Authority rejects invalid invoices)
+
+**Tests that prove "code reads CLI and writes to disk" are proof of non-garbage, not proof of correctness. We require proof of correctness.**
+
+**Coverage Enforcement:**
+```javascript
+// Use shared Jest config: shared/jest-config/base.config.js
+coverageThreshold: {
+  global: {
+    branches: 100,
+    functions: 100,
+    lines: 100,
+    statements: 100
+  }
+}
+```
+
+**Jest Configuration:**
+```javascript
+// In your service's jest.config.js
+const baseConfig = require('../../shared/jest-config/base.config.js');
+module.exports = {
+  ...baseConfig,
+  displayName: 'your-service-name'
+};
+```
+
+**Test Types:**
+1. **Unit Tests (70%):** Mock all external dependencies
+2. **Integration Tests (25%):** Use Testcontainers for PostgreSQL/RabbitMQ
+3. **E2E Tests (5%):** Critical user journeys only
+4. **Property-Based Tests:** Use `fast-check` for validators (mandatory for validators)
+5. **Contract Tests:** Use Pact for service boundaries (future consideration)
+6. **Performance Tests:** Benchmark critical paths (<100ms p95)
+
+**Documentation:** See `shared/jest-config/README.md` for complete testing guide
 
 ### Git Workflow
 
