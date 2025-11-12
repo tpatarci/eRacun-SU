@@ -109,6 +109,25 @@ export const inboxUnreadCount = new Gauge({
 });
 
 /**
+ * Email polling errors (IMPROVEMENT-002)
+ */
+export const emailPollingErrors = new Counter({
+  name: 'email_ingestion_polling_errors_total',
+  help: 'Total email polling errors by type',
+  labelNames: ['error_type'], // error_type: connection, timeout, parsing, etc.
+  registers: [register],
+});
+
+/**
+ * Email polling timeouts (IMPROVEMENT-002)
+ */
+export const emailPollingTimeouts = new Counter({
+  name: 'email_ingestion_polling_timeouts_total',
+  help: 'Email polling operations that timed out',
+  registers: [register],
+});
+
+/**
  * Get Prometheus metrics registry
  */
 export function getMetricsRegistry(): Registry {

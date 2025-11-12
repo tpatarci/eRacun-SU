@@ -15,6 +15,8 @@ import {
   inboxUnreadCount,
   emailProcessingDuration,
   withSpan,
+  emailPollingErrors,
+  emailPollingTimeouts,
 } from './observability';
 
 /**
@@ -29,6 +31,8 @@ export interface EmailPollerConfig {
   batchSize: number;
   /** Enable/disable polling */
   enabled: boolean;
+  /** Poll timeout in milliseconds (default: 30000) */
+  pollTimeoutMs: number;
 }
 
 /**
@@ -45,6 +49,7 @@ export class EmailPoller {
   private cronJob: cron.ScheduledTask | null = null;
   private processor: EmailProcessor;
   private isPolling = false;
+  private lastProcessedUid = 0;
 
   constructor(
     config: EmailPollerConfig,
@@ -112,6 +117,8 @@ export class EmailPoller {
 
   /**
    * Perform a single poll of the inbox
+   *
+   * IMPROVEMENT-002: Added timeout protection and error metrics
    */
   async poll(): Promise<void> {
     if (this.isPolling) {
@@ -123,75 +130,119 @@ export class EmailPoller {
     const endTimer = emailProcessingDuration.startTimer({ operation: 'poll' });
 
     try {
-      await withSpan(
-        'email.poll',
-        {
-          mailbox: this.config.mailbox,
-          batchSize: this.config.batchSize,
-        },
-        async (span) => {
-          logger.info({ mailbox: this.config.mailbox }, 'Starting email poll');
-
-          // Ensure IMAP connection is established
-          if (!this.imapClient.getConnectionStatus()) {
-            logger.info('IMAP client not connected, attempting to connect');
-            await this.imapClient.connect();
-          }
-
-          // Open mailbox
-          const box = await this.imapClient.openMailbox(this.config.mailbox, false);
-
-          // Update unread count metric
-          const unreadCount = box.messages.unseen || 0;
-          inboxUnreadCount.set({ mailbox: this.config.mailbox }, unreadCount);
-          span.setAttribute('unread_count', unreadCount);
-
-          logger.info(
-            {
-              total: box.messages.total,
-              unseen: unreadCount,
-              new: box.messages.new,
-            },
-            'Mailbox status'
-          );
-
-          if (unreadCount === 0) {
-            logger.debug('No unread emails to process');
-            return;
-          }
-
-          // Search for unread messages
-          const uids = await this.imapClient.searchMessages(['UNSEEN']);
-
-          if (uids.length === 0) {
-            logger.debug('No unseen messages found');
-            return;
-          }
-
-          // Limit batch size
-          const batchUids = uids.slice(0, this.config.batchSize);
-          span.setAttribute('batch_size', batchUids.length);
-
-          logger.info(
-            { total: uids.length, batch: batchUids.length },
-            'Processing email batch'
-          );
-
-          // Process emails sequentially (avoid overwhelming downstream services)
-          for (const uid of batchUids) {
-            await this.processEmail(uid);
-          }
-
-          logger.info({ processed: batchUids.length }, 'Email batch processing complete');
-        }
-      );
+      // Execute poll with timeout protection
+      await Promise.race([
+        this.executePoll(),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error('Email poll timeout')),
+            this.config.pollTimeoutMs
+          )
+        ),
+      ]);
     } catch (err) {
-      logger.error({ err }, 'Email poll failed');
-      throw err;
+      // Classify error for monitoring
+      if ((err as Error).message.includes('timeout')) {
+        emailPollingTimeouts.inc();
+        logger.warn(
+          { timeoutMs: this.config.pollTimeoutMs },
+          'Email poll timed out'
+        );
+      } else {
+        emailPollingErrors.inc({
+          error_type: (err as any).code || 'unknown',
+        });
+        logger.error(
+          { error: err, code: (err as any).code },
+          'Email polling failed'
+        );
+      }
+      // Continue - next scheduled poll will retry
     } finally {
-      this.isPolling = false;
+      this.isPolling = false; // GUARANTEE: Always reset flag
       endTimer();
     }
+  }
+
+  /**
+   * Extract polling logic for timeout protection
+   *
+   * IMPROVEMENT-002: Separated from poll() to enable Promise.race timeout
+   */
+  private async executePoll(): Promise<void> {
+    await withSpan(
+      'email.poll',
+      {
+        mailbox: this.config.mailbox,
+        batchSize: this.config.batchSize,
+      },
+      async (span) => {
+        logger.info({ mailbox: this.config.mailbox }, 'Starting email poll');
+
+        // Ensure IMAP connection is established
+        if (!this.imapClient.getConnectionStatus()) {
+          logger.info('IMAP client not connected, attempting to connect');
+          await this.imapClient.connect();
+        }
+
+        // Open mailbox
+        const box = await this.imapClient.openMailbox(this.config.mailbox, false);
+
+        // Update unread count metric
+        const unreadCount = box.messages.unseen || 0;
+        inboxUnreadCount.set({ mailbox: this.config.mailbox }, unreadCount);
+        span.setAttribute('unread_count', unreadCount);
+
+        logger.info(
+          {
+            total: box.messages.total,
+            unseen: unreadCount,
+            new: box.messages.new,
+          },
+          'Mailbox status'
+        );
+
+        if (unreadCount === 0) {
+          logger.debug('No unread emails to process');
+          return;
+        }
+
+        // Search for unread messages
+        const uids = await this.imapClient.searchMessages(['UNSEEN']);
+
+        if (uids.length === 0) {
+          logger.debug('No unseen messages found');
+          return;
+        }
+
+        // Limit batch size
+        const batchUids = uids.slice(0, this.config.batchSize);
+        span.setAttribute('batch_size', batchUids.length);
+
+        logger.info(
+          { total: uids.length, batch: batchUids.length },
+          'Processing email batch'
+        );
+
+        // IMPROVEMENT-002: Process in controlled parallel batches (max 3 concurrent)
+        const concurrencyLimit = 3;
+        for (let i = 0; i < batchUids.length; i += concurrencyLimit) {
+          const batch = batchUids.slice(i, i + concurrencyLimit);
+
+          // Use Promise.allSettled to handle individual email failures
+          await Promise.allSettled(
+            batch.map(uid => this.processEmail(uid))
+          );
+
+          this.lastProcessedUid = Math.max(...batch);
+        }
+
+        logger.info(
+          { processed: batchUids.length },
+          'Email batch processing complete'
+        );
+      }
+    );
   }
 
   /**
@@ -250,6 +301,8 @@ export class EmailPoller {
 
 /**
  * Create email poller from environment variables
+ *
+ * IMPROVEMENT-002: Added pollTimeoutMs configuration
  */
 export function createEmailPollerFromEnv(
   imapClient: ImapClient,
@@ -260,6 +313,7 @@ export function createEmailPollerFromEnv(
     mailbox: process.env.EMAIL_MAILBOX || 'INBOX',
     batchSize: parseInt(process.env.EMAIL_BATCH_SIZE || '10', 10),
     enabled: process.env.EMAIL_POLLING_ENABLED !== 'false',
+    pollTimeoutMs: parseInt(process.env.EMAIL_POLL_TIMEOUT_MS || '30000', 10), // 30 seconds
   };
 
   logger.info({ config }, 'Creating email poller');
