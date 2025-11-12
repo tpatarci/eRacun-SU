@@ -60,9 +60,25 @@ export class MessagePublisher {
   private connection: Connection | null = null;
   private channel: ConfirmChannel | null = null;
   private isConnected = false;
+  private queueDepth = 0; // IMPROVEMENT-005: Track queue depth for backpressure
+  private maxQueueDepth = 1000; // IMPROVEMENT-005: Maximum queue depth before backpressure
 
   constructor(config: MessageBusConfig) {
     this.config = config;
+  }
+
+  /**
+   * Get current queue depth (IMPROVEMENT-005)
+   */
+  getQueueDepth(): number {
+    return this.queueDepth;
+  }
+
+  /**
+   * Set maximum queue depth threshold (IMPROVEMENT-005)
+   */
+  setMaxQueueDepth(max: number): void {
+    this.maxQueueDepth = max;
   }
 
   /**
@@ -163,6 +179,9 @@ export class MessagePublisher {
   ): Promise<void> {
     const endTimer = emailProcessingDuration.startTimer({ operation: 'publish' });
 
+    // IMPROVEMENT-005: Track queue depth
+    this.queueDepth++;
+
     try {
       await withSpan(
         'messagebus.publish',
@@ -170,6 +189,7 @@ export class MessagePublisher {
           attachment_id: attachment.id,
           content_type: attachment.contentType,
           size: attachment.size,
+          queue_depth: this.queueDepth,
         },
         async (span) => {
           if (!this.channel || !this.isConnected) {
@@ -210,6 +230,7 @@ export class MessagePublisher {
               attachmentId: attachment.id,
               filename: attachment.filename,
               size: messageBuffer.length,
+              queueDepth: this.queueDepth,
             },
             'Publishing attachment to message bus'
           );
@@ -258,6 +279,8 @@ export class MessagePublisher {
       logger.error({ err, attachmentId: attachment.id }, 'Failed to publish attachment');
       throw err;
     } finally {
+      // IMPROVEMENT-005: Decrement queue depth after publishing
+      this.queueDepth--;
       endTimer();
     }
   }

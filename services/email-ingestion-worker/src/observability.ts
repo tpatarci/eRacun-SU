@@ -156,6 +156,45 @@ export const imapReconnectionAttempts = new Counter({
 });
 
 /**
+ * Attachment processing duration (IMPROVEMENT-005)
+ */
+export const attachmentProcessingDuration = new Histogram({
+  name: 'email_ingestion_attachment_processing_duration_ms',
+  help: 'Time to process and publish attachment in milliseconds',
+  labelNames: ['status', 'size_bucket'], // status: success|error, size_bucket: <1MB|1-5MB|5-10MB|>10MB
+  buckets: [100, 500, 1000, 5000, 10000],
+  registers: [register],
+});
+
+/**
+ * Attachments processed counter (IMPROVEMENT-005)
+ */
+export const emailAttachmentProcessed = new Counter({
+  name: 'email_ingestion_attachment_processed_total',
+  help: 'Total attachments processed with streaming',
+  labelNames: ['status', 'size_bucket'], // status: success|error, size_bucket: <1MB|1-5MB|5-10MB|>10MB
+  registers: [register],
+});
+
+/**
+ * Message publisher queue depth (IMPROVEMENT-005)
+ */
+export const messagePublisherQueueDepth = new Gauge({
+  name: 'email_ingestion_message_publisher_queue_depth',
+  help: 'Current message publisher queue depth',
+  registers: [register],
+});
+
+/**
+ * Attachment stream backpressure events (IMPROVEMENT-005)
+ */
+export const attachmentStreamBackpressure = new Counter({
+  name: 'email_ingestion_attachment_stream_backpressure_total',
+  help: 'Number of times attachment stream paused due to queue depth',
+  registers: [register],
+});
+
+/**
  * Get Prometheus metrics registry
  */
 export function getMetricsRegistry(): Registry {
