@@ -376,4 +376,117 @@ describe('SMS Sender Module', () => {
       await expect(sendSMS(params)).rejects.toThrow('phone number');
     });
   });
+
+  describe('getTwilioClient()', () => {
+    it('should return existing client if initialized', () => {
+      const { getTwilioClient } = require('../../src/sms-sender');
+
+      initTwilioClient();
+      const client1 = getTwilioClient();
+      const client2 = getTwilioClient();
+
+      expect(client1).toBe(client2);
+    });
+
+    it('should initialize client if not already initialized', () => {
+      // Clear the module cache to reset twilioClient to null
+      jest.resetModules();
+
+      // Re-setup mocks
+      jest.mock('twilio');
+      const MockedTwilio = require('twilio') as jest.MockedFunction<typeof Twilio>;
+      MockedTwilio.mockReturnValue(mockTwilioClient as any);
+
+      const { getTwilioClient } = require('../../src/sms-sender');
+      const client = getTwilioClient();
+
+      expect(client).toBeDefined();
+    });
+  });
+
+  describe('sendSMSWithTemplate()', () => {
+    beforeEach(() => {
+      initTwilioClient();
+    });
+
+    it('should send SMS using template', async () => {
+      const { sendSMSWithTemplate } = require('../../src/sms-sender');
+      const templateEngine = require('../../src/template-engine');
+
+      const result = await sendSMSWithTemplate(
+        'notif-template-123',
+        ['+385911234567'],
+        'welcome',
+        { name: 'John' },
+        NotificationPriority.NORMAL
+      );
+
+      expect(result).toBe(true);
+      expect(templateEngine.renderSMSTemplate).toHaveBeenCalledWith('welcome', { name: 'John' });
+      expect(mockMessagesCreate).toHaveBeenCalled();
+    });
+  });
+
+  describe('verifyTwilioConfig()', () => {
+    beforeEach(() => {
+      initTwilioClient();
+    });
+
+    it('should return true for valid active account', async () => {
+      const { verifyTwilioConfig } = require('../../src/sms-sender');
+
+      const mockFetch = jest.fn().mockResolvedValue({
+        sid: 'ACtest123',
+        status: 'active',
+        friendlyName: 'Test Account',
+      });
+
+      mockTwilioClient.api = {
+        accounts: jest.fn((_sid) => ({
+          fetch: mockFetch,
+        })),
+      };
+
+      const result = await verifyTwilioConfig();
+
+      expect(result).toBe(true);
+      expect(mockFetch).toHaveBeenCalled();
+    });
+
+    it('should return false for suspended account', async () => {
+      const { verifyTwilioConfig } = require('../../src/sms-sender');
+
+      const mockFetch = jest.fn().mockResolvedValue({
+        sid: 'ACtest123',
+        status: 'suspended',
+        friendlyName: 'Test Account',
+      });
+
+      mockTwilioClient.api = {
+        accounts: jest.fn((_sid) => ({
+          fetch: mockFetch,
+        })),
+      };
+
+      const result = await verifyTwilioConfig();
+
+      expect(result).toBe(false);
+    });
+
+    it('should return false on verification error', async () => {
+      const { verifyTwilioConfig } = require('../../src/sms-sender');
+
+      const mockFetch = jest.fn().mockRejectedValue(new Error('API error'));
+
+      mockTwilioClient.api = {
+        accounts: jest.fn((_sid) => ({
+          fetch: mockFetch,
+        })),
+      };
+
+      const result = await verifyTwilioConfig();
+
+      expect(result).toBe(false);
+    });
+  });
 });
