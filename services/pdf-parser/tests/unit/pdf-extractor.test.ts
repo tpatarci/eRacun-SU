@@ -24,6 +24,17 @@ describe('PDFExtractor', () => {
     });
   });
 
+  describe('Constructor', () => {
+    it('should create extractor with default config when no parameters provided', () => {
+      const defaultExtractor = new PDFExtractor();
+      const config = defaultExtractor.getConfig();
+
+      expect(config.maxFileSize).toBe(10 * 1024 * 1024);
+      expect(config.maxPages).toBe(100);
+      expect(config.minTextLength).toBe(100);
+    });
+  });
+
   describe('extractPDF', () => {
     it('should extract text from native PDF', async () => {
       const mockPdfBuffer = Buffer.from('mock pdf content');
@@ -106,6 +117,24 @@ This is extracted PDF text with sufficient content for native PDF detection. Thi
       expect(result.isScanned).toBe(true);
     });
 
+    it('should detect scanned PDF with very low meaningful text ratio below threshold', async () => {
+      // Create text with enough chars per page (> minTextLength=100) but low meaningful ratio
+      // Intersperse spaces with letters so trim() doesn't remove everything
+      // 'a' + 9 spaces, repeated 20 times = 200 chars total, 20 meaningful
+      const lowMeaningfulText = ('a' + ' '.repeat(9)).repeat(20); // 200 chars, 20 'a', 180 spaces
+      // After trim: still 200 chars (middle spaces not removed)
+      // meaningfulRatio = 20/200 = 0.1 < 0.3 (triggers line 228)
+      mockPdfParse.mockResolvedValue({
+        numpages: 1,
+        text: lowMeaningfulText,
+        info: {},
+      } as any);
+
+      const result = await extractor.extractPDF(Buffer.from('pdf'));
+
+      expect(result.isScanned).toBe(true);
+    });
+
     it('should assess high quality for text-rich PDFs', async () => {
       const longText = 'A'.repeat(600) + '\nStructured content';
       mockPdfParse.mockResolvedValue({
@@ -145,6 +174,20 @@ This is extracted PDF text with sufficient content for native PDF detection. Thi
       expect(result.quality).toBe('low');
     });
 
+    it('should assess low quality for documents with low chars per page', async () => {
+      // 150 chars per page (between 100-200, should be low quality)
+      const text = 'A'.repeat(150);
+      mockPdfParse.mockResolvedValue({
+        numpages: 1,
+        text: text,
+        info: {},
+      } as any);
+
+      const result = await extractor.extractPDF(Buffer.from('pdf'));
+
+      expect(result.quality).toBe('low');
+    });
+
     it('should throw error for files exceeding size limit', async () => {
       const largePdfBuffer = Buffer.alloc(11 * 1024 * 1024); // 11 MB
 
@@ -171,6 +214,13 @@ This is extracted PDF text with sufficient content for native PDF detection. Thi
       await expect(extractor.extractPDF(Buffer.from('corrupt'))).rejects.toThrow('corrupt');
     });
 
+    it('should handle non-Error exceptions during PDF parsing', async () => {
+      // Reject with a non-Error value (e.g., string)
+      mockPdfParse.mockRejectedValue('Some string error');
+
+      await expect(extractor.extractPDF(Buffer.from('pdf'))).rejects.toThrow('PDF extraction failed: Unknown error');
+    });
+
     it('should parse PDF creation date', async () => {
       mockPdfParse.mockResolvedValue({
         numpages: 1,
@@ -188,6 +238,37 @@ This is extracted PDF text with sufficient content for native PDF detection. Thi
       expect(result.metadata.creationDate?.getDate()).toBe(12);
     });
 
+    it('should handle invalid PDF creation date format', async () => {
+      mockPdfParse.mockResolvedValue({
+        numpages: 1,
+        text: 'Test content',
+        info: {
+          CreationDate: 'invalid-date-format',
+        },
+      } as any);
+
+      const result = await extractor.extractPDF(Buffer.from('pdf'));
+
+      // Invalid date string results in Invalid Date (NaN)
+      expect(result.metadata.creationDate).toBeInstanceOf(Date);
+      expect(isNaN(result.metadata.creationDate!.getTime())).toBe(true);
+    });
+
+    it('should handle non-string PDF creation date (triggers catch block)', async () => {
+      mockPdfParse.mockResolvedValue({
+        numpages: 1,
+        text: 'Test content',
+        info: {
+          CreationDate: 12345 as any, // Non-string value causes .replace() to throw
+        },
+      } as any);
+
+      const result = await extractor.extractPDF(Buffer.from('pdf'));
+
+      // Catch block returns undefined
+      expect(result.metadata.creationDate).toBeUndefined();
+    });
+
     it('should handle PDF with no metadata', async () => {
       mockPdfParse.mockResolvedValue({
         numpages: 1,
@@ -199,6 +280,22 @@ This is extracted PDF text with sufficient content for native PDF detection. Thi
 
       expect(result.metadata.title).toBeUndefined();
       expect(result.metadata.author).toBeUndefined();
+      expect(result.metadata.modificationDate).toBeUndefined();
+    });
+
+    it('should parse PDF modification date when present', async () => {
+      mockPdfParse.mockResolvedValue({
+        numpages: 1,
+        text: 'Content',
+        info: {
+          ModDate: 'D:20241115120000',
+        },
+      } as any);
+
+      const result = await extractor.extractPDF(Buffer.from('pdf'));
+
+      expect(result.metadata.modificationDate).toBeInstanceOf(Date);
+      expect(result.metadata.modificationDate?.getFullYear()).toBe(2024);
     });
 
     it('should record file size', async () => {

@@ -22,6 +22,18 @@ describe('FileDetector', () => {
     });
   });
 
+  describe('Constructor', () => {
+    it('should create detector with default options when no parameters provided', () => {
+      const defaultDetector = new FileDetector();
+      const options = defaultDetector.getValidationOptions();
+
+      expect(options.maxFileSize).toBe(10 * 1024 * 1024);
+      expect(options.minFileSize).toBe(1);
+      expect(options.supportedMimeTypes).toBeDefined();
+      expect(Array.isArray(options.supportedMimeTypes)).toBe(true);
+    });
+  });
+
   describe('detectFileType', () => {
     it('should detect PDF files by magic number', async () => {
       // PDF magic number: %PDF-
@@ -160,6 +172,48 @@ describe('FileDetector', () => {
 
       expect(result).toBeDefined();
       expect(result.mimeType).toBeDefined();
+    });
+
+    it('should handle errors during magic number detection gracefully', async () => {
+      // Import the fileType module to mock it
+      const fileTypeModule = await import('file-type');
+
+      // Mock fileType.fromBuffer to throw an error
+      const originalFromBuffer = fileTypeModule.default.fromBuffer;
+      fileTypeModule.default.fromBuffer = jest.fn().mockRejectedValue(new Error('Magic number detection failed'));
+
+      // Test with a buffer that would normally be detected
+      const buffer = Buffer.from('%PDF-1.4\ntest', 'utf-8');
+      const result = await detector.detectFileType(buffer, 'test.pdf');
+
+      // Should fall back to extension detection
+      expect(result.mimeType).toBe('application/pdf');
+      expect(result.detectionMethod).toBe('extension');
+
+      // Restore original function
+      fileTypeModule.default.fromBuffer = originalFromBuffer;
+    });
+
+    it('should handle corrupt buffer during magic number detection', async () => {
+      // Import the fileType module to mock it
+      const fileTypeModule = await import('file-type');
+
+      // Mock fileType.fromBuffer to throw an error
+      const originalFromBuffer = fileTypeModule.default.fromBuffer;
+      fileTypeModule.default.fromBuffer = jest.fn().mockImplementation(() => {
+        throw new Error('Invalid buffer format');
+      });
+
+      // Test with any buffer
+      const buffer = Buffer.from('some content', 'utf-8');
+      const result = await detector.detectFileType(buffer, 'document.xml');
+
+      // Should fall back to extension detection
+      expect(result.detectionMethod).toBe('extension');
+      expect(result.mimeType).toMatch(/xml/);
+
+      // Restore original function
+      fileTypeModule.default.fromBuffer = originalFromBuffer;
     });
   });
 
@@ -317,6 +371,51 @@ describe('FileDetector', () => {
       expect(options.supportedMimeTypes).toEqual(['application/pdf']);
       expect(options.maxFileSize).toBe(1048576);
       expect(options.minFileSize).toBe(10);
+    });
+
+    it('should handle empty string environment variables', () => {
+      process.env.SUPPORTED_MIME_TYPES = '';
+      process.env.MAX_FILE_SIZE = '';
+      process.env.MIN_FILE_SIZE = '';
+
+      const { createFileDetectorFromEnv } = require('../../src/file-detector');
+      const detector = createFileDetectorFromEnv();
+      const options = detector.getValidationOptions();
+
+      // Empty strings are falsy, so defaults are used
+      expect(options.supportedMimeTypes).toEqual([
+        'application/pdf',
+        'application/xml',
+        'text/xml',
+        'image/jpeg',
+        'image/jpg',
+        'image/png',
+        'image/tiff',
+      ]);
+      expect(options.maxFileSize).toBe(10 * 1024 * 1024);
+      expect(options.minFileSize).toBe(1);
+    });
+
+    it('should handle whitespace-only SUPPORTED_MIME_TYPES', () => {
+      process.env.SUPPORTED_MIME_TYPES = '   ';
+
+      const { createFileDetectorFromEnv } = require('../../src/file-detector');
+      const detector = createFileDetectorFromEnv();
+      const options = detector.getValidationOptions();
+
+      // Should result in single empty string after trim
+      expect(options.supportedMimeTypes).toEqual(['']);
+    });
+
+    it('should handle non-numeric MAX_FILE_SIZE', () => {
+      process.env.MAX_FILE_SIZE = 'not-a-number';
+
+      const { createFileDetectorFromEnv } = require('../../src/file-detector');
+      const detector = createFileDetectorFromEnv();
+      const options = detector.getValidationOptions();
+
+      // parseInt of non-numeric string returns NaN
+      expect(options.maxFileSize).toBeNaN();
     });
   });
 });
