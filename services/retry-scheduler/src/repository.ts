@@ -8,7 +8,7 @@
  * - Query for due retries
  */
 
-import { Pool, PoolClient } from 'pg';
+import { Pool } from 'pg';
 import { logger, retryQueueDepth } from './observability';
 
 // =============================================================================
