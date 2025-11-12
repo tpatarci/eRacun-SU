@@ -42,16 +42,33 @@ echo ""
 # ==============================================================================
 echo "🌐 Rule 2: Checking for direct service-to-service HTTP calls..."
 
-# Check for hardcoded service URLs in axios/fetch calls
-if grep -r "http://.*-service:" services/*/src --include="*.ts" 2>/dev/null | grep -v "// TODO"; then
+# Check for hardcoded internal service URLs in axios/fetch calls
+# Pattern matches: http[s]://hostname:port where hostname has no dots (internal services)
+# Does NOT match: https://external.domain.com:port (has dots = external)
+# Excludes: Infrastructure (rabbitmq, postgres, redis), localhost, comments
+if grep -rE "http[s]?://[^/.:]+:[0-9]" services/*/src --include="*.ts" 2>/dev/null | \
+   grep -v "// TODO" | \
+   grep -v "// " | \
+   grep -v "localhost" | \
+   grep -v "127.0.0.1" | \
+   grep -v "rabbitmq" | \
+   grep -v "postgres" | \
+   grep -v "redis" | \
+   grep -vE "https?://[^/]*\.[^/]+" | \
+   grep -v "e.g.," | \
+   grep -v "example:"; then
   echo -e "${RED}❌ VIOLATION: Direct service-to-service HTTP calls detected!${NC}"
   echo ""
   echo "Services MUST communicate via:"
   echo "  - Message bus (RabbitMQ) for commands/events"
   echo "  - API Gateway for external→internal queries"
   echo ""
-  echo "Forbidden pattern: axios.get('http://health-monitor:8084/...')"
-  echo "Required pattern: messageBus.request({ exchange: 'health.queries', ... })"
+  echo "Forbidden patterns:"
+  echo "  - axios.get('http://health-monitor:8084/...')"
+  echo "  - axios.post('http://notification-service:8080/...')"
+  echo ""
+  echo "Required pattern:"
+  echo "  messageBus.request({ exchange: 'health.queries', ... })"
   echo ""
   echo "See: docs/adr/005-bounded-context-isolation.md"
   VIOLATIONS=$((VIOLATIONS + 1))
