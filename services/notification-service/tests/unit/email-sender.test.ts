@@ -6,6 +6,10 @@ import nodemailer from 'nodemailer';
 import {
   initTransporter,
   sendEmail,
+  verifyConnection,
+  closeTransporter,
+  sendEmailWithTemplate,
+  sendBatch,
   SendEmailParams,
 } from '../../src/email-sender';
 import { NotificationPriority } from '../../src/repository';
@@ -336,6 +340,161 @@ describe('Email Sender Module', () => {
         status: 'sent',
         sent_at: expect.any(Date),
       });
+    });
+  });
+
+  describe('verifyConnection()', () => {
+    it('should verify SMTP connection successfully', async () => {
+      const result = await verifyConnection();
+
+      expect(result).toBe(true);
+    });
+
+    it('should return false on verification failure', async () => {
+      // Reset transporter and create new one with failing verify
+      await closeTransporter();
+
+      const failingTransporter = {
+        sendMail: mockSendMail,
+        verify: jest.fn().mockRejectedValue(new Error('Connection failed')),
+        close: jest.fn(),
+      };
+      mockedNodemailer.createTransport.mockReturnValue(failingTransporter as any);
+
+      const result = await verifyConnection();
+
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('closeTransporter()', () => {
+    it('should close transporter', async () => {
+      // Ensure we have a fresh transporter
+      await closeTransporter();
+
+      const transporterWithClose = {
+        sendMail: mockSendMail,
+        verify: jest.fn().mockResolvedValue(true),
+        close: jest.fn(),
+      };
+      mockedNodemailer.createTransport.mockReturnValue(transporterWithClose as any);
+
+      initTransporter();
+      await closeTransporter();
+
+      expect(transporterWithClose.close).toHaveBeenCalled();
+    });
+
+    it('should do nothing if transporter not initialized', async () => {
+      await closeTransporter(); // Reset
+      // Should not throw error when called without initialization
+      await expect(closeTransporter()).resolves.not.toThrow();
+    });
+  });
+
+  describe('sendEmailWithTemplate()', () => {
+    beforeEach(() => {
+      initTransporter();
+      const rateLimiter = require('../../src/rate-limiter');
+      rateLimiter.emailRateLimiter.waitForToken.mockResolvedValue(true);
+    });
+
+    it('should send email using template', async () => {
+      const templateEngine = require('../../src/template-engine');
+
+      const result = await sendEmailWithTemplate(
+        'notif-template-test',
+        ['user@example.com'],
+        'Template Email',
+        'invoice-reminder',
+        { invoice_id: 'INV-456', amount: '€200.00' },
+        NotificationPriority.NORMAL
+      );
+
+      expect(result).toBe(true);
+      expect(templateEngine.renderEmailTemplate).toHaveBeenCalledWith(
+        'invoice-reminder',
+        { invoice_id: 'INV-456', amount: '€200.00' }
+      );
+      expect(mockSendMail).toHaveBeenCalled();
+    });
+  });
+
+  describe('sendBatch()', () => {
+    beforeEach(() => {
+      initTransporter();
+      const rateLimiter = require('../../src/rate-limiter');
+      rateLimiter.emailRateLimiter.waitForToken.mockResolvedValue(true);
+    });
+
+    it('should send batch of emails', async () => {
+      const emails: SendEmailParams[] = [
+        {
+          notification_id: 'batch-1',
+          recipients: ['user1@example.com'],
+          subject: 'Email 1',
+          body: 'Content 1',
+          priority: NotificationPriority.LOW,
+        },
+        {
+          notification_id: 'batch-2',
+          recipients: ['user2@example.com'],
+          subject: 'Email 2',
+          body: 'Content 2',
+          priority: NotificationPriority.LOW,
+        },
+        {
+          notification_id: 'batch-3',
+          recipients: ['user3@example.com'],
+          subject: 'Email 3',
+          body: 'Content 3',
+          priority: NotificationPriority.LOW,
+        },
+      ];
+
+      const successCount = await sendBatch(emails);
+
+      expect(successCount).toBe(3);
+      expect(mockSendMail).toHaveBeenCalledTimes(3);
+    });
+
+    it('should continue on individual failures', async () => {
+      // First email succeeds, second fails all 3 retry attempts, third succeeds
+      mockSendMail
+        .mockResolvedValueOnce({ messageId: 'msg-1' })
+        .mockRejectedValueOnce(new Error('Send failed'))
+        .mockRejectedValueOnce(new Error('Send failed'))
+        .mockRejectedValueOnce(new Error('Send failed'))
+        .mockResolvedValueOnce({ messageId: 'msg-3' });
+
+      const emails: SendEmailParams[] = [
+        {
+          notification_id: 'batch-1',
+          recipients: ['user1@example.com'],
+          subject: 'Email 1',
+          body: 'Content 1',
+          priority: NotificationPriority.LOW,
+        },
+        {
+          notification_id: 'batch-2',
+          recipients: ['user2@example.com'],
+          subject: 'Email 2',
+          body: 'Content 2',
+          priority: NotificationPriority.LOW,
+        },
+        {
+          notification_id: 'batch-3',
+          recipients: ['user3@example.com'],
+          subject: 'Email 3',
+          body: 'Content 3',
+          priority: NotificationPriority.LOW,
+        },
+      ];
+
+      const successCount = await sendBatch(emails);
+
+      expect(successCount).toBe(2); // 2 out of 3 succeeded
+      expect(mockSendMail).toHaveBeenCalledTimes(5); // 1 + 3 retries + 1
     });
   });
 });
