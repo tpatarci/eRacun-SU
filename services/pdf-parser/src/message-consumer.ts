@@ -229,8 +229,8 @@ export class MessageConsumer {
     } catch (err) {
       logger.error({ err, messageId: msg.properties.messageId }, 'Failed to process message');
 
-      // Reject message and requeue
-      this.channel!.nack(msg, false, false);
+      // Reject message and requeue to avoid data loss
+      this.channel!.nack(msg, false, true);
     }
   }
 
