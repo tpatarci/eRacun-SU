@@ -86,9 +86,68 @@ Secrets (database passwords, envelope keys) are managed through SOPS + age and d
 
 ## Operations
 
-- **Systemd Unit:** `archive-service.service` runs the HTTP API; `archive-ingest-worker.service` handles queue consumption; `archive-verifier.timer` triggers monthly validation job.
-- **Runbooks:** Follow `docs/runbooks/archive-service.md` (to be authored) for incident response, including DLQ replay, object restore workflow, and audit integrity checks.
-- **Backups:** PostgreSQL WAL streaming to standby; object storage replication to EU secondary regions. Restore procedures must preserve Object Lock compliance.
+### Systemd Units
+
+- **archive-service.service** - HTTP API server (port 9310)
+- **archive-ingest-worker.service** - RabbitMQ consumer (queue: archive-service.ingest)
+- **archive-verifier.timer** + **archive-verifier.service** - Monthly signature validation (1st of month, 02:00 UTC)
+
+### Systemd Hardening Directives
+
+All service units implement security hardening per CLAUDE.md §3.4:
+
+```ini
+[Service]
+# Filesystem protection
+ProtectSystem=strict
+ReadWritePaths=/var/log/eracun /run/eracun
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+
+# Privilege restrictions
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# System call filtering
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+SystemCallArchitectures=native
+
+# Network restrictions (if applicable)
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+# Hide sensitive paths
+InaccessiblePaths=/etc/eracun/.age-key
+InaccessiblePaths=/etc/eracun/secrets/
+
+# Resource limits
+MemoryMax=2G
+TasksMax=512
+
+# Run as non-root user
+User=eracun
+Group=eracun
+
+# Graceful shutdown
+TimeoutStopSec=30s
+KillMode=mixed
+KillSignal=SIGTERM
+```
+
+**Deployment Location:**
+- Service units: `/etc/systemd/system/archive-*.service`
+- Binary: `/opt/eracun/services/archive-service/`
+- Configuration: `/etc/eracun/services/archive-service.conf`
+- Logs: `/var/log/eracun/archive-service.log`
+- Secrets: Decrypted to `/run/eracun/` (tmpfs, cleared on reboot)
+
+### Runbooks & Backups
+
+- **Runbooks:** Follow `docs/runbooks/archive-service.md` for incident response, including DLQ replay, object restore workflow, and audit integrity checks.
+- **Backups:** PostgreSQL WAL streaming to hot standby (EU-Central); object storage cross-region replication (EU-West → EU-Central). Restore procedures must preserve Object Lock compliance.
+- **Disaster Recovery:** RTO ≤1h, RPO ≤5m (see CLAUDE.md §11)
 
 ## Testing Strategy
 

@@ -277,7 +277,7 @@
 
 ### 4.1 Document Storage Strategy
 
-**Status:** ✅ Partially Researched - Implementation Pending
+**Status:** ✅ DECIDED - Implementation In Progress
 
 **REGULATORY REQUIREMENTS (from CROATIAN_COMPLIANCE.md):**
 - **Retention Period:** 11 YEARS (not 7) - Croatian fiscalization law
@@ -286,20 +286,36 @@
 - **Consequences of Non-Compliance:** Fines up to 66,360 EUR + LOSS OF VAT DEDUCTION RIGHTS
 
 **Implementation Decisions:**
-- ✅ Primary Storage: S3-compatible object storage (DigitalOcean Spaces recommended)
-- ✅ Archive Strategy: Glacier-class cold storage after 1 year
-- ✅ Encryption: AES-256 at rest (minimum)
-- ⏳ Geographic replication: EU region required (data residency) - specific region TBD
-- ⏳ Index database: PostgreSQL with full-text search - to be confirmed
-- ⏳ Signature validation: Automated monthly integrity checks - design needed
+- ✅ Primary Storage: S3-compatible object storage (DigitalOcean Spaces)
+- ✅ Archive Strategy: Glacier-class cold storage after 1 year (AWS Glacier Deep Archive)
+- ✅ Encryption: AES-256 at rest (SSE-S3) + client-side envelope encryption (age key)
+- ✅ Geographic replication: **eu-west-1 (Ireland) primary + eu-central-1 (Frankfurt) replica**
+- ✅ Index database: PostgreSQL with `archive_metadata` schema (see ADR-004)
+- ✅ Signature validation: Automated monthly validation via systemd timer (archive-verifier)
 
-**Remaining Questions:**
-- Customer-managed vs provider-managed encryption keys?
-- Multi-region within EU or single-region with backup?
-- Real-time replication vs periodic snapshots?
+**Geographic Region Selection (2025-11-12):**
+- **Primary:** DigitalOcean Spaces `eracun-archive-hot-eu` (EU-West, Ireland)
+- **Replica:** DigitalOcean Spaces `eracun-archive-hot-eu-central` (EU-Central, Frankfurt)
+- **Cold Tier:** AWS S3 Glacier Deep Archive `eracun-archive-cold-eu` (eu-central-1)
+- **Rationale:**
+  - Both regions within EU (GDPR compliance, data residency requirement)
+  - Low latency (<50ms round-trip within EU)
+  - DigitalOcean Spaces available in EU-West + EU-Central
+  - Cross-region replication for disaster recovery (RTO ≤1h)
 
-**Decision Required By:** Sprint 2
-**Stakeholders:** Compliance Officer, Technical Lead, Legal
+**Encryption Strategy (2025-11-12):**
+- **Provider-managed keys:** DigitalOcean/AWS handles key rotation (SSE-S3)
+- **Client-side envelope encryption:** age public key for additional layer (see ADR-002)
+- **Rationale:** Simplifies operations, meets compliance requirements, €0 additional cost
+
+**Replication Strategy (2025-11-12):**
+- **Real-time replication:** DigitalOcean Spaces cross-region replication (async, <15 min)
+- **PostgreSQL:** Streaming WAL replication to hot standby in EU-Central
+- **Rationale:** RPO ≤5m requirement, automated failover via HAProxy
+
+**Decision Date:** 2025-11-12
+**See:** ADR-004 §167-173, docs/pending/004-archive-performance-benchmarking.md
+**Implementation Status:** Service skeleton created, migrations defined, deployment pending M2
 
 ---
 

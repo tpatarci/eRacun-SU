@@ -80,18 +80,49 @@ The design preserves CQRS patterns by accepting write commands via RabbitMQ (`Ar
     "submission_timestamp": "RFC3339"
   }
   ```
+  - **Size Limit:** 100MB after base64 decode (CLAUDE.md §3.4 limit: 10MB XML; 100MB allows large attachments if supported in future)
+  - **Validation:** Schema validation before acceptance, reject oversized messages with 413 Payload Too Large
 - **Event:** `InvoiceArchivedEvent` on exchange `archive.events`, routing key `archive.event.archived`, payload references invoice_id, storage pointer, hash, signature_status.
 
 ### REST API Contracts
 
-- `GET /v1/archive/invoices/{invoice_id}` → 200 with metadata + optional presigned URL.
-- `GET /v1/archive/invoices` → Filter by `start_date`, `end_date`, `invoice_type`, `signature_status`, paginated.
-- `GET /v1/archive/invoices/{invoice_id}/audit` → Full audit timeline.
-- `POST /v1/archive/invoices/{invoice_id}/validate` → Triggers on-demand revalidation (idempotent), returns current signature state.
+- `GET /v1/archive/invoices/{invoice_id}` → 200 with metadata + optional presigned URL (p95: <200ms).
+- `GET /v1/archive/invoices` → Filter by `start_date`, `end_date`, `invoice_type`, `signature_status`, cursor-paginated (p95: <500ms for 100 results).
+- `GET /v1/archive/invoices/{invoice_id}/audit` → Full audit timeline, paginated (p95: <5s).
+- `POST /v1/archive/invoices/{invoice_id}/validate` → Triggers on-demand revalidation (idempotent), returns current signature state (p95: <3s).
 
 ### Database Access
 
 - PostgreSQL schema `archive_metadata` with dedicated connection pool (max 30 connections, PGBouncer enforced) and row-level security for service-owned role.
+
+**Row-Level Security Policies:**
+```sql
+-- Immutability enforcement for audit trail
+ALTER TABLE audit_events ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY audit_append_only ON audit_events
+  FOR INSERT TO archive_service WITH CHECK (true);
+
+CREATE POLICY audit_read_only ON audit_events
+  FOR SELECT TO archive_service USING (true);
+
+-- Prevent UPDATE/DELETE (implicit - no policies defined)
+```
+
+**Pagination Strategy:**
+- Cursor-based pagination for all list endpoints (`GET /v1/archive/invoices`)
+- Format: `?cursor=base64(invoice_id:timestamp)&limit=100` (max limit: 1000)
+- Rationale: Efficient for time-series data, no offset drift issues, handles concurrent inserts
+- Example response:
+  ```json
+  {
+    "data": [...],
+    "pagination": {
+      "next_cursor": "eyJpbnZvaWNlX2lkIjoiLi4uIiwidGltZXN0YW1wIjoiLi4uIn0=",
+      "has_more": true
+    }
+  }
+  ```
 
 ---
 
@@ -150,6 +181,7 @@ Disaster recovery adheres to RTO ≤ 1h / RPO ≤ 5m by maintaining cross-region
   - `certificate_chain JSONB`
   - `validator_version TEXT`
   - `failure_reason TEXT`
+  - Indexes: `(invoice_id, checked_at DESC)` for audit timeline queries
 
 - `audit_events`
   - `event_id UUID PRIMARY KEY`
@@ -161,6 +193,7 @@ Disaster recovery adheres to RTO ≤ 1h / RPO ≤ 5m by maintaining cross-region
   - `occurred_at TIMESTAMPTZ`
   - `metadata JSONB`
   - Indexes: `(invoice_id, occurred_at DESC)`, GIN on `metadata`
+  - Row-Level Security: Append-only (INSERT allowed, UPDATE/DELETE denied)
 
 ### Object Storage Layout
 

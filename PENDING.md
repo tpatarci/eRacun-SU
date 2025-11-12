@@ -40,6 +40,63 @@
 
 ---
 
+### 🟡 [PENDING-004](docs/pending/004-archive-performance-benchmarking.md) - Archive Service Performance Benchmarking
+
+**Priority:** 🟡 P1 (High)
+**Created:** 2025-11-12
+**Estimated Effort:** 3-4 days
+
+**Problem:** Monthly signature validation for 10M invoices requires 278 validations/second sustained throughput. No benchmarks exist to verify digital-signature-service and archive-service can meet this SLA.
+
+**Blocks:**
+- M4 milestone (monthly validation workflow integration)
+- Production deployment (M6)
+- Capacity planning decisions
+
+**Does NOT Block:**
+- Service skeleton implementation (completed)
+- Database migrations (in progress)
+
+**Deliverables Required:**
+- [ ] Benchmark digital-signature-service throughput (single + parallel)
+- [ ] Benchmark archive-service monthly validation workflow (100k invoices)
+- [ ] Extrapolate to 10M invoices: Confirm <1 hour SLA OR document optimization plan
+- [ ] Configure Prometheus alerting thresholds
+- [ ] Update runbook with performance expectations
+
+**Next Action:** Wait for M2 infrastructure provisioning (staging environment + sample data)
+
+**Deferred Because:** Infrastructure not ready, higher priority design work (ADR-004) completed first
+
+---
+
+### 🟢 [PENDING-005](docs/pending/005-property-based-testing-implementation.md) - Property-Based Testing Implementation
+
+**Priority:** 🟢 P2 (Medium)
+**Created:** 2025-11-12
+**Estimated Effort:** 2 days
+
+**Problem:** CLAUDE.md §3.3 mandates property-based testing for validators using fast-check. Current test suite lacks property tests, relying solely on example-based unit tests.
+
+**Blocks:**
+- Quality confidence (long-term)
+- Unhandled edge case detection
+
+**Does NOT Block:**
+- Service deployment (quality enhancement, not blocking)
+
+**Deliverables Required:**
+- [ ] Install fast-check in archive-service
+- [ ] Implement 5+ properties per validator (payload, hash, idempotency)
+- [ ] Extend digital-signature-service with signature verification properties
+- [ ] Document property testing patterns in docs/testing/
+
+**Next Action:** Implement after M3 milestone (core service functionality complete)
+
+**Deferred Because:** Higher priority work (service skeleton, migrations, performance benchmarking)
+
+---
+
 ### ⚪ [PENDING-003] - Service Documentation Gap (pdf-parser, file-classifier)
 
 **Priority:** ⚪ P3 (Low)
