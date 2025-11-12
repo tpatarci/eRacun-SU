@@ -212,7 +212,7 @@ export class PDFExtractor {
     const avgTextPerPage = textLength / pageCount;
 
     // If average text per page < minTextLength, consider it scanned
-    if (avgTextPerPage < this.config.minTextLength / pageCount) {
+    if (avgTextPerPage < this.config.minTextLength) {
       logger.info(
         { textLength, pageCount, avgTextPerPage },
         'Detected scanned PDF (low text content)'
