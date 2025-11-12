@@ -7,6 +7,8 @@ import {
   initObservability,
   shutdownObservability,
   activeCertificates,
+  certificateExpirationDays,
+  certificateLoadTime,
 } from './observability.js';
 import {
   loadCertificateFromFile,
@@ -48,9 +50,20 @@ app.use((req: Request, res: Response, next: NextFunction) => {
 
 // Global certificate cache (singleton pattern)
 let defaultCertificate: ParsedCertificate | null = null;
+let certificateLoadedAt: Date | null = null; // IMPROVEMENT-004: Track load timestamp
 
 /**
- * Load default certificate on startup
+ * Calculate days remaining until certificate expiration (IMPROVEMENT-004)
+ */
+function getDaysUntilExpiration(expirationDate: Date): number {
+  const now = new Date();
+  const msUntilExpiration = expirationDate.getTime() - now.getTime();
+  const daysUntilExpiration = Math.ceil(msUntilExpiration / (1000 * 60 * 60 * 24));
+  return daysUntilExpiration;
+}
+
+/**
+ * Load default certificate on startup (IMPROVEMENT-004: Added expiration monitoring)
  */
 async function loadDefaultCertificate(): Promise<void> {
   const certPath = process.env.DEFAULT_CERT_PATH;
@@ -63,10 +76,20 @@ async function loadDefaultCertificate(): Promise<void> {
 
   try {
     logger.info({ certPath }, 'Loading default certificate');
+    const startTime = Date.now();
+
     defaultCertificate = await loadCertificateFromFile(certPath, certPassword);
+    certificateLoadedAt = new Date();
 
     // Validate certificate
     assertCertificateValid(defaultCertificate.info);
+
+    // IMPROVEMENT-004: Track metrics
+    const loadTimeSeconds = (Date.now() - startTime) / 1000;
+    certificateLoadTime.observe(loadTimeSeconds);
+
+    const daysRemaining = getDaysUntilExpiration(defaultCertificate.info.notAfter);
+    certificateExpirationDays.set(daysRemaining);
 
     activeCertificates.set(1);
 
@@ -74,10 +97,25 @@ async function loadDefaultCertificate(): Promise<void> {
       subject: defaultCertificate.info.subjectDN,
       issuer: defaultCertificate.info.issuer,
       notAfter: defaultCertificate.info.notAfter,
+      daysUntilExpiration: daysRemaining,
+      loadTimeMs: (loadTimeSeconds * 1000).toFixed(2),
     }, 'Default certificate loaded and validated');
+
+    // IMPROVEMENT-004: Alert if certificate expiring soon
+    if (daysRemaining <= 30 && daysRemaining > 0) {
+      logger.warn({
+        daysUntilExpiration: daysRemaining,
+        expiresAt: defaultCertificate.info.notAfter,
+      }, 'Certificate expiring soon - renewal required');
+    } else if (daysRemaining <= 0) {
+      logger.error({
+        expiresAt: defaultCertificate.info.notAfter,
+      }, 'Certificate has expired - immediate action required');
+    }
   } catch (error) {
     logger.error({ error, certPath }, 'Failed to load default certificate');
     activeCertificates.set(0);
+    certificateExpirationDays.set(-1); // Indicate error state
     throw error;
   }
 }
@@ -96,19 +134,28 @@ app.get('/health', (req: Request, res: Response) => {
 });
 
 /**
- * Readiness check endpoint
+ * Readiness check endpoint (IMPROVEMENT-004: Added expiration details)
  */
 app.get('/ready', (req: Request, res: Response) => {
   const isReady = defaultCertificate !== null;
 
   if (isReady) {
-    res.json({
-      status: 'ready',
+    const daysRemaining = getDaysUntilExpiration(defaultCertificate!.info.notAfter);
+    const status = daysRemaining > 0 ? 'ready' : 'degraded';
+    const statusCode = daysRemaining > 0 ? 200 : 503;
+
+    res.status(statusCode).json({
+      status,
       certificate_loaded: true,
       certificate_info: {
         issuer: defaultCertificate!.info.issuer,
         expires: defaultCertificate!.info.notAfter.toISOString(),
+        days_remaining: daysRemaining,
+        loaded_at: certificateLoadedAt?.toISOString(),
       },
+      warning: daysRemaining <= 30 && daysRemaining > 0 ?
+        `Certificate expiring in ${daysRemaining} days` :
+        daysRemaining <= 0 ? 'Certificate has expired' : undefined,
     });
   } else {
     res.status(503).json({
@@ -392,7 +439,7 @@ app.post('/api/v1/verify/ubl', async (req: Request, res: Response) => {
 });
 
 /**
- * Get certificate information
+ * Get certificate information (IMPROVEMENT-004: Added expiration tracking)
  *
  * GET /api/v1/certificates
  */
@@ -404,6 +451,8 @@ app.get('/api/v1/certificates', (req: Request, res: Response) => {
     });
   }
 
+  const daysRemaining = getDaysUntilExpiration(defaultCertificate.info.notAfter);
+
   res.json({
     certificate: {
       subject: defaultCertificate.info.subjectDN,
@@ -411,6 +460,8 @@ app.get('/api/v1/certificates', (req: Request, res: Response) => {
       serialNumber: defaultCertificate.info.serialNumber,
       notBefore: defaultCertificate.info.notBefore.toISOString(),
       notAfter: defaultCertificate.info.notAfter.toISOString(),
+      days_remaining: daysRemaining,
+      loaded_at: certificateLoadedAt?.toISOString(),
     },
   });
 });

@@ -46,6 +46,21 @@ export const activeCertificates = new Gauge({
   registers: [register],
 });
 
+// Certificate expiration days remaining (IMPROVEMENT-004)
+export const certificateExpirationDays = new Gauge({
+  name: 'certificate_expiration_days_remaining',
+  help: 'Days remaining until certificate expiration',
+  registers: [register],
+});
+
+// Certificate load time (IMPROVEMENT-004)
+export const certificateLoadTime = new Histogram({
+  name: 'certificate_load_time_seconds',
+  help: 'Time taken to load and parse certificate from disk',
+  buckets: [0.1, 0.5, 1, 2, 5],
+  registers: [register],
+});
+
 // Service health gauge
 export const serviceUp = new Gauge({
   name: 'digital_signature_service_up',
@@ -178,7 +193,7 @@ export function resetMetrics(): void {
 }
 
 /**
- * Initialize observability
+ * Initialize observability (IMPROVEMENT-004: Added certificate monitoring metrics)
  */
 export function initObservability(): void {
   // Set service up
@@ -192,6 +207,8 @@ export function initObservability(): void {
       'certificate_operations_total',
       'digital_signature_errors_total',
       'active_certificates_count',
+      'certificate_expiration_days_remaining', // IMPROVEMENT-004
+      'certificate_load_time_seconds', // IMPROVEMENT-004
       'xmldsig_validations_total',
     ],
   }, 'Prometheus metrics registered');
