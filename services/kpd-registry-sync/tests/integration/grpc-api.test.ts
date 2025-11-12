@@ -5,7 +5,6 @@
 import * as grpc from '@grpc/grpc-js';
 import * as protoLoader from '@grpc/proto-loader';
 import { resolve } from 'path';
-import { startGRPCServer, stopGRPCServer } from '../../src/grpc-server';
 import * as repository from '../../src/repository';
 import { KPDCode } from '../../src/repository';
 
@@ -35,10 +34,14 @@ jest.mock('../../src/observability', () => ({
 describe('gRPC API Integration Tests', () => {
   let client: any;
   const GRPC_PORT = 50053; // Use different port for tests
+  let stopServer: (() => Promise<void>) | undefined;
 
   beforeAll(async () => {
     // Set test port
-    process.env.GRPC_PORT = '50053';
+    process.env.GRPC_PORT = `${GRPC_PORT}`;
+
+    const { startGRPCServer, stopGRPCServer } = await import('../../src/grpc-server');
+    stopServer = stopGRPCServer;
 
     // Start gRPC server
     await startGRPCServer();
@@ -65,7 +68,9 @@ describe('gRPC API Integration Tests', () => {
 
   afterAll(async () => {
     // Stop gRPC server
-    await stopGRPCServer();
+    if (stopServer) {
+      await stopServer();
+    }
   });
 
   beforeEach(() => {
