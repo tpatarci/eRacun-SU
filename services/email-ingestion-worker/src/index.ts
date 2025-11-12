@@ -246,16 +246,17 @@ class EmailIngestionWorkerService {
 
       fetch.on('message', (msg) => {
         msg.on('body', (stream) => {
-          resolve(stream);
+          // Cast IMAP stream to Node.js Readable
+          resolve(stream as unknown as Readable);
         });
 
-        msg.on('error', (err) => {
+        msg.on('error', (err: Error) => {
           logger.error({ err, uid }, 'Error fetching message');
           reject(err);
         });
       });
 
-      fetch.once('error', (err) => {
+      fetch.once('error', (err: Error) => {
         logger.error({ err, uid }, 'Fetch error');
         reject(err);
       });

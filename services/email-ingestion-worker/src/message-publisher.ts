@@ -8,7 +8,7 @@
  * - Publisher confirms for reliability
  */
 
-import amqp, { Connection, Channel, Options } from 'amqplib';
+import amqp, { Connection, ConfirmChannel, Options } from 'amqplib';
 import { ExtractedAttachment } from './attachment-extractor';
 import {
   logger,
@@ -58,7 +58,7 @@ export interface ProcessAttachmentCommand {
 export class MessagePublisher {
   private config: MessageBusConfig;
   private connection: Connection | null = null;
-  private channel: Channel | null = null;
+  private channel: ConfirmChannel | null = null;
   private isConnected = false;
 
   constructor(config: MessageBusConfig) {
@@ -83,34 +83,34 @@ export class MessagePublisher {
         logger.info({ url: this.maskUrl(this.config.url) }, 'Connecting to message bus');
 
         try {
-          // Create connection
-          this.connection = await amqp.connect(this.config.url);
+          // Create connection (type assertion needed due to amqplib type definitions)
+          this.connection = (await amqp.connect(this.config.url)) as any as Connection;
 
           // Handle connection errors
-          this.connection.on('error', (err) => {
+          this.connection!.on('error', (err: Error) => {
             logger.error({ err }, 'Message bus connection error');
             this.isConnected = false;
           });
 
-          this.connection.on('close', () => {
+          this.connection!.on('close', () => {
             logger.info('Message bus connection closed');
             this.isConnected = false;
           });
 
-          // Create channel with publisher confirms
-          this.channel = await this.connection.createConfirmChannel();
+          // Create channel with publisher confirms (cast needed for createConfirmChannel)
+          this.channel = await (this.connection as any).createConfirmChannel();
 
           // Handle channel errors
-          this.channel.on('error', (err) => {
+          this.channel!.on('error', (err: Error) => {
             logger.error({ err }, 'Message bus channel error');
           });
 
-          this.channel.on('close', () => {
+          this.channel!.on('close', () => {
             logger.info('Message bus channel closed');
           });
 
           // Declare exchange
-          await this.channel.assertExchange(
+          await this.channel!.assertExchange(
             this.config.exchange,
             'topic',
             {
@@ -141,7 +141,7 @@ export class MessagePublisher {
       }
 
       if (this.connection) {
-        await this.connection.close();
+        await (this.connection as any).close();
         this.connection = null;
       }
 
@@ -215,45 +215,43 @@ export class MessagePublisher {
           );
 
           // Publish with confirmation
-          await new Promise<void>((resolve, reject) => {
-            if (!this.channel) {
-              reject(new Error('Channel not available'));
-              return;
-            }
+          if (!this.channel) {
+            throw new Error('Channel not available');
+          }
 
+          try {
+            // Publish message to exchange
             this.channel.publish(
               this.config.exchange,
               this.config.routingKey,
               messageBuffer,
-              publishOptions,
-              (err) => {
-                if (err) {
-                  logger.error(
-                    { err, messageId: command.messageId },
-                    'Failed to publish message'
-                  );
-                  messagesPublishedTotal.inc({
-                    message_type: 'attachment',
-                    status: 'error',
-                  });
-                  span.setAttribute('status', 'error');
-                  reject(err);
-                  return;
-                }
-
-                logger.info(
-                  { messageId: command.messageId },
-                  'Message published successfully'
-                );
-                messagesPublishedTotal.inc({
-                  message_type: 'attachment',
-                  status: 'success',
-                });
-                span.setAttribute('status', 'success');
-                resolve();
-              }
+              publishOptions
             );
-          });
+
+            // Wait for broker confirmation
+            await this.channel.waitForConfirms();
+
+            logger.info(
+              { messageId: command.messageId },
+              'Message published successfully'
+            );
+            messagesPublishedTotal.inc({
+              message_type: 'attachment',
+              status: 'success',
+            });
+            span.setAttribute('status', 'success');
+          } catch (err) {
+            logger.error(
+              { err, messageId: command.messageId },
+              'Failed to publish message'
+            );
+            messagesPublishedTotal.inc({
+              message_type: 'attachment',
+              status: 'error',
+            });
+            span.setAttribute('status', 'error');
+            throw err;
+          }
         }
       );
     } catch (err) {
