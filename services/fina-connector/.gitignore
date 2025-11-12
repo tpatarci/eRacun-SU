@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+logs/
+
+# Coverage
+coverage/
+.nyc_output/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Certificates (NEVER commit!)
+*.p12
+*.pfx
+*.key
+*.pem
+*.crt
+*.cer
+
+# WSDL cache
+*.wsdl
+
+# Test fixtures
+!tests/fixtures/*.wsdl
+!tests/fixtures/*.xml
