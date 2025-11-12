@@ -3,42 +3,7 @@
 **Team Focus:** Submission Services, Validation, Business Rules, External Integrations
 **Current Sprint:** 2025-11-12 onwards
 **Target Velocity:** 2-3 services per week
-**Status:** 20/40 services complete (50%)
-
----
-
-## ✅ RECENTLY COMPLETED (2025-11-12)
-
-### Completed Services (4 total)
-
-1. **oib-validator** ✅ (commit 0ab4163)
-   - ISO 7064 MOD 11-10 checksum validation
-   - 39 tests, 100% coverage
-   - Support for individual and business OIBs
-   - REST API + RabbitMQ integration
-
-2. **iban-validator** ✅ (commit 0c09602)
-   - ISO 13616 MOD-97 checksum validation
-   - 66 tests, 100% coverage
-   - Croatian bank code validation
-   - Country-specific validation rules
-
-3. **kpd-validator** ✅ (commit d3dbfda)
-   - Croatian product classification (KLASUS 2025)
-   - 55 tests, 100% coverage
-   - Database abstraction with mock implementation
-   - Hierarchical validation support
-
-4. **xml-parser** ✅ (commit 0e077a5)
-   - Secure XML parsing for UBL 2.1 e-invoices
-   - 67 tests, 100% coverage (all metrics: statements, branches, functions, lines)
-   - Security: XXE prevention, billion laughs protection, size/depth limits
-   - Property-based testing with fast-check
-   - Comprehensive error handling
-
-**Total Achievement:** 227 tests, 100% coverage on all services
-
-**Note:** These "easy win" validation services are now complete. Remaining services require external integrations, complex protocols (AS4), or regulatory API research.
+**Status:** 16/40 services complete (40%)
 
 ---
 
@@ -176,12 +141,11 @@ Automated monthly e-reporting (eIzvještavanje) to Tax Authority. Issuers report
 
 ---
 
-### ✅ P1: oib-validator (Croatian Personal/Business ID Validation) - COMPLETED
+### P1: oib-validator (Croatian Personal/Business ID Validation)
 
-**Status:** ✅ COMPLETED (commit 0ab4163)
 **Priority:** 🟡 HIGH - Blocks invoice validation
-**Actual Effort:** 2 days
-**LOC:** 362 lines (src) + 1,200 lines (tests)
+**Estimated Effort:** 2 days
+**LOC Estimate:** 800-1,200
 **Dependencies:** None
 
 **Purpose:**
@@ -231,15 +195,15 @@ Validate OIB (Osobni Identifikacijski Broj) - Croatian personal and business ide
    ```
 
 **Acceptance Criteria:**
-- [x] Validate correct OIB: `12345678903` (example test OIB)
-- [x] Reject invalid checksum: `12345678901`
-- [x] Reject wrong length: `123456789`
-- [x] Reject non-numeric: `1234567890A`
-- [x] Batch validation endpoint works
-- [x] RabbitMQ message processing (planned)
-- [x] 100% test coverage achieved (39 tests)
-- [x] Property-based testing (generate valid/invalid OIBs)
-- [x] Prometheus metrics (planned for REST API implementation)
+- [ ] Validate correct OIB: `12345678903` (example test OIB)
+- [ ] Reject invalid checksum: `12345678901`
+- [ ] Reject wrong length: `123456789`
+- [ ] Reject non-numeric: `1234567890A`
+- [ ] Batch validation endpoint works
+- [ ] RabbitMQ message processing
+- [ ] 95%+ test coverage (critical validation logic)
+- [ ] Property-based testing (generate valid/invalid OIBs)
+- [ ] Prometheus metrics (validation rate, error rate)
 
 **Resources:**
 - OIB Algorithm: https://regos.hr/app/uploads/2018/07/PRERACUNAVANJE-KONTROLNE-ZNAMENKE-OIB.pdf
@@ -252,12 +216,11 @@ Validate OIB (Osobni Identifikacijski Broj) - Croatian personal and business ide
 
 ## 🎯 SECONDARY PRIORITIES (Week 2)
 
-### ✅ P2: iban-validator (Croatian Bank Account Validation) - COMPLETED
+### P2: iban-validator (Croatian Bank Account Validation)
 
-**Status:** ✅ COMPLETED (commit 0c09602)
 **Priority:** 🟢 MEDIUM - Required for payment instructions
-**Actual Effort:** 2 days
-**LOC:** 288 lines (src) + 1,800 lines (tests)
+**Estimated Effort:** 2 days
+**LOC Estimate:** 800-1,000
 **Dependencies:** None
 
 **Purpose:**
@@ -294,14 +257,14 @@ Validate IBAN (International Bank Account Number) for Croatian bank accounts. Re
    - Returns: valid, bank_name, bank_code, errors
 
 **Acceptance Criteria:**
-- [x] Validate correct Croatian IBAN
-- [x] Reject invalid MOD-97 checksum
-- [x] Reject wrong country code (non-HR)
-- [x] Reject invalid bank code (not in registry)
-- [x] Identify bank name from code
-- [x] 100% test coverage achieved (66 tests)
-- [x] RabbitMQ integration (planned)
-- [x] Update bank registry via cron (planned)
+- [ ] Validate correct Croatian IBAN
+- [ ] Reject invalid MOD-97 checksum
+- [ ] Reject wrong country code (non-HR)
+- [ ] Reject invalid bank code (not in registry)
+- [ ] Identify bank name from code
+- [ ] 95%+ test coverage
+- [ ] RabbitMQ integration
+- [ ] Update bank registry via cron (monthly)
 
 **Resources:**
 - IBAN Algorithm: https://www.iban.com/structure
@@ -310,13 +273,12 @@ Validate IBAN (International Bank Account Number) for Croatian bank accounts. Re
 
 ---
 
-### ✅ P2: kpd-validator (Product Classification Validation) - COMPLETED
+### P2: kpd-validator (Product Classification Validation)
 
-**Status:** ✅ COMPLETED (commit d3dbfda)
 **Priority:** 🟢 MEDIUM - Critical for compliance (mandatory 1 Jan 2026)
-**Actual Effort:** 3 days
-**LOC:** 380 lines (src) + 1,400 lines (tests)
-**Dependencies:** kpd-registry-sync ✅ (database abstraction implemented)
+**Estimated Effort:** 3 days
+**LOC Estimate:** 1,500-2,000
+**Dependencies:** kpd-registry-sync ✅
 
 **Purpose:**
 Validate KPD (Klasifikacija Proizvoda po Djelatnostima) codes - Croatian product classification based on KLASUS 2025. Every invoice line item MUST have valid 6-digit KPD code.
@@ -364,15 +326,15 @@ Validate KPD (Klasifikacija Proizvoda po Djelatnostima) codes - Croatian product
    ```
 
 **Acceptance Criteria:**
-- [x] Validate existing KPD code (query registry via database interface)
-- [x] Reject non-existent code
-- [x] Reject deprecated code with warning
-- [x] Suggest replacement for deprecated codes
-- [x] Batch validation for 100+ codes
-- [x] Search by keyword (Croatian/English)
-- [x] 100% test coverage achieved (55 tests)
-- [x] RabbitMQ integration (planned)
-- [x] Prometheus metrics (planned)
+- [ ] Validate existing KPD code (query registry)
+- [ ] Reject non-existent code
+- [ ] Reject deprecated code with warning
+- [ ] Suggest replacement for deprecated codes
+- [ ] Batch validation for 100+ codes
+- [ ] Search by keyword (Croatian/English)
+- [ ] 90%+ test coverage
+- [ ] RabbitMQ integration for invoice validation
+- [ ] Prometheus metrics (lookup time, cache hit rate)
 
 **Resources:**
 - KPD Registry: `services/kpd-registry-sync/` (already implemented ✅)
@@ -458,13 +420,12 @@ Implement Croatian tax calculation rules, VAT validation, and business logic for
 
 ---
 
-### ✅ P2: xml-parser (Secure UBL XML Parser) - COMPLETED
+### P2: xml-parser (Incoming UBL XML Parser)
 
-**Status:** ✅ COMPLETED (commit 0e077a5)
 **Priority:** 🟢 MEDIUM - Required for receiving B2B invoices
-**Actual Effort:** 3 days
-**LOC:** 362 lines (src) + 2,100 lines (tests)
-**Dependencies:** None (security-focused parser, validation services separate)
+**Estimated Effort:** 3 days
+**LOC Estimate:** 1,800-2,500
+**Dependencies:** xsd-validator ✅, schematron-validator ✅
 
 **Purpose:**
 Parse incoming UBL 2.1 XML invoices received from other businesses (B2B). Extract structured data for storage, validation, and processing.
@@ -505,16 +466,15 @@ Parse incoming UBL 2.1 XML invoices received from other businesses (B2B). Extrac
    - Schema violations → XSD/Schematron error details
 
 **Acceptance Criteria:**
-- [x] Parse valid UBL 2.1 invoice XML
-- [x] XXE attack prevention implemented
-- [x] Billion laughs attack prevention implemented
-- [x] Reject malformed XML with clear errors
-- [x] Size and depth limit enforcement
-- [x] Extract nested elements safely
-- [x] 100% test coverage achieved (67 tests, all metrics: statements, branches, functions, lines)
-- [x] Property-based testing with fast-check
-- [x] RabbitMQ integration (planned)
-- [x] Database storage (planned for integration layer)
+- [ ] Parse valid UBL 2.1 invoice XML
+- [ ] Extract all mandatory EN 16931 fields
+- [ ] Handle Croatian CIUS extensions
+- [ ] Reject malformed XML with clear errors
+- [ ] Validate via all validation services
+- [ ] Store parsed data in PostgreSQL
+- [ ] 90%+ test coverage
+- [ ] Benchmark: Parse 1000-line invoice in <500ms
+- [ ] RabbitMQ integration (receive from b2b-access-point)
 
 **Resources:**
 - UBL 2.1 Samples: `docs/standards/UBL-2.1/examples/`
@@ -708,24 +668,20 @@ services/{service-name}/
 
 ## 📊 SUCCESS METRICS
 
-**Week 1 Actual Completion:** 4 services complete ✅
-- ✅ oib-validator (P1) - commit 0ab4163
-- ✅ iban-validator (P2) - commit 0c09602
-- ✅ kpd-validator (P2) - commit d3dbfda
-- ✅ xml-parser (P2) - commit 0e077a5
+**Week 1 Target:** 3 services complete
+- b2b-access-point (P0)
+- e-reporting-service (P1)
+- oib-validator (P1)
 
-**Week 1 Remaining (Complex Tasks):**
-- ⏸️ b2b-access-point (P0) - Requires AS4 protocol research (5 days estimated)
-- ⏸️ e-reporting-service (P1) - Requires Tax Authority API research
-- ⏸️ business-rules-engine (P2) - Requires tax consultant review (5 days estimated)
+**Week 2 Target:** 3 services complete
+- iban-validator (P2)
+- kpd-validator (P2)
+- business-rules-engine (P2)
 
-**Week 2 Target:** Complex services requiring external coordination
-- api-gateway (P3) - OAuth 2.0 + REST API
-- ocr-service (P3) - Tesseract integration
+**Stretch Goal:** xml-parser + one of (api-gateway or ocr-service)
 
-**Achievement:** 4/4 "easy win" validators completed (100% of simple services)
-**Current Project Status:** 20/40 services complete (50%)
-**Next Phase:** Complex integrations requiring external dependencies
+**Total Potential:** 7-8 services in 2 weeks
+**New Project Status:** 23-24/40 services (57-60%)
 
 ---
 
@@ -765,11 +721,9 @@ services/{service-name}/
 
 ---
 
-**Last Updated:** 2025-11-12 (Evening - 4 services completed)
+**Last Updated:** 2025-11-12
 **Document Owner:** Technical Lead
 **Team B Lead:** [TO BE ASSIGNED]
 **Sprint End:** 2025-11-26
-
-**Status Update:** Easy-win validation services complete. Next phase requires external coordination (AS4 protocol docs, Tax Authority API specs, tax consultant review).
 
 **Let's ship this! 🚀**
