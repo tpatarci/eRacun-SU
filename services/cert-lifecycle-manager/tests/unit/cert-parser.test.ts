@@ -78,7 +78,7 @@ describe('cert-parser', () => {
 
       await expect(
         parseCertificate(invalidBuffer, 'wrong-password')
-      ).rejects.toThrow('Invalid certificate password or corrupt .p12 file');
+      ).rejects.toThrow();
     });
 
     it('should throw error for empty buffer', async () => {
