@@ -40,6 +40,36 @@
 
 ---
 
+### ⚪ [PENDING-003] - Service Documentation Gap (pdf-parser, file-classifier)
+
+**Priority:** ⚪ P3 (Low)
+**Created:** 2025-11-12
+**Estimated Effort:** 2 hours
+
+**Problem:** pdf-parser and file-classifier services lack README.md files documenting purpose, API contracts, dependencies, and operational characteristics.
+
+**Blocks:**
+- Onboarding new developers to these services
+- Operational runbooks (understanding failure modes)
+
+**Does NOT Block:**
+- Production deployment (services are functional)
+- Other service development
+
+**Deliverables Required:**
+- [ ] `services/pdf-parser/README.md` with standard service documentation
+- [ ] `services/file-classifier/README.md` with standard service documentation
+- [ ] Document API contracts (HTTP endpoints, message formats)
+- [ ] Document failure modes and recovery procedures
+
+**Next Action:** Create README.md files following template in CLAUDE.md section 2.2
+
+**Deferred Because:** P1 service implementations prioritized (attachment-handler, ubl-transformer)
+
+**Note:** Identified in Team B verification report (2025-11-12-team-b-verification.md)
+
+---
+
 ## Completed Items
 
 ### ✅ [PENDING-001](docs/pending/001-configuration-security-strategy.md) - Configuration & Secrets Management Strategy
@@ -147,5 +177,5 @@ TBD Question → Decision Made → PENDING Implementation → Completed → Clos
 ---
 
 **Maintainer:** Technical Lead
-**Last Updated:** 2025-11-11 (PENDING-002 added: test execution verification)
+**Last Updated:** 2025-11-12 (PENDING-003 added: service documentation gap)
 **Review Cadence:** Weekly (during planning)
