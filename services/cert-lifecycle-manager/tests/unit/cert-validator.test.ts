@@ -127,6 +127,74 @@ describe('cert-validator', () => {
       expect(result.valid).toBe(false);
       expect(result.errors.some((e) => e.includes('fingerprint'))).toBe(true);
     });
+
+    it('should warn about unknown certificate type', async () => {
+      const cert = createTestCertificate({
+        certType: 'invalid' as any,
+      });
+
+      const result = await validateCertificate(cert);
+
+      expect(result.valid).toBe(true); // Not an error, just a warning
+      expect(result.warnings.some((w) => w.includes('Unknown certificate type'))).toBe(true);
+    });
+
+    it('should warn about demo certificate in production environment', async () => {
+      const originalEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+
+      const cert = createTestCertificate({
+        certType: 'demo',
+      });
+
+      const result = await validateCertificate(cert);
+
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some((w) => w.includes('Demo certificate detected in production'))).toBe(true);
+
+      process.env.NODE_ENV = originalEnv;
+    });
+
+    it('should warn about unusual validity period for production certificate', async () => {
+      const now = new Date();
+      const veryFarFuture = new Date();
+      veryFarFuture.setFullYear(veryFarFuture.getFullYear() + 6); // 6 years (>1900 days)
+
+      const cert = createTestCertificate({
+        notBefore: now,
+        notAfter: veryFarFuture,
+        certType: 'production',
+      });
+
+      const result = await validateCertificate(cert);
+
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some((w) => w.includes('Unusual validity period for production'))).toBe(true);
+    });
+
+    it('should warn about unusual validity period for demo certificate', async () => {
+      const now = new Date();
+      const tooLongDemo = new Date();
+      tooLongDemo.setDate(tooLongDemo.getDate() + 450); // >400 days
+
+      const cert = createTestCertificate({
+        notBefore: now,
+        notAfter: tooLongDemo,
+        certType: 'demo',
+      });
+
+      const result = await validateCertificate(cert);
+
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some((w) => w.includes('Unusual validity period for demo'))).toBe(true);
+    });
+
+    it('should handle validation error gracefully', async () => {
+      // Force error by passing null as certificate (triggers exception)
+      await expect(
+        validateCertificate(null as any)
+      ).rejects.toThrow();
+    });
   });
 
   describe('isExpiringSoon', () => {
