@@ -19,6 +19,40 @@
 
 ## Active Items
 
+### 🔴 [PENDING-006](docs/pending/006-architecture-compliance-remediation.md) - Architecture Compliance Remediation
+
+**Priority:** 🔴 P0 (Critical)
+**Created:** 2025-11-12
+**Estimated Effort:** 2-3 weeks (15-20 engineering days)
+
+**Problem:** 5 architectural violations detected across 3 services: `admin-portal-api` has direct HTTP clients to 3 services, `cert-lifecycle-manager` and `health-monitor` call `notification-service` directly. This violates hub-and-spokes architecture.
+
+**Blocks:**
+- Production scalability (cannot scale services independently)
+- Fault tolerance (cascade failures)
+- Independent deployment (deployment dependencies)
+
+**Does NOT Block:**
+- 2026-01-01 compliance deadline (no regulatory impact)
+- Archive-service implementation (can proceed in parallel)
+
+**Deliverables Required:**
+- [ ] Delete `admin-portal-api/src/clients/` (3 HTTP client files)
+- [ ] Remediate `cert-lifecycle-manager/src/alerting.ts` (replace with message bus)
+- [ ] Remediate `health-monitor/src/alerting.ts` (replace with message bus)
+- [ ] Implement message bus RPC (request-reply pattern)
+- [ ] Migrate all queries to message bus
+- [ ] Install pre-commit hooks (husky + compliance script)
+- [ ] Add CI/CD compliance checks
+
+**Next Action:** Approve remediation plan and assign engineers (1 senior backend + 1 DevOps)
+
+**Deferred Because:** ADR-005 created 2025-11-12 after discovering violations. This is remediation for existing code.
+
+**Compliance Script:** Run `./scripts/check-architecture-compliance.sh` to verify fixes
+
+---
+
 ### 🟢 [PENDING-002](docs/pending/002-test-execution-verification.md) - Test Execution Verification (xsd-validator)
 
 **Priority:** 🟢 P2 (Medium)

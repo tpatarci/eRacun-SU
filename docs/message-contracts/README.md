@@ -1,0 +1,397 @@
+# Message Contract Registry
+
+**Purpose:** Central registry of all message bus contracts (commands, events, queries)
+**Standard:** RabbitMQ topic exchanges with Protocol Buffer payloads
+**Governance:** ADR-005 (Bounded Context Isolation)
+
+---
+
+## Message Types
+
+### **Commands** (Direct Action)
+- **Pattern:** `{context}.command.{action}`
+- **Cardinality:** 1 publisher → 1 consumer
+- **Acknowledgement:** Required (publisher waits for success/failure)
+- **Example:** `archive.command.invoice`
+
+### **Events** (State Change Notification)
+- **Pattern:** `{context}.event.{past_tense_action}`
+- **Cardinality:** 1 publisher → N consumers
+- **Acknowledgement:** Fire-and-forget
+- **Example:** `fiscalization.event.submitted`
+
+### **Queries** (Request-Reply)
+- **Pattern:** `{context}.query.{resource}`
+- **Cardinality:** 1 requester → 1 responder
+- **Acknowledgement:** Response message expected (timeout: 5s default)
+- **Example:** `health.query.dashboard`
+
+---
+
+## Active Contracts
+
+### **Archive Commands**
+
+#### `archive.command.invoice`
+**Publisher:** ubl-transformer, fina-connector, as4-gateway-connector
+**Consumer:** archive-service
+**Exchange:** `archive.commands` (topic)
+**Queue:** `archive-service.ingest`
+**DLQ:** `archive.commands.dlq`
+
+**Payload (Proto):**
+```protobuf
+syntax = "proto3";
+
+package eracun.v1.archive;
+
+import "common.proto";
+
+message ArchiveInvoiceCommand {
+  eracun.v1.common.InvoiceId invoice_id = 1;
+  bytes original_xml = 2;  // Base64-encoded UBL 2.1 XML
+  eracun.v1.common.InvoiceType invoice_type = 3;
+  ConfirmationReference confirmation = 4;
+  int64 submission_timestamp = 5; // Unix timestamp
+}
+
+message ConfirmationReference {
+  enum Type {
+    JIR = 0;  // B2C fiscalization confirmation
+    UUID = 1; // B2B AS4 confirmation
+  }
+  Type type = 1;
+  string value = 2;
+}
+```
+
+**Version:** 1.0
+**Stability:** Stable
+**Breaking Changes:** Require major version bump
+
+---
+
+### **Fiscalization Events**
+
+#### `fiscalization.event.submitted`
+**Publisher:** fina-connector
+**Consumers:** archive-service, audit-logger, notification-service
+**Exchange:** `fiscalization.events` (topic)
+
+**Payload (Proto):**
+```protobuf
+syntax = "proto3";
+
+package eracun.v1.fiscalization;
+
+import "common.proto";
+
+message InvoiceSubmittedEvent {
+  eracun.v1.common.InvoiceId invoice_id = 1;
+  eracun.v1.common.InvoiceType invoice_type = 2;
+  string jir = 3;  // FINA confirmation code
+  int64 submitted_at = 4;  // Unix timestamp
+  string submission_channel = 5;  // "B2C" or "B2B"
+  bytes signed_xml = 6;  // XMLDSig-signed XML
+}
+```
+
+**Version:** 1.0
+**Stability:** Stable
+
+---
+
+### **Parsing Commands**
+
+#### `parsing.command.classify`
+**Publisher:** email-ingestion-worker
+**Consumer:** file-classifier
+**Exchange:** `parsing.commands` (topic)
+**Queue:** `file-classifier.ingest`
+
+**Payload (Proto):**
+```protobuf
+syntax = "proto3";
+
+package eracun.v1.parsing;
+
+import "common.proto";
+
+message ClassifyFileCommand {
+  string file_id = 1;  // UUID
+  bytes file_content = 2;  // Raw bytes
+  string original_filename = 3;
+  string mime_type = 4;  // Detected or provided
+  eracun.v1.common.RequestContext context = 5;
+}
+```
+
+**Version:** 1.0
+**Stability:** Stable
+
+---
+
+#### `parsing.event.classified`
+**Publisher:** file-classifier
+**Consumers:** pdf-parser, xml-parser
+**Exchange:** `parsing.events` (topic)
+
+**Payload (Proto):**
+```protobuf
+syntax = "proto3";
+
+package eracun.v1.parsing;
+
+import "common.proto";
+
+message FileClassifiedEvent {
+  string file_id = 1;
+  FileType file_type = 2;
+  string original_filename = 3;
+  int64 file_size = 4;
+  eracun.v1.common.RequestContext context = 5;
+}
+
+enum FileType {
+  UNKNOWN = 0;
+  PDF = 1;
+  XML = 2;
+  IMAGE = 3;
+  EXCEL = 4;
+}
+```
+
+**Version:** 1.0
+**Stability:** Stable
+
+---
+
+### **Validation Events**
+
+#### `validation.event.validated`
+**Publisher:** xsd-validator, schematron-validator, kpd-validator, oib-validator, iban-validator
+**Consumers:** ubl-transformer, audit-logger
+**Exchange:** `validation.events` (topic)
+
+**Payload (Proto):**
+```protobuf
+syntax = "proto3";
+
+package eracun.v1.validation;
+
+import "common.proto";
+
+message ValidationCompletedEvent {
+  eracun.v1.common.InvoiceId invoice_id = 1;
+  ValidationStage stage = 2;
+  ValidationResult result = 3;
+  repeated eracun.v1.common.Error errors = 4;
+  int64 validated_at = 5;  // Unix timestamp
+  eracun.v1.common.RequestContext context = 6;
+}
+
+enum ValidationStage {
+  XSD_SCHEMA = 0;
+  SCHEMATRON_RULES = 1;
+  KPD_CLASSIFICATION = 2;
+  OIB_CHECKSUM = 3;
+  IBAN_FORMAT = 4;
+}
+
+enum ValidationResult {
+  PASSED = 0;
+  FAILED = 1;
+  WARNING = 2;
+}
+```
+
+**Version:** 1.0
+**Stability:** Stable
+
+---
+
+### **Health Queries** (Request-Reply Pattern)
+
+#### `health.query.dashboard`
+**Requester:** admin-portal-api
+**Responder:** health-monitor
+**Exchange:** `health.queries` (topic)
+**Queue:** `health-monitor.queries`
+**Reply-To:** Temporary queue (auto-generated by requester)
+**Timeout:** 5 seconds
+
+**Request Payload:**
+```protobuf
+syntax = "proto3";
+
+package eracun.v1.health;
+
+import "common.proto";
+
+message GetDashboardRequest {
+  eracun.v1.common.RequestContext context = 1;
+}
+```
+
+**Response Payload:**
+```protobuf
+syntax = "proto3";
+
+package eracun.v1.health;
+
+message GetDashboardResponse {
+  repeated ServiceStatus services = 1;
+  int64 timestamp = 2;
+}
+
+message ServiceStatus {
+  string service_name = 1;
+  HealthState state = 2;
+  string version = 3;
+  int64 uptime_seconds = 4;
+}
+
+enum HealthState {
+  HEALTHY = 0;
+  DEGRADED = 1;
+  UNHEALTHY = 2;
+  UNKNOWN = 3;
+}
+```
+
+**Version:** 1.0
+**Stability:** Stable
+
+---
+
+## Message Bus Configuration
+
+### **Exchange Topology**
+
+```
+┌─────────────────────┐
+│  archive.commands   │ (topic) → archive-service.ingest
+└─────────────────────┘
+
+┌─────────────────────┐
+│  archive.events     │ (topic) → audit-logger, compliance-reporting
+└─────────────────────┘
+
+┌─────────────────────┐
+│ fiscalization.events│ (topic) → archive-service, audit-logger, notification
+└─────────────────────┘
+
+┌─────────────────────┐
+│  parsing.commands   │ (topic) → file-classifier.ingest
+└─────────────────────┘
+
+┌─────────────────────┐
+│   parsing.events    │ (topic) → pdf-parser, xml-parser
+└─────────────────────┘
+
+┌─────────────────────┐
+│  validation.events  │ (topic) → ubl-transformer, audit-logger
+└─────────────────────┘
+
+┌─────────────────────┐
+│   health.queries    │ (topic) → health-monitor.queries
+└─────────────────────┘
+```
+
+### **Queue Durability**
+
+**All queues are durable (survive broker restart):**
+- Durable: `true`
+- Auto-delete: `false`
+- Exclusive: `false`
+
+**Messages are persistent:**
+- Delivery mode: `2` (persistent)
+- Priority: `0` (normal)
+
+### **Dead Letter Queues**
+
+**Pattern:** `{exchange-name}.dlq`
+
+**Examples:**
+- `archive.commands.dlq` (failed archive commands)
+- `parsing.commands.dlq` (failed parsing commands)
+
+**DLQ Handler:** `dead-letter-handler` service (replays or moves to manual queue)
+
+---
+
+## Contract Evolution
+
+### **Adding Optional Field (Backward Compatible)**
+
+```protobuf
+message ArchiveInvoiceCommand {
+  InvoiceId invoice_id = 1;
+  bytes original_xml = 2;
+  // NEW: Optional field
+  string customer_email = 3;  // ✅ Safe (consumers ignore unknown fields)
+}
+```
+
+**Version:** 1.1 (minor bump)
+**Compatibility:** Backward compatible
+**Deployment:** Deploy consumers first, then producers
+
+---
+
+### **Removing Field (BREAKING)**
+
+```protobuf
+message ArchiveInvoiceCommand {
+  InvoiceId invoice_id = 1;
+  bytes original_xml = 2;
+  // REMOVED: string customer_name = 3;  // ❌ BREAKING CHANGE
+}
+```
+
+**Version:** 2.0 (major bump)
+**Package:** `eracun.v2.archive`
+**Deployment:** Blue-green (v1 and v2 run in parallel for 6 months)
+
+---
+
+## Testing Contracts
+
+### **Contract Tests (Pact)**
+
+```typescript
+// Consumer test (archive-service)
+describe('ArchiveInvoiceCommand contract', () => {
+  it('should consume valid ArchiveInvoiceCommand', async () => {
+    const command = {
+      invoice_id: { uuid: '123e4567-e89b-12d3-a456-426614174000' },
+      original_xml: Buffer.from('<Invoice>...</Invoice>').toString('base64'),
+      invoice_type: InvoiceType.B2C,
+      confirmation: {
+        type: ConfirmationType.JIR,
+        value: 'abc-123-xyz'
+      },
+      submission_timestamp: Date.now()
+    };
+
+    const result = await archiveService.handleCommand(command);
+    expect(result).toBe('ARCHIVED');
+  });
+});
+```
+
+---
+
+## References
+
+- **Protocol Buffer Schemas:** `docs/api-contracts/protobuf/`
+- **Service Registry:** `docs/architecture/SERVICE_REGISTRY.md`
+- **Architecture:** `docs/adr/005-bounded-context-isolation.md`
+- **RabbitMQ Topology:** `deployment/rabbitmq/topology.yaml` (to be created)
+
+---
+
+**Maintainer:** Platform Engineering Team
+**Last Updated:** 2025-11-12
+**Review Cadence:** Monthly (add new contracts, update versions)
