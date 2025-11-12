@@ -8,6 +8,9 @@ import {
   createSpan,
   setSpanError,
   endSpanSuccess,
+  wsdlRefreshTotal,
+  wsdlRefreshDuration,
+  wsdlCacheHealth,
 } from './observability.js';
 import type {
   FINAInvoice,
@@ -31,6 +34,10 @@ export interface SOAPClientConfig {
   timeout: number;
   /** Enable WSDL caching */
   disableCache?: boolean;
+  /** IMPROVEMENT-006: WSDL refresh interval in hours (default: 24) */
+  wsdlRefreshIntervalHours?: number;
+  /** IMPROVEMENT-006: WSDL request timeout in milliseconds (default: 10000) */
+  wsdlRequestTimeoutMs?: number;
 }
 
 /**
@@ -51,17 +58,26 @@ export class FINASOAPError extends Error {
  * FINA SOAP Client
  *
  * Handles all SOAP communication with FINA Fiscalization Service
+ * IMPROVEMENT-006: Includes WSDL cache expiration and refresh
  */
 export class FINASOAPClient {
   private client: soap.Client | null = null;
   private config: SOAPClientConfig;
+  private wsdlCacheExpireAt: Date | null = null; // IMPROVEMENT-006
+  private wsdlLastFetchedAt: Date | null = null; // IMPROVEMENT-006
+  private wsdlVersion: string | null = null; // IMPROVEMENT-006
 
   constructor(config: SOAPClientConfig) {
-    this.config = config;
+    this.config = {
+      ...config,
+      wsdlRefreshIntervalHours: config.wsdlRefreshIntervalHours || 24, // Default: 24 hours
+      wsdlRequestTimeoutMs: config.wsdlRequestTimeoutMs || 10000, // Default: 10 seconds
+    };
   }
 
   /**
    * Initialize SOAP client (load WSDL)
+   * IMPROVEMENT-006: Checks WSDL cache expiration and refreshes if needed
    */
   async initialize(): Promise<void> {
     const span = createSpan('initialize_soap_client', {
@@ -70,6 +86,17 @@ export class FINASOAPClient {
 
     try {
       logger.info({ wsdlUrl: this.config.wsdlUrl }, 'Initializing FINA SOAP client');
+
+      // IMPROVEMENT-006: Check if WSDL cache needs refresh
+      const now = new Date();
+      if (!this.wsdlCacheExpireAt || now.getTime() >= this.wsdlCacheExpireAt.getTime()) {
+        logger.info('WSDL cache expired, refreshing', {
+          lastFetch: this.wsdlLastFetchedAt?.toISOString(),
+          expiresAt: this.wsdlCacheExpireAt?.toISOString(),
+        });
+
+        await this.refreshWSDLCache();
+      }
 
       // Create SOAP client from WSDL
       this.client = await soap.createClientAsync(this.config.wsdlUrl, {
@@ -87,11 +114,24 @@ export class FINASOAPClient {
         });
       }
 
+      wsdlCacheHealth.set({
+        status: 'valid',
+        version: this.wsdlVersion || 'unknown',
+      }, 1);
+
       endSpanSuccess(span);
-      logger.info('FINA SOAP client initialized successfully');
+      logger.info('FINA SOAP client initialized successfully', {
+        wsdlVersion: this.wsdlVersion,
+        nextRefresh: this.wsdlCacheExpireAt?.toISOString(),
+      });
     } catch (error) {
       setSpanError(span, error as Error);
       span.end();
+
+      wsdlCacheHealth.set({
+        status: 'error',
+        version: this.wsdlVersion || 'unknown',
+      }, 0);
 
       logger.error({ error, wsdlUrl: this.config.wsdlUrl }, 'Failed to initialize FINA SOAP client');
       throw new FINASOAPError(
@@ -484,6 +524,130 @@ export class FINASOAPClient {
         message: 'Failed to parse SOAP fault',
       };
     }
+  }
+
+  /**
+   * Refresh WSDL cache (IMPROVEMENT-006)
+   *
+   * Fetches WSDL from FINA and validates its structure
+   */
+  private async refreshWSDLCache(): Promise<void> {
+    const startTime = Date.now();
+
+    try {
+      logger.info('Fetching WSDL from FINA', { url: this.config.wsdlUrl });
+
+      // Fetch WSDL with timeout
+      const controller = new AbortController();
+      const timeout = setTimeout(
+        () => controller.abort(),
+        this.config.wsdlRequestTimeoutMs || 10000
+      );
+
+      const response = await fetch(this.config.wsdlUrl, {
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        throw new Error(`WSDL fetch failed: HTTP ${response.status}`);
+      }
+
+      const wsdlContent = await response.text();
+
+      // Validate WSDL structure
+      await this.validateWSDL(wsdlContent);
+
+      // Extract version if available
+      this.wsdlVersion = this.extractWSDLVersion(wsdlContent);
+
+      // Calculate next refresh time
+      const refreshInterval =
+        (this.config.wsdlRefreshIntervalHours || 24) * 60 * 60 * 1000;
+      this.wsdlCacheExpireAt = new Date(Date.now() + refreshInterval);
+      this.wsdlLastFetchedAt = new Date();
+
+      const duration = Date.now() - startTime;
+
+      wsdlRefreshDuration.observe(duration);
+      wsdlRefreshTotal.inc({ status: 'success' });
+
+      logger.info('WSDL cache refreshed successfully', {
+        version: this.wsdlVersion,
+        size: wsdlContent.length,
+        durationMs: duration,
+        nextRefresh: this.wsdlCacheExpireAt.toISOString(),
+      });
+    } catch (err) {
+      const duration = Date.now() - startTime;
+
+      logger.warn(
+        { error: err, durationMs: duration },
+        'WSDL refresh failed, continuing with existing cache'
+      );
+
+      wsdlRefreshTotal.inc({ status: 'error' });
+
+      // Don't crash - use existing cache if available
+      if (!this.wsdlCacheExpireAt) {
+        // First time fetch failed, schedule retry sooner (1 hour)
+        this.wsdlCacheExpireAt = new Date(Date.now() + 60 * 60 * 1000);
+        logger.info('Scheduling WSDL retry in 1 hour');
+      }
+      // Otherwise keep existing expiration
+    }
+  }
+
+  /**
+   * Validate WSDL structure (IMPROVEMENT-006)
+   */
+  private async validateWSDL(wsdlContent: string): Promise<void> {
+    try {
+      // Basic XML parsing check
+      if (!wsdlContent.includes('<definitions') && !wsdlContent.includes('<wsdl:definitions')) {
+        throw new Error('WSDL missing <definitions> element');
+      }
+
+      if (!wsdlContent.includes('<service') && !wsdlContent.includes('<wsdl:service')) {
+        throw new Error('WSDL missing <service> element');
+      }
+
+      logger.debug('WSDL validation passed');
+    } catch (err) {
+      throw new Error(`Invalid WSDL structure: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Extract WSDL version from content (IMPROVEMENT-006)
+   */
+  private extractWSDLVersion(wsdlContent: string): string {
+    // Try to extract version from comment or element
+    // Format: <!-- WSDL v1.9 --> or <definitions version="1.9">
+
+    const versionMatch = wsdlContent.match(/v([\d.]+)/);
+    if (versionMatch) {
+      return versionMatch[1];
+    }
+
+    // Fallback: use FINA endpoint URL as identifier
+    return this.config.wsdlUrl.includes('cistest') ? 'test' : 'production';
+  }
+
+  /**
+   * Get WSDL cache information (IMPROVEMENT-006)
+   */
+  getWSDLInfo(): {
+    version: string | null;
+    lastFetched: Date | null;
+    expiresAt: Date | null;
+  } {
+    return {
+      version: this.wsdlVersion,
+      lastFetched: this.wsdlLastFetchedAt,
+      expiresAt: this.wsdlCacheExpireAt,
+    };
   }
 
   /**

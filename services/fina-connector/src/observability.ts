@@ -67,6 +67,32 @@ export const jirReceived = new Counter({
   registers: [register],
 });
 
+// IMPROVEMENT-006: WSDL Cache Expiration Metrics
+
+// WSDL refresh counter
+export const wsdlRefreshTotal = new Counter({
+  name: 'fina_wsdl_refresh_total',
+  help: 'Total WSDL refresh attempts',
+  labelNames: ['status'], // success, error
+  registers: [register],
+});
+
+// WSDL refresh duration histogram
+export const wsdlRefreshDuration = new Histogram({
+  name: 'fina_wsdl_refresh_duration_ms',
+  help: 'Time to fetch and validate WSDL in milliseconds',
+  buckets: [100, 500, 1000, 5000, 10000],
+  registers: [register],
+});
+
+// WSDL cache health gauge
+export const wsdlCacheHealth = new Gauge({
+  name: 'fina_wsdl_cache_health',
+  help: 'WSDL cache health status (1=valid, 0=stale/error)',
+  labelNames: ['status', 'version'], // status: valid, stale, error | version: test, production, etc.
+  registers: [register],
+});
+
 /**
  * Structured JSON Logging (TODO-008 Compliance)
  *

@@ -9,7 +9,7 @@ import {
   getMetrics,
   serviceUp,
 } from './observability.js';
-import { createFINAClient, SOAPClientConfig } from './soap-client.js';
+import { createFINAClient, SOAPClientConfig, FINASOAPClient } from './soap-client.js';
 import {
   createSignatureServiceClient,
   SignatureServiceClient,
@@ -103,6 +103,7 @@ class FINAConnectorApp {
   private app: express.Application;
   private server: any;
   private dbPool: Pool;
+  private soapClient: FINASOAPClient | null = null; // IMPROVEMENT-006: For WSDL health checks
   private rabbitConnection: Connection | null = null;
   private rabbitChannel: Channel | null = null;
   private fiscalizationService: FiscalizationService | null = null;
@@ -133,10 +134,13 @@ class FINAConnectorApp {
       endpointUrl: this.config.finaEndpointUrl,
       timeout: this.config.finaTimeout,
       disableCache: process.env.NODE_ENV !== 'production',
+      // IMPROVEMENT-006: WSDL refresh configuration
+      wsdlRefreshIntervalHours: parseInt(process.env.WSDL_REFRESH_INTERVAL_HOURS || '24'),
+      wsdlRequestTimeoutMs: parseInt(process.env.WSDL_REQUEST_TIMEOUT_MS || '10000'),
     };
 
-    const soapClient = createFINAClient(soapClientConfig);
-    await soapClient.initialize();
+    this.soapClient = createFINAClient(soapClientConfig);
+    await this.soapClient.initialize();
 
     // Initialize signature service client
     const signatureClient = createSignatureServiceClient({
@@ -153,7 +157,7 @@ class FINAConnectorApp {
     };
 
     this.fiscalizationService = createFiscalizationService(
-      soapClient,
+      this.soapClient,
       signatureClient,
       fiscalizationConfig
     );
@@ -411,6 +415,54 @@ class FINAConnectorApp {
         logger.error({ error }, 'Failed to get queue stats');
         res.status(500).json({ error: 'Failed to get queue stats' });
       }
+    });
+
+    // IMPROVEMENT-006: WSDL cache health check endpoint
+    this.app.get('/health/wsdl', (req: Request, res: Response) => {
+      if (!this.soapClient) {
+        return res.status(503).json({
+          status: 'unavailable',
+          message: 'SOAP client not initialized',
+        });
+      }
+
+      const wsdlInfo = this.soapClient.getWSDLInfo();
+
+      const isHealthy =
+        wsdlInfo.version &&
+        wsdlInfo.expiresAt &&
+        new Date() < wsdlInfo.expiresAt;
+
+      const status = isHealthy ? 200 : 503;
+      const statusText = isHealthy ? 'healthy' : 'stale';
+
+      res.status(status).json({
+        status: statusText,
+        wsdl: {
+          version: wsdlInfo.version,
+          lastFetched: wsdlInfo.lastFetched?.toISOString(),
+          expiresAt: wsdlInfo.expiresAt?.toISOString(),
+        },
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    // IMPROVEMENT-006: WSDL cache metrics endpoint
+    this.app.get('/metrics/wsdl', (req: Request, res: Response) => {
+      if (!this.soapClient) {
+        return res.status(503).json({
+          error: 'SOAP client not initialized',
+        });
+      }
+
+      const wsdlInfo = this.soapClient.getWSDLInfo();
+
+      res.json({
+        version: wsdlInfo.version,
+        lastFetched: wsdlInfo.lastFetched?.toISOString(),
+        expiresAt: wsdlInfo.expiresAt?.toISOString(),
+        environment: this.config.finaWsdlUrl.includes('cistest') ? 'test' : 'production',
+      });
     });
 
     this.server = this.app.listen(this.config.port, () => {
