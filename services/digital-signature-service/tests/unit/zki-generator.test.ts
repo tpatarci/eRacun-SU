@@ -1,11 +1,14 @@
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect, beforeAll } from '@jest/globals';
 import forge from 'node-forge';
 import {
   validateZKIParams,
   formatZKI,
+  generateZKI,
+  verifyZKI,
   type ZKIParams,
 } from '../../src/zki-generator.js';
 import { ZKIGenerationError } from '../../src/zki-generator.js';
+import type { ParsedCertificate } from '../../src/certificate-parser.js';
 
 describe('ZKI Generator', () => {
   // Valid test parameters
@@ -17,6 +20,50 @@ describe('ZKI Generator', () => {
     cashRegister: 'POS1',
     totalAmount: '125.00',
   };
+
+  // Mock certificate for testing (generated once for all tests)
+  let mockCertificate: ParsedCertificate;
+
+  beforeAll(() => {
+    // Generate a test RSA key pair
+    const keys = forge.pki.rsa.generateKeyPair(2048);
+
+    // Create a self-signed certificate
+    const cert = forge.pki.createCertificate();
+    cert.publicKey = keys.publicKey;
+    cert.serialNumber = '01';
+    cert.validity.notBefore = new Date();
+    cert.validity.notAfter = new Date();
+    cert.validity.notAfter.setFullYear(cert.validity.notBefore.getFullYear() + 1);
+
+    const attrs = [
+      { name: 'commonName', value: 'Test Certificate' },
+      { name: 'countryName', value: 'HR' },
+      { shortName: 'ST', value: 'Zagreb' },
+      { name: 'localityName', value: 'Zagreb' },
+      { name: 'organizationName', value: 'Test Company' },
+      { shortName: 'OU', value: 'Test Unit' },
+    ];
+    cert.setSubject(attrs);
+    cert.setIssuer(attrs);
+    cert.sign(keys.privateKey);
+
+    mockCertificate = {
+      info: {
+        subjectDN: '/CN=Test Certificate/C=HR/ST=Zagreb/L=Zagreb/O=Test Company/OU=Test Unit',
+        issuerDN: '/CN=Test Certificate/C=HR/ST=Zagreb/L=Zagreb/O=Test Company/OU=Test Unit',
+        serialNumber: cert.serialNumber,
+        notBefore: cert.validity.notBefore,
+        notAfter: cert.validity.notAfter,
+        issuer: 'Test Certificate',
+        publicKey: cert.publicKey as forge.pki.rsa.PublicKey,
+        certificate: cert,
+      },
+      privateKey: keys.privateKey,
+      certificatePEM: forge.pki.certificateToPem(cert),
+      privateKeyPEM: forge.pki.privateKeyToPem(keys.privateKey),
+    };
+  });
 
   describe('validateZKIParams', () => {
     it('should accept valid parameters', () => {
@@ -210,6 +257,100 @@ describe('ZKI Generator', () => {
         params2.totalAmount;
 
       expect(concat1).not.toBe(concat2);
+    });
+  });
+
+  describe('generateZKI', () => {
+    it('should generate valid ZKI code', async () => {
+      const zki = await generateZKI(validParams, mockCertificate);
+
+      // ZKI should be a hex string (256 characters for 2048-bit RSA)
+      expect(zki).toMatch(/^[0-9a-f]+$/);
+      expect(zki.length).toBeGreaterThan(0);
+    });
+
+    it('should generate different ZKI for different parameters', async () => {
+      const zki1 = await generateZKI(validParams, mockCertificate);
+      const params2 = { ...validParams, totalAmount: '126.00' };
+      const zki2 = await generateZKI(params2, mockCertificate);
+
+      expect(zki1).not.toBe(zki2);
+    });
+
+    it('should generate consistent ZKI for same parameters', async () => {
+      const zki1 = await generateZKI(validParams, mockCertificate);
+      const zki2 = await generateZKI(validParams, mockCertificate);
+
+      expect(zki1).toBe(zki2);
+    });
+
+    it('should throw ZKIGenerationError for invalid parameters', async () => {
+      const invalidParams = { ...validParams, oib: '123' };
+
+      await expect(generateZKI(invalidParams, mockCertificate)).rejects.toThrow(
+        ZKIGenerationError
+      );
+    });
+
+    it('should handle certificate without private key gracefully', async () => {
+      const certWithoutKey = {
+        ...mockCertificate,
+        privateKey: undefined as any,
+      };
+
+      await expect(generateZKI(validParams, certWithoutKey)).rejects.toThrow(
+        ZKIGenerationError
+      );
+    });
+  });
+
+  describe('verifyZKI', () => {
+    it('should verify valid ZKI code', async () => {
+      const zki = await generateZKI(validParams, mockCertificate);
+      const isValid = await verifyZKI(zki, validParams, mockCertificate);
+
+      expect(isValid).toBe(true);
+    });
+
+    it('should reject tampered ZKI code', async () => {
+      const zki = await generateZKI(validParams, mockCertificate);
+      const tamperedZKI = zki.slice(0, -2) + 'ff'; // Change last byte
+
+      const isValid = await verifyZKI(tamperedZKI, validParams, mockCertificate);
+
+      expect(isValid).toBe(false);
+    });
+
+    it('should reject ZKI with wrong parameters', async () => {
+      const zki = await generateZKI(validParams, mockCertificate);
+      const wrongParams = { ...validParams, totalAmount: '126.00' };
+
+      const isValid = await verifyZKI(zki, wrongParams, mockCertificate);
+
+      expect(isValid).toBe(false);
+    });
+
+    it('should return false for invalid ZKI format', async () => {
+      const invalidZKI = 'not-a-valid-hex-string';
+
+      const isValid = await verifyZKI(invalidZKI, validParams, mockCertificate);
+
+      expect(isValid).toBe(false);
+    });
+
+    it('should return false for empty ZKI', async () => {
+      const isValid = await verifyZKI('', validParams, mockCertificate);
+
+      expect(isValid).toBe(false);
+    });
+
+    it('should handle invalid parameters gracefully', async () => {
+      const zki = await generateZKI(validParams, mockCertificate);
+      const invalidParams = { ...validParams, oib: '123' };
+
+      const isValid = await verifyZKI(zki, invalidParams, mockCertificate);
+
+      expect(isValid).toBe(false);
     });
   });
 });
