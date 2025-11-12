@@ -5,6 +5,10 @@
 import { EmailPoller, EmailPollerConfig } from '../../src/email-poller';
 import { ImapClient } from '../../src/imap-client';
 import { EventEmitter } from 'events';
+import {
+  emailPollingErrors,
+  emailPollingTimeouts,
+} from '../../src/observability';
 
 // Mock ImapClient
 jest.mock('../../src/imap-client');
@@ -36,12 +40,13 @@ describe('EmailPoller', () => {
     // Create mock processor
     mockProcessor = jest.fn().mockResolvedValue(undefined);
 
-    // Default config
+    // Default config (IMPROVEMENT-002: added pollTimeoutMs)
     config = {
       schedule: '*/5 * * * *',
       mailbox: 'INBOX',
       batchSize: 10,
       enabled: true,
+      pollTimeoutMs: 30000,
     };
   });
 
@@ -235,23 +240,105 @@ describe('EmailPoller', () => {
       expect(mockProcessor).not.toHaveBeenCalled();
     });
 
-    it('should handle IMAP connection errors', async () => {
+    it('should handle IMAP connection errors (IMPROVEMENT-002: caught internally)', async () => {
       mockImapClient.connect.mockRejectedValue(new Error('Connection failed'));
       mockImapClient.getConnectionStatus.mockReturnValue(false);
 
       const poller = new EmailPoller(config, mockImapClient, mockProcessor);
 
-      await expect(poller.poll()).rejects.toThrow('Connection failed');
+      // IMPROVEMENT-002: Errors are caught internally, not rethrown
+      await expect(poller.poll()).resolves.toBeUndefined();
     });
 
-    it('should handle mailbox open errors', async () => {
+    it('should handle mailbox open errors (IMPROVEMENT-002: caught internally)', async () => {
       mockImapClient.openMailbox.mockRejectedValue(
         new Error('Mailbox not found')
       );
 
       const poller = new EmailPoller(config, mockImapClient, mockProcessor);
 
-      await expect(poller.poll()).rejects.toThrow('Mailbox not found');
+      // IMPROVEMENT-002: Errors are caught internally, not rethrown
+      await expect(poller.poll()).resolves.toBeUndefined();
+    });
+
+    it('should reset isPolling flag on error (IMPROVEMENT-002)', async () => {
+      mockImapClient.openMailbox.mockRejectedValueOnce(
+        new Error('Connection failed')
+      );
+
+      const poller = new EmailPoller(config, mockImapClient, mockProcessor);
+
+      // Verify flag starts as false
+      expect((poller as any).isPolling).toBe(false);
+
+      // Call poll - error is caught internally
+      await poller.poll();
+
+      // Flag MUST be reset despite error
+      expect((poller as any).isPolling).toBe(false);
+    });
+
+    it('should emit error metric on failure (IMPROVEMENT-002)', async () => {
+      const error = new Error('Connection refused');
+      (error as any).code = 'ECONNREFUSED';
+      mockImapClient.openMailbox.mockRejectedValueOnce(error);
+
+      const poller = new EmailPoller(config, mockImapClient, mockProcessor);
+      const incSpy = jest.spyOn(emailPollingErrors, 'inc');
+
+      await poller.poll();
+
+      // Error metric should be incremented
+      expect(incSpy).toHaveBeenCalledWith({ error_type: 'ECONNREFUSED' });
+    });
+
+    it('should timeout poll after configured duration (IMPROVEMENT-002)', async () => {
+      const shortTimeoutConfig = { ...config, pollTimeoutMs: 100 };
+      const poller = new EmailPoller(
+        shortTimeoutConfig,
+        mockImapClient,
+        mockProcessor
+      );
+
+      // Mock openMailbox to hang forever
+      mockImapClient.openMailbox.mockImplementationOnce(
+        () =>
+          new Promise(resolve => {
+            setTimeout(() => resolve(undefined), 10000);
+          })
+      );
+
+      const startTime = Date.now();
+      await poller.poll();
+      const duration = Date.now() - startTime;
+
+      // Should timeout around 100ms, definitely under 1 second
+      expect(duration).toBeLessThan(1000);
+      // Flag should be reset despite timeout
+      expect((poller as any).isPolling).toBe(false);
+    });
+
+    it('should increment timeout metric on timeout (IMPROVEMENT-002)', async () => {
+      const shortTimeoutConfig = { ...config, pollTimeoutMs: 50 };
+      const poller = new EmailPoller(
+        shortTimeoutConfig,
+        mockImapClient,
+        mockProcessor
+      );
+
+      mockImapClient.openMailbox.mockImplementationOnce(
+        () =>
+          new Promise(resolve => {
+            setTimeout(() => resolve(undefined), 5000);
+          })
+      );
+
+      const incSpy = jest.spyOn(emailPollingTimeouts, 'inc');
+
+      await poller.poll();
+
+      // Timeout metric should be incremented
+      expect(incSpy).toHaveBeenCalled();
     });
   });
 

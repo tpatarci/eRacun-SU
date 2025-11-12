@@ -15,6 +15,9 @@ import {
   imapConnectionStatus,
   emailsFetchedTotal,
   withSpan,
+  imapConnectionErrors,
+  imapMailArrivals,
+  imapReconnectionAttempts,
 } from './observability';
 
 /**
@@ -64,6 +67,8 @@ export class ImapClient extends EventEmitter {
   private reconnectBaseDelay = 2000; // 2 seconds
   private reconnectTimer: NodeJS.Timeout | null = null;
   private currentMailbox: string | null = null;
+  private connectionId = ''; // IMPROVEMENT-003: Connection ID for debugging
+  private reconnectionScheduled = false; // IMPROVEMENT-003: Prevent duplicate reconnection schedules
 
   constructor(config: ImapConfig) {
     super();
@@ -71,7 +76,86 @@ export class ImapClient extends EventEmitter {
   }
 
   /**
-   * Connect to IMAP server
+   * Generate unique connection ID for debugging (IMPROVEMENT-003)
+   */
+  private generateConnectionId(): string {
+    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  }
+
+  /**
+   * Register event listeners on current IMAP connection (IMPROVEMENT-003)
+   *
+   * Removes any stale listeners from previous connections and registers
+   * fresh listeners on the current connection instance.
+   */
+  private registerEventListeners(): void {
+    if (!this.connection) {
+      throw new Error('Connection not initialized');
+    }
+
+    const connectionId = this.connectionId;
+
+    // Remove any stale listeners first
+    this.connection.removeAllListeners('ready');
+    this.connection.removeAllListeners('error');
+    this.connection.removeAllListeners('end');
+    this.connection.removeAllListeners('mail');
+    this.connection.removeAllListeners('close');
+
+    // Ready event (fires once when connected)
+    this.connection.once('ready', () => {
+      logger.debug('IMAP ready', { connectionId });
+      this.isConnected = true;
+      this.emit('ready');
+    });
+
+    // Error event (fires on errors)
+    this.connection.on('error', (err: Error) => {
+      logger.error(
+        {
+          error: err,
+          code: (err as any).code,
+          connectionId,
+        },
+        'IMAP error'
+      );
+      this.isConnected = false;
+      imapConnectionStatus.set({ mailbox: this.config.user }, 0);
+      imapConnectionErrors.inc({
+        error_type: (err as any).code || 'unknown',
+      });
+      this.emit('error', err);
+    });
+
+    // End event (fires when connection closes)
+    this.connection.once('end', () => {
+      logger.info('IMAP connection ended', { connectionId });
+      this.isConnected = false;
+      imapConnectionStatus.set({ mailbox: this.config.user }, 0);
+      this.emit('end');
+      // Trigger automatic reconnection
+      this.scheduleReconnection();
+    });
+
+    // Close event (fires when connection is fully closed)
+    this.connection.once('close', (hadError: boolean) => {
+      logger.info('IMAP connection closed', { hadError, connectionId });
+      this.isConnected = false;
+      imapConnectionStatus.set({ mailbox: this.config.user }, 0);
+      this.emit('close', hadError);
+    });
+
+    // Mail arrival event
+    this.connection.on('mail', (numNewEmails: number) => {
+      if (numNewEmails > 0) {
+        logger.debug('Mail arrived', { count: numNewEmails, connectionId });
+        imapMailArrivals.inc();
+      }
+    });
+  }
+
+  /**
+   * Connect to IMAP server (IMPROVEMENT-003: Added listener re-registration and timeout)
    */
   async connect(): Promise<void> {
     return withSpan(
@@ -86,9 +170,19 @@ export class ImapClient extends EventEmitter {
           return;
         }
 
-        logger.info({ host: this.config.host, port: this.config.port }, 'Connecting to IMAP server');
+        logger.info(
+          { host: this.config.host, port: this.config.port, previousConnectionId: this.connectionId },
+          'Connecting to IMAP server'
+        );
 
+        // Generate unique ID for this connection attempt
+        this.connectionId = this.generateConnectionId();
+
+        // Create new connection instance
         this.connection = new Imap(this.config);
+
+        // IMPROVEMENT-003: Immediately register all event listeners on new instance
+        this.registerEventListeners();
 
         return new Promise<void>((resolve, reject) => {
           if (!this.connection) {
@@ -96,41 +190,23 @@ export class ImapClient extends EventEmitter {
             return;
           }
 
-          // Connection ready event
-          this.connection.once('ready', () => {
+          // Wait for 'ready' event with 10-second timeout
+          const timeout = setTimeout(() => {
+            reject(new Error('IMAP connection timeout after 10s'));
+          }, 10000);
+
+          const handleReady = () => {
+            clearTimeout(timeout);
+            this.connection?.removeListener('ready', handleReady);
             this.isConnected = true;
             this.reconnectAttempts = 0;
             imapConnectionStatus.set({ mailbox: this.config.user }, 1);
-            logger.info('IMAP connection established');
+            logger.info('IMAP connection established', { connectionId: this.connectionId });
             this.emit('ready');
             resolve();
-          });
+          };
 
-          // Connection error event
-          this.connection.once('error', (err: Error) => {
-            logger.error({ err, host: this.config.host }, 'IMAP connection error');
-            this.isConnected = false;
-            imapConnectionStatus.set({ mailbox: this.config.user }, 0);
-            this.emit('error', err);
-            reject(err);
-          });
-
-          // Connection end event
-          this.connection.once('end', () => {
-            logger.info('IMAP connection ended');
-            this.isConnected = false;
-            imapConnectionStatus.set({ mailbox: this.config.user }, 0);
-            this.emit('end');
-            this.scheduleReconnect();
-          });
-
-          // Connection close event
-          this.connection.once('close', (hadError: boolean) => {
-            logger.info({ hadError }, 'IMAP connection closed');
-            this.isConnected = false;
-            imapConnectionStatus.set({ mailbox: this.config.user }, 0);
-            this.emit('close', hadError);
-          });
+          this.connection.once('ready', handleReady);
 
           // Initiate connection
           this.connection.connect();
@@ -161,9 +237,14 @@ export class ImapClient extends EventEmitter {
   }
 
   /**
-   * Schedule automatic reconnection with exponential backoff
+   * Schedule automatic reconnection with exponential backoff (IMPROVEMENT-003)
    */
-  private scheduleReconnect(): void {
+  private scheduleReconnection(): void {
+    if (this.reconnectionScheduled) {
+      logger.debug('Reconnection already scheduled');
+      return;
+    }
+
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
       logger.error(
         { attempts: this.reconnectAttempts },
@@ -173,6 +254,7 @@ export class ImapClient extends EventEmitter {
       return;
     }
 
+    this.reconnectionScheduled = true;
     this.reconnectAttempts++;
     const delay = this.reconnectBaseDelay * Math.pow(2, this.reconnectAttempts - 1);
     const jitter = Math.random() * 1000; // Add jitter to prevent thundering herd
@@ -182,10 +264,16 @@ export class ImapClient extends EventEmitter {
       'Scheduling IMAP reconnection'
     );
 
+    imapReconnectionAttempts.inc();
+
     this.reconnectTimer = setTimeout(() => {
-      this.connect().catch((err) => {
-        logger.error({ err }, 'Reconnection attempt failed');
-      });
+      this.connect()
+        .catch((err) => {
+          logger.error({ err }, 'Reconnection attempt failed');
+        })
+        .finally(() => {
+          this.reconnectionScheduled = false;
+        });
     }, delay + jitter);
   }
 

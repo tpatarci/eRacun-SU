@@ -109,6 +109,53 @@ export const inboxUnreadCount = new Gauge({
 });
 
 /**
+ * Email polling errors (IMPROVEMENT-002)
+ */
+export const emailPollingErrors = new Counter({
+  name: 'email_ingestion_polling_errors_total',
+  help: 'Total email polling errors by type',
+  labelNames: ['error_type'], // error_type: connection, timeout, parsing, etc.
+  registers: [register],
+});
+
+/**
+ * Email polling timeouts (IMPROVEMENT-002)
+ */
+export const emailPollingTimeouts = new Counter({
+  name: 'email_ingestion_polling_timeouts_total',
+  help: 'Email polling operations that timed out',
+  registers: [register],
+});
+
+/**
+ * IMAP connection errors (IMPROVEMENT-003)
+ */
+export const imapConnectionErrors = new Counter({
+  name: 'imap_connection_errors_total',
+  help: 'IMAP connection errors by error type',
+  labelNames: ['error_type'],
+  registers: [register],
+});
+
+/**
+ * IMAP mail arrivals (IMPROVEMENT-003)
+ */
+export const imapMailArrivals = new Counter({
+  name: 'imap_mail_arrivals_total',
+  help: 'Total emails received via IMAP',
+  registers: [register],
+});
+
+/**
+ * IMAP reconnection attempts (IMPROVEMENT-003)
+ */
+export const imapReconnectionAttempts = new Counter({
+  name: 'imap_reconnection_attempts_total',
+  help: 'IMAP reconnection attempt count',
+  registers: [register],
+});
+
+/**
  * Get Prometheus metrics registry
  */
 export function getMetricsRegistry(): Registry {

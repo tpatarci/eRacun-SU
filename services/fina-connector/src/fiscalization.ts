@@ -16,6 +16,7 @@ import type {
 } from './types.js';
 import { FINASOAPClient } from './soap-client.js';
 import { SignatureServiceClient } from './signature-integration.js';
+import { SOAPEnvelopeBuilder } from './soap-envelope-builder.js';
 
 /**
  * Fiscalization Service Configuration
@@ -60,6 +61,7 @@ export class FiscalizationService {
   private soapClient: FINASOAPClient;
   private signatureClient: SignatureServiceClient;
   private config: FiscalizationConfig;
+  private soapEnvelopeBuilder: SOAPEnvelopeBuilder;
 
   constructor(
     soapClient: FINASOAPClient,
@@ -69,6 +71,7 @@ export class FiscalizationService {
     this.soapClient = soapClient;
     this.signatureClient = signatureClient;
     this.config = config;
+    this.soapEnvelopeBuilder = new SOAPEnvelopeBuilder();
   }
 
   /**
@@ -344,42 +347,22 @@ export class FiscalizationService {
   /**
    * Build SOAP envelope for invoice
    *
-   * NOTE: This is a stub implementation. In production, this would:
-   * 1. Convert FINAInvoice to proper SOAP XML structure
-   * 2. Include all required FINA headers and namespaces
-   * 3. Format dates, amounts, and codes per FINA spec
+   * Uses SOAPEnvelopeBuilder to generate safe, validated XML with
+   * automatic escaping of all invoice field values.
    *
-   * For now, we return a minimal envelope for testing.
+   * All special XML characters are escaped to prevent injection attacks:
+   * - & → &amp;
+   * - < → &lt;
+   * - > → &gt;
+   * - " → &quot;
+   * - ' → &apos;
    *
-   * @param invoice - Invoice data
-   * @returns SOAP envelope XML
+   * @param invoice - Invoice data (fields automatically escaped)
+   * @returns SOAP envelope XML (safe for signing and submission)
+   * @throws Error if required invoice fields missing or invalid
    */
   private buildSoapEnvelope(invoice: FINAInvoice): string {
-    // TODO: Implement proper SOAP envelope generation
-    // This should match FINA WSDL structure exactly
-
-    return `<?xml version="1.0" encoding="UTF-8"?>
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
-               xmlns:tns="http://www.apis-it.hr/fin/2012/types/f73">
-  <soap:Body>
-    <tns:RacunZahtjev>
-      <tns:Racun>
-        <tns:Oib>${invoice.oib}</tns:Oib>
-        <tns:DatVrijeme>${invoice.datVrijeme}</tns:DatVrijeme>
-        <tns:BrojRacuna>
-          <tns:BrRac>
-            <tns:BrOznRac>${invoice.brojRacuna}</tns:BrOznRac>
-            <tns:OznPosPr>${invoice.oznPoslProstora}</tns:OznPosPr>
-            <tns:OznNapUr>${invoice.oznNapUr}</tns:OznNapUr>
-          </tns:BrRac>
-        </tns:BrojRacuna>
-        <tns:IznosUkupno>${invoice.ukupanIznos}</tns:IznosUkupno>
-        <tns:NacinPlac>${invoice.nacinPlac}</tns:NacinPlac>
-        <tns:ZastKod>${invoice.zki}</tns:ZastKod>
-      </tns:Racun>
-    </tns:RacunZahtjev>
-  </soap:Body>
-</soap:Envelope>`;
+    return this.soapEnvelopeBuilder.buildRacuniRequest(invoice);
   }
 }
 
