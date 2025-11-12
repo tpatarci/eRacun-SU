@@ -10,71 +10,82 @@
 
 ### 1.1 Programming Languages
 
-**Status:** ⏳ Pending Decision
+**Status:** ✅ DECIDED - TypeScript/Node.js
 
-**Options:**
-- **TypeScript/Node.js** - Fast development, rich ecosystem, async-native
-- **Go** - Performance, low memory footprint, excellent concurrency
-- **Rust** - Maximum performance, memory safety, zero-cost abstractions
-- **Python** - ML/AI libraries, OCR tools, rapid prototyping
+**Decision:** TypeScript with Node.js >=20.0.0 for all microservices
 
-**Considerations:**
-- Performance vs development velocity trade-off
-- Team expertise availability
-- Library ecosystem for Croatian tax regulations
-- ML/AI framework integration requirements
+**Rationale:**
+- Fast development velocity with rich npm ecosystem
+- Async-native (perfect for I/O-heavy invoice processing)
+- Strong typing with TypeScript strict mode (error prevention)
+- Excellent tooling (Jest, ESLint, ts-node, tsx)
+- Team expertise readily available
+- All 16 implemented services use this stack
 
-**Decision Required By:** Sprint 1 Planning
-**Stakeholders:** Technical Lead, Development Team
+**Implementation Evidence:**
+- cert-lifecycle-manager, fina-connector, email-ingestion-worker
+- xsd-validator, schematron-validator, pdf-parser
+- audit-logger, health-monitor, notification-service
+- All use TypeScript 5.3+, Node.js 20+, Jest for testing
+
+**Decision Date:** 2025-11-09 (implicit from initial implementations)
+**See Decision Log:** Section below for full details
 
 ---
 
 ### 1.2 Database Selection
 
-**Status:** ⏳ Pending Decision
+**Status:** ✅ DECIDED - PostgreSQL (Primary)
 
-**Primary Database Options:**
-- **PostgreSQL** - ACID compliance, JSON support, mature tooling
-- **MongoDB** - Flexible schema, document-oriented
-- **CockroachDB** - Distributed SQL, horizontal scaling
+**Decision:** PostgreSQL for primary data storage, caching strategy TBD
 
-**Time-Series Metrics:**
-- **InfluxDB** - Purpose-built for metrics
-- **TimescaleDB** - PostgreSQL extension for time-series
+**Rationale:**
+- ACID compliance critical for invoice processing (zero data loss tolerance)
+- JSON/JSONB support for flexible document storage
+- Mature tooling and DigitalOcean Managed Database support
+- Strong consistency required for legally binding documents
+- Proven reliability at scale
 
-**Caching Layer:**
-- **Redis** - In-memory cache, pub/sub
-- **Memcached** - Simple key-value cache
+**Implementation Evidence:**
+- cert-lifecycle-manager: Uses `pg` package for certificate inventory
+- fina-connector: PostgreSQL for offline queue and submission tracking
+- Multiple services reference PostgreSQL in architecture
 
-**Considerations:**
-- Strong consistency vs eventual consistency requirements
-- Query patterns (document retrieval vs relational joins)
-- Operational complexity vs managed services
-- Cost at scale (DigitalOcean managed databases vs self-hosted)
+**Remaining Decisions:**
+- **Caching Layer:** Redis vs Memcached (defer until performance testing identifies bottlenecks)
+- **Time-Series Metrics:** Prometheus native storage currently used, TimescaleDB if advanced analytics needed
+- **Deployment:** DigitalOcean Managed Database (recommended) vs self-hosted
 
-**Decision Required By:** Sprint 2
-**Stakeholders:** Database Administrator, Technical Lead
+**Decision Date:** 2025-11-09 (implicit from cert-lifecycle-manager implementation)
+**See Decision Log:** Section below for full details
 
 ---
 
 ### 1.3 Message Bus Technology
 
-**Status:** ⏳ Pending Decision
+**Status:** ✅ DECIDED - RabbitMQ
 
-**Options:**
-- **RabbitMQ** - Proven reliability, complex routing, management UI
-- **NATS/NATS Streaming** - Lightweight, high performance, cloud-native
-- **Apache Kafka** - Event sourcing, replay capability, high throughput
-- **Redis Streams** - Simple, already in stack if using Redis
+**Decision:** RabbitMQ for inter-service messaging
 
-**Considerations:**
-- Message durability guarantees required
-- Throughput requirements (messages/second)
-- Operational complexity vs features
-- Cost (managed services vs self-hosted)
+**Rationale:**
+- Proven reliability with mature tooling
+- Message durability guarantees (persistent queues, publisher confirms)
+- Supports complex routing patterns (direct, topic, fanout exchanges)
+- Management UI for operational visibility
+- Idempotency support via message deduplication
+- Dead letter queues for failure handling
 
-**Decision Required By:** Sprint 2
-**Stakeholders:** Infrastructure Team, Technical Lead
+**Implementation Evidence:**
+- fina-connector: Uses `amqplib` package for RabbitMQ integration
+- Offline queue with 48-hour grace period for failed submissions
+- Publisher confirms and consumer acknowledgments implemented
+
+**Future Consideration:**
+- Apache Kafka for event sourcing if audit replay requirements emerge
+- Current RabbitMQ sufficient for 100k invoices/hour target
+
+**Decision Date:** 2025-11-10 (implicit from fina-connector implementation)
+**See Decision Log:** Section below for full details
 
 ---
 
@@ -422,20 +433,34 @@
 
 ### 7.1 Monitoring Stack
 
-**Status:** ⏳ Pending Decision
+**Status:** ✅ DECIDED - Self-Hosted Observability
 
-**Options:**
-- **Self-Hosted:** Prometheus + Grafana + Loki + Jaeger
-- **Managed:** Datadog, New Relic, Honeycomb
-- **Hybrid:** Prometheus + managed Grafana Cloud
+**Decision:** Prometheus + Pino + OpenTelemetry (Jaeger) for observability
 
-**Considerations:**
-- Cost (self-hosted ops overhead vs managed service cost)
-- Data retention requirements
-- Alert routing complexity
+**Components:**
+- **Metrics:** Prometheus (prom-client) + Grafana dashboards
+- **Logs:** Pino structured JSON logging (pino-pretty for dev)
+- **Traces:** OpenTelemetry instrumentation + Jaeger exporter
+- **Visualization:** Grafana (self-hosted, recommended)
 
-**Decision Required By:** Sprint 2
-**Stakeholders:** DevOps Team, Finance
+**Rationale:**
+- Cost control (€0 vs $hundreds/month for managed services)
+- Full data ownership (compliance requirement for 11-year retention)
+- Standard observability stack (industry-proven)
+- All services already instrumented
+
+**Implementation Evidence:**
+- cert-lifecycle-manager: prom-client + pino + OpenTelemetry
+- fina-connector: Full observability stack with Jaeger traces
+- health-monitor: Aggregates metrics from all services
+
+**Remaining Decisions:**
+- **Alerting:** Prometheus Alertmanager vs PagerDuty integration
+- **Grafana Hosting:** Self-hosted vs Grafana Cloud (hybrid approach possible)
+- **Log Aggregation:** Loki vs ELK stack (defer until log volume known)
+
+**Decision Date:** 2025-11-09
+**See Decision Log:** Section below for full details
 
 ---
 
@@ -569,7 +594,7 @@
 
 ### 9.2 FINA e-Račun Integration Details
 
-**Status:** ✅ RESEARCHED - Implementation Ready
+**Status:** ✅ IMPLEMENTED - fina-connector service deployed
 
 **API ENDPOINTS (from CROATIAN_COMPLIANCE.md):**
 - **Production (B2C):** `https://cis.porezna-uprava.hr:8449/FiskalizacijaService`
@@ -593,12 +618,21 @@
 - `echo` - Test connectivity
 - `provjera` - Validate invoice (test environment only)
 
+**IMPLEMENTATION STATUS (as of 2025-11-12):**
+- ✅ **fina-connector service:** 4,260 LOC, full B2C SOAP integration
+- ✅ **SOAP Client:** Uses `soap` npm package with WSDL 1.9 support
+- ✅ **Digital Signatures:** Integrated with digital-signature-service (XMLDSig)
+- ✅ **Certificate Management:** Integrated with cert-lifecycle-manager
+- ✅ **Offline Queue:** PostgreSQL-backed with 48-hour grace period
+- ✅ **Retry Logic:** Exponential backoff with circuit breaker
+- ✅ **Operations:** `racuni` (submit), `echo` (test), `provjera` (validate)
+
 **REMAINING QUESTIONS:**
-- Specific rate limits (requests/second, daily quota)?
-- SLA guarantees (uptime percentage)?
-- Webhook availability or polling required for async operations?
-- Batch submission support for multiple invoices?
-- Maximum XML document size (noted: 10MB limit in CLAUDE.md)?
+- Specific rate limits (requests/second, daily quota)? - **TEST IN STAGING**
+- SLA guarantees (uptime percentage)? - **MONITOR IN PRODUCTION**
+- Webhook availability or polling required for async operations? - **SOAP IS SYNCHRONOUS**
+- Batch submission support for multiple invoices? - **LIKELY NOT SUPPORTED (test)**
+- Maximum XML document size? - **10MB LIMIT ENFORCED IN CODE**
 
 **CERTIFICATE ACQUISITION:**
 - Contact: FINA support 01 4404 707
@@ -963,8 +997,56 @@
 - **Impact:** Aggressive development schedule, prioritized sprint planning, risk mitigation
 - **Documented in:** CROATIAN_COMPLIANCE.md section 10.1
 
+**2025-11-12: Technology Stack Standardization**
+- **Decision:** TypeScript + Node.js 20+ for all microservices
+- **Rationale:** Async-native, rich ecosystem, team expertise, 16 services use this stack
+- **Impact:** Simplified hiring, shared tooling, consistent dev experience
+- **Documented in:** TBD.md section 1.1
+
+**2025-11-12: PostgreSQL Primary Database**
+- **Decision:** PostgreSQL for ACID-compliant primary data storage
+- **Rationale:** Invoice processing requires zero data loss, strong consistency, JSON support
+- **Implementation:** cert-lifecycle-manager, fina-connector use `pg` package
+- **Impact:** DigitalOcean Managed Database recommended for production
+- **Documented in:** TBD.md section 1.2
+
+**2025-11-12: RabbitMQ Message Bus**
+- **Decision:** RabbitMQ for inter-service messaging with persistent queues
+- **Rationale:** Message durability, complex routing, mature tooling, dead letter queues
+- **Implementation:** fina-connector uses `amqplib`, 48-hour offline queue
+- **Impact:** Self-hosted RabbitMQ on dedicated droplet
+- **Documented in:** TBD.md section 1.3
+
+**2025-11-12: Observability Stack (Prometheus + Pino + OpenTelemetry)**
+- **Decision:** Self-hosted observability: Prometheus metrics, Pino logs, Jaeger traces
+- **Rationale:** Cost control (€0 vs managed services), data ownership (11-year retention)
+- **Implementation:** All services instrumented with prom-client, pino, @opentelemetry/api
+- **Impact:** Grafana dashboards needed, Prometheus Alertmanager for alerts
+- **Documented in:** TBD.md section 7.1
+
+**2025-11-12: FINA B2C Connector Implementation Complete**
+- **Decision:** fina-connector service deployed with full SOAP integration
+- **Rationale:** Mandatory for Croatian fiscalization (B2C invoices)
+- **Implementation:** 4,260 LOC, SOAP client, XMLDSig, offline queue, retry logic
+- **Impact:** Ready for staging testing with FINA demo certificates
+- **Documented in:** TBD.md section 9.2, services/fina-connector/
+
+**2025-11-12: Certificate Lifecycle Management Implemented**
+- **Decision:** cert-lifecycle-manager service handles X.509 certificate inventory
+- **Rationale:** FINA certificates require monitoring (5-year validity, 30-day renewal window)
+- **Implementation:** 2,200 LOC, REST API, automated expiration alerts, cron-based monitoring
+- **Impact:** Prevents service disruption from expired certificates
+- **Documented in:** services/cert-lifecycle-manager/, docs/reports/2025-11-12-cert-lifecycle-manager-final.md
+
+**2025-11-12: Digital Signature Service Implemented**
+- **Decision:** digital-signature-service handles XMLDSig + ZKI code generation
+- **Rationale:** Mandatory for all Croatian e-invoices (XMLDSig) and B2C receipts (ZKI)
+- **Implementation:** Full service with certificate integration, SHA-256 with RSA
+- **Impact:** Separates crypto operations from business logic, reusable across services
+- **Documented in:** services/digital-signature-service/
+
 ---
 
-**Last Updated:** 2025-11-09
+**Last Updated:** 2025-11-12
 **Review Cadence:** Weekly (during initial development)
 **Document Owner:** Technical Lead
