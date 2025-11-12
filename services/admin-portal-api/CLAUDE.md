@@ -1,4 +1,10 @@
-# CLAUDE.md - Admin Portal API Service
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+---
+
+# Admin Portal API Service
 
 **Service:** `admin-portal-api`
 **Layer:** Management (Layer 10)
