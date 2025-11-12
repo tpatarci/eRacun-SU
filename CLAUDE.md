@@ -144,7 +144,27 @@ Every service MUST implement:
 
 ### 3.3 Testing Requirements
 
-**Minimum Coverage:** 85% (enforced in CI)
+**Minimum Coverage:** 100% (enforced in CI)
+
+**Philosophy:** This system handles legally binding financial documents with **zero error tolerance**. Basic tests prove code isn't broken - 100% coverage is the **bare minimum** for a system where failures result in:
+- 66,360 EUR penalties for non-compliance
+- Loss of VAT deduction rights
+- 11-year audit liability
+- Criminal prosecution for data destruction
+
+Tests that merely prove "code reads CLI and writes to disk" are proof of non-garbage, not proof of correctness. We require **proof of correctness**.
+
+**Coverage Enforcement (Jest):**
+```javascript
+coverageThreshold: {
+  global: {
+    branches: 100,
+    functions: 100,
+    lines: 100,
+    statements: 100
+  }
+}
+```
 
 **Test Pyramid:**
 - **Unit Tests:** 70% of test suite - Fast, isolated, no I/O
@@ -153,8 +173,9 @@ Every service MUST implement:
 
 **Special Requirements:**
 - **Chaos Testing:** Inject failures (network, CPU, disk) in staging
-- **Property-Based Testing:** For validators and transformers
+- **Property-Based Testing:** For validators and transformers (use `fast-check`)
 - **Contract Testing:** Pact/Pactflow for inter-service contracts
+- **Mutation Testing:** Verify tests actually catch bugs (Stryker, optional but recommended)
 
 ### 3.4 Security Hardening
 
