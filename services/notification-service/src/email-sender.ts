@@ -154,9 +154,9 @@ export async function sendEmail(params: SendEmailParams): Promise<boolean> {
       notification_id: params.notification_id,
       recipients_count: params.recipients.length,
       priority: params.priority,
-      has_template: !!params.template_name,
+      has_template: params.template_name ? 'true' : 'false',
     },
-    async (span) => {
+    async (_span) => {
       const startTime = Date.now();
 
       try {
