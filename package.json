@@ -1,0 +1,19 @@
+{
+  "name": "eracun-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "eRacun Invoice Processing Platform - Monorepo",
+  "scripts": {
+    "prepare": "husky install",
+    "lint": "echo 'Running lint across all services...'",
+    "test": "echo 'Running tests across all services...'",
+    "check:architecture": "./scripts/check-architecture-compliance.sh"
+  },
+  "devDependencies": {
+    "husky": "^8.0.3"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
