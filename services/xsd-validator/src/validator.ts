@@ -46,6 +46,21 @@ interface CachedParsedXML {
 }
 
 /**
+ * IMPROVEMENT-012: Cached XSD schema with metadata
+ * Stores loaded XSD schemas with expiration and freshness tracking
+ */
+interface CachedSchema {
+  /** Loaded schema document */
+  document: any;
+  /** Timestamp when loaded */
+  loadedAt: number;
+  /** TTL in milliseconds (default: 24 hours) */
+  ttl: number;
+  /** Schema version (extracted from WSDL or file) */
+  version?: string;
+}
+
+/**
  * XSD Validator for UBL 2.1 documents
  *
  * Validates XML documents against official UBL 2.1 XSD schemas.
@@ -61,17 +76,25 @@ interface CachedParsedXML {
  * - Direct validation on pre-parsed documents where possible
  */
 export class XSDValidator {
-  private schemaCache: Map<SchemaType, any> = new Map();
+  /** IMPROVEMENT-012: Updated schema cache to use CachedSchema interface with TTL */
+  private schemaCache: Map<SchemaType, CachedSchema> = new Map();
   private schemaPath: string;
   /** IMPROVEMENT-011: Cache for parsed XML documents */
   private parsedXmlCache: Map<string, CachedParsedXML> = new Map();
   /** IMPROVEMENT-011: Maximum size of parsed XML cache (number of entries) */
   private maxParsedXmlCacheSize: number = 1000;
+  /** IMPROVEMENT-012: Schema cache configuration */
+  private schemaCacheTtl: number = 24 * 60 * 60 * 1000; // 24 hours default
+  private schemaRefreshIntervalMs: number = 24 * 60 * 60 * 1000; // Auto-refresh interval
 
-  constructor(schemaPath?: string, maxCacheSize?: number) {
+  constructor(schemaPath?: string, maxCacheSize?: number, schemaCacheTtlHours?: number) {
     this.schemaPath = schemaPath || path.join(__dirname, '../schemas/ubl-2.1');
     if (maxCacheSize) {
       this.maxParsedXmlCacheSize = maxCacheSize;
+    }
+    if (schemaCacheTtlHours) {
+      this.schemaCacheTtl = schemaCacheTtlHours * 60 * 60 * 1000;
+      this.schemaRefreshIntervalMs = this.schemaCacheTtl;
     }
   }
 
@@ -168,8 +191,61 @@ export class XSDValidator {
   }
 
   /**
+   * IMPROVEMENT-012: Check if cached schema is still valid (not expired)
+   *
+   * @param schemaType - Schema type to check
+   * @returns true if schema is cached and valid, false otherwise
+   */
+  private isSchemaCacheValid(schemaType: SchemaType): boolean {
+    const cached = this.schemaCache.get(schemaType);
+    if (!cached) return false;
+
+    // Check if cache entry has expired
+    const age = Date.now() - cached.loadedAt;
+    if (age > cached.ttl) {
+      this.schemaCache.delete(schemaType);
+      return false;
+    }
+
+    return true;
+  }
+
+  /**
+   * IMPROVEMENT-012: Store schema in cache with TTL
+   *
+   * @param schemaType - Schema type
+   * @param document - Parsed schema document
+   * @param version - Optional schema version
+   */
+  private cacheSchema(schemaType: SchemaType, document: any, version?: string): void {
+    this.schemaCache.set(schemaType, {
+      document,
+      loadedAt: Date.now(),
+      ttl: this.schemaCacheTtl,
+      version,
+    });
+  }
+
+  /**
+   * IMPROVEMENT-012: Get cached schema if valid (not expired)
+   *
+   * @param schemaType - Schema type to retrieve
+   * @returns Schema document, or null if not cached or expired
+   */
+  private getCachedSchema(schemaType: SchemaType): any | null {
+    if (!this.isSchemaCacheValid(schemaType)) {
+      return null;
+    }
+
+    const cached = this.schemaCache.get(schemaType);
+    return cached ? cached.document : null;
+  }
+
+  /**
    * Load UBL 2.1 schemas into memory at startup
    * Schemas are cached for the lifetime of the service
+   *
+   * IMPROVEMENT-012: Updated to use CachedSchema interface with TTL
    */
   async loadSchemas(): Promise<void> {
     const schemaFiles: Record<SchemaType, string> = {
@@ -187,7 +263,8 @@ export class XSDValidator {
           noent: false, // Disable entity substitution (billion laughs protection)
         });
 
-        this.schemaCache.set(schemaType as SchemaType, schemaDoc);
+        // IMPROVEMENT-012: Use cacheSchema with TTL instead of direct set
+        this.cacheSchema(schemaType as SchemaType, schemaDoc);
       } catch (error) {
         throw new Error(
           `Failed to load schema ${schemaType}: ${error instanceof Error ? error.message : 'Unknown error'}`
@@ -216,15 +293,15 @@ export class XSDValidator {
       // IMPROVEMENT-011: Use parseXmlWithCache to avoid redundant parsing
       const xmlDoc = this.parseXmlWithCache(xmlContent);
 
-      // Get cached schema
-      const schema = this.schemaCache.get(schemaType);
+      // IMPROVEMENT-012: Use getCachedSchema with TTL checking
+      const schema = this.getCachedSchema(schemaType);
       if (!schema) {
         return {
           status: ValidationStatus.ERROR,
           errors: [
             {
               code: 'SCHEMA_NOT_LOADED',
-              message: `Schema ${schemaType} not loaded. Call loadSchemas() first.`,
+              message: `Schema ${schemaType} not loaded or expired. Call loadSchemas() to refresh.`,
             },
           ],
           validationTimeMs: Date.now() - startTime,
@@ -290,15 +367,15 @@ export class XSDValidator {
     const errors: ValidationError[] = [];
 
     try {
-      // Get cached schema
-      const schema = this.schemaCache.get(schemaType);
+      // IMPROVEMENT-012: Use getCachedSchema with TTL checking
+      const schema = this.getCachedSchema(schemaType);
       if (!schema) {
         return {
           status: ValidationStatus.ERROR,
           errors: [
             {
               code: 'SCHEMA_NOT_LOADED',
-              message: `Schema ${schemaType} not loaded. Call loadSchemas() first.`,
+              message: `Schema ${schemaType} not loaded or expired. Call loadSchemas() to refresh.`,
             },
           ],
           validationTimeMs: Date.now() - startTime,
@@ -349,16 +426,94 @@ export class XSDValidator {
 
   /**
    * Check if schemas are loaded and ready
+   *
+   * IMPROVEMENT-012: Updated to check schema validity (not just presence)
    */
   isReady(): boolean {
-    return this.schemaCache.size > 0;
+    if (this.schemaCache.size === 0) return false;
+
+    // Check if at least one schema is valid (not expired)
+    for (const schemaType of Object.values(SchemaType)) {
+      if (this.isSchemaCacheValid(schemaType)) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   /**
    * Get loaded schema types (for diagnostics)
+   *
+   * IMPROVEMENT-012: Updated to only return valid (not expired) schemas
    */
   getLoadedSchemas(): SchemaType[] {
-    return Array.from(this.schemaCache.keys());
+    return Array.from(this.schemaCache.keys()).filter((schemaType) =>
+      this.isSchemaCacheValid(schemaType)
+    );
+  }
+
+  /**
+   * IMPROVEMENT-012: Refresh schemas from disk
+   * Reloads all schemas to ensure they are up-to-date
+   */
+  async refreshSchemas(): Promise<void> {
+    this.schemaCache.clear();
+    await this.loadSchemas();
+  }
+
+  /**
+   * IMPROVEMENT-012: Get schema cache health information
+   * @returns Schema cache health status
+   */
+  getSchemaCacheHealth(): {
+    totalSchemas: number;
+    validSchemas: number;
+    expiredSchemas: number;
+    schemas: Array<{
+      type: SchemaType;
+      loaded: string;
+      expires: string;
+      version?: string;
+    }>;
+  } {
+    const schemas: Array<{
+      type: SchemaType;
+      loaded: string;
+      expires: string;
+      version?: string;
+    }> = [];
+
+    for (const [schemaType, cached] of this.schemaCache.entries()) {
+      const expiresAt = new Date(cached.loadedAt + cached.ttl);
+      const isValid = expiresAt.getTime() > Date.now();
+
+      schemas.push({
+        type: schemaType,
+        loaded: new Date(cached.loadedAt).toISOString(),
+        expires: expiresAt.toISOString(),
+        version: cached.version,
+      });
+    }
+
+    const expiredSchemas = schemas.filter(
+      (s) => new Date(s.expires).getTime() <= Date.now()
+    ).length;
+    const validSchemas = schemas.length - expiredSchemas;
+
+    return {
+      totalSchemas: schemas.length,
+      validSchemas,
+      expiredSchemas,
+      schemas,
+    };
+  }
+
+  /**
+   * IMPROVEMENT-012: Clear schema cache (for testing or maintenance)
+   */
+  clearSchemaCache(): void {
+    this.schemaCache.clear();
   }
 
   /**
