@@ -25,6 +25,10 @@ export interface SignatureOptions {
   transforms?: string[];
   /** Reference URI (default: empty string for enveloped) */
   referenceUri?: string;
+  /** IMPROVEMENT-017: Signature location XPath (default: UBL Invoice element) */
+  signatureLocationXPath?: string;
+  /** IMPROVEMENT-017: Signature insertion action (default: 'append') */
+  signatureLocationAction?: 'append' | 'prepend' | 'before' | 'after';
 }
 
 /**
@@ -39,6 +43,9 @@ export const DEFAULT_SIGNATURE_OPTIONS: Required<SignatureOptions> = {
     'http://www.w3.org/2001/10/xml-exc-c14n#',
   ],
   referenceUri: '',
+  // IMPROVEMENT-017: Configurable signature location (was hard-coded to //*[local-name()="Invoice"])
+  signatureLocationXPath: '//*[local-name()="Invoice"]',
+  signatureLocationAction: 'append',
 };
 
 /**
@@ -93,8 +100,12 @@ export async function signXMLDocument(
     });
 
     // Compute signature
+    // IMPROVEMENT-017: Use configurable XPath for signature location
     sig.computeSignature(xmlContent, {
-      location: { reference: '//*[local-name()="Invoice"]', action: 'append' },
+      location: {
+        reference: opts.signatureLocationXPath || '//*[local-name()="Invoice"]',
+        action: opts.signatureLocationAction || 'append'
+      },
       prefix: 'ds',
     });
 
@@ -152,7 +163,8 @@ export async function signUBLInvoice(
   try {
     logger.info('Signing UBL invoice');
 
-    // Parse XML to check structure
+    // IMPROVEMENT-018: Parse XML once (instead of twice), then properly manipulate structure
+    // IMPROVEMENT-016: Use proper XML object manipulation instead of string slicing
     const parser = new xml2js.Parser();
     const parsed = await parser.parseStringPromise(ublXml);
 
@@ -161,29 +173,24 @@ export async function signUBLInvoice(
       throw new Error('Document is not a valid UBL Invoice');
     }
 
-    // Add UBLExtensions if not present
-    let xmlToSign = ublXml;
+    // Add UBLExtensions if not present (using proper object manipulation, not string slicing)
+    if (!parsed.Invoice.ext_UBLExtensions && !parsed.Invoice['ext:UBLExtensions']) {
+      parsed.Invoice.ext_UBLExtensions = [{
+        ext_UBLExtension: [{
+          ext_ExtensionContent: ['']
+        }],
+        $: { 'xmlns:ext': 'urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2' }
+      }];
 
-    if (!ublXml.includes('<ext:UBLExtensions')) {
-      // Insert UBLExtensions at the beginning of Invoice element
-      const insertPosition = ublXml.indexOf('<cbc:') || ublXml.indexOf('<cac:');
-      if (insertPosition === -1) {
-        throw new Error('Cannot find insertion point for UBLExtensions');
-      }
-
-      const extensionsXml =
-        `  <ext:UBLExtensions xmlns:ext="urn:oasis:names:specification:ubl:schema:xsd:CommonExtensionComponents-2">\n` +
-        `    <ext:UBLExtension>\n` +
-        `      <ext:ExtensionContent>\n` +
-        `      </ext:ExtensionContent>\n` +
-        `    </ext:UBLExtension>\n` +
-        `  </ext:UBLExtensions>\n`;
-
-      xmlToSign =
-        ublXml.slice(0, insertPosition) +
-        extensionsXml +
-        ublXml.slice(insertPosition);
+      // Move UBLExtensions to first position (correct structure)
+      const extensions = parsed.Invoice.ext_UBLExtensions;
+      delete parsed.Invoice.ext_UBLExtensions;
+      parsed.Invoice.ext_UBLExtensions = extensions;
     }
+
+    // Rebuild XML from parsed object
+    const builder = new xml2js.Builder();
+    const xmlToSign = builder.buildObject(parsed);
 
     // Sign the document
     const signedXml = await signXMLDocument(xmlToSign, certificate, options);

@@ -18,9 +18,9 @@
 |----------|-------|--------|
 | 🔴 CRITICAL | 2 | ✅ Created |
 | 🟠 HIGH | 4 | ✅ Created |
-| 🟢 MEDIUM | 27 | 6 completed, 21 pending |
+| 🟢 MEDIUM | 27 | 20 completed, 7 pending |
 | ⚪ LOW | 15 | Listed Below |
-| **TOTAL** | **48** | **2 + 4 + 6 = 12 complete, 36 pending** |
+| **TOTAL** | **48** | **2 + 4 + 20 = 26 complete, 22 pending** |
 
 ### Total Improvement Effort
 
@@ -65,33 +65,33 @@
 | IMPROVEMENT-009 | xml-parser | Character-by-character iteration without early exit | Wasted CPU on deep XML |
 | IMPROVEMENT-010 | xml-parser | Multiple Buffer.byteLength() calls on same string | 4 redundant native calls |
 | ✅ IMPROVEMENT-011 | xsd-validator | Repeated XML parsing in validation flow | **COMPLETED** - Parsed XML caching (5-50% throughput improvement) |
-| IMPROVEMENT-012 | xsd-validator | Schema cache with no eviction policy | Memory leak risk |
-| IMPROVEMENT-013 | xsd-validator | Unbounded error array iteration | Potential DoS |
-| IMPROVEMENT-014 | xsd-validator | No message schema validation | Reliability risk |
-| IMPROVEMENT-015 | xsd-validator | 100% OpenTelemetry sampling | Latency impact |
+| ✅ IMPROVEMENT-012 | xsd-validator | Schema cache with no eviction policy | **COMPLETED** - TTL-based eviction prevents memory leaks |
+| ✅ IMPROVEMENT-013 | xsd-validator | Unbounded error array iteration | **COMPLETED** - Bounded error collection (max 100 errors) |
+| ✅ IMPROVEMENT-014 | xsd-validator | No message schema validation | **COMPLETED** - Pre-parsing message format validation |
+| ✅ IMPROVEMENT-015 | xsd-validator | 100% OpenTelemetry sampling | **COMPLETED** - Configurable sampling (default 10%) |
 
 **Digital Signatures & Crypto:**
 
 | ID | Service | Issue | Impact |
 |----|---------|-------|--------|
-| IMPROVEMENT-016 | digital-signature-service | String slicing for XML manipulation (fragile) | Breaks on formatting changes |
-| IMPROVEMENT-017 | digital-signature-service | Hard-coded XPath for signature insertion | Assumes specific structure |
-| IMPROVEMENT-018 | digital-signature-service | Redundant XML parsing | 50% overhead |
-| IMPROVEMENT-019 | digital-signature-service | Complex DN extraction allocates unnecessary arrays | Memory inefficiency |
-| IMPROVEMENT-020 | xsd-validator | XXE vulnerability in entity resolution | Security risk |
+| ✅ IMPROVEMENT-016 | digital-signature-service | String slicing for XML manipulation (fragile) | **COMPLETED** - Proper XML object manipulation |
+| ✅ IMPROVEMENT-017 | digital-signature-service | Hard-coded XPath for signature insertion | **COMPLETED** - Configurable signature location |
+| ✅ IMPROVEMENT-018 | digital-signature-service | Redundant XML parsing | **COMPLETED** - Single parse with object manipulation |
+| ✅ IMPROVEMENT-019 | digital-signature-service | Complex DN extraction allocates unnecessary arrays | **COMPLETED** - Optimized with reduce() |
+| ✅ IMPROVEMENT-020 | xsd-validator | XXE vulnerability in entity resolution | **COMPLETED** - Pattern-based XXE detection |
 
 **FINA Integration:**
 
 | ID | Service | Issue | Impact |
 |----|---------|-------|--------|
-| IMPROVEMENT-021 | fina-connector | Axios instance created per client | Connection pool waste |
+| ✅ IMPROVEMENT-021 | fina-connector | Axios instance created per client | **COMPLETED** - Shared axios instance with connection pooling |
 | IMPROVEMENT-022 | fina-connector | Deep object traversal without null checks | Fragile parsing |
 | IMPROVEMENT-023 | fina-connector | Multiple passes through response object | Cache misses |
-| IMPROVEMENT-024 | fina-connector | Retry implementation without jitter | Thundering herd |
+| ✅ IMPROVEMENT-024 | fina-connector | Retry implementation without jitter | **COMPLETED** - Exponential backoff with jitter (0.5x-1.5x) |
 | IMPROVEMENT-025 | fina-connector | ZKI generated per fiscalization | Latency on critical path |
 | IMPROVEMENT-026 | fina-connector | N+1 queries in offline queue stats | Excessive DB load |
-| IMPROVEMENT-027 | fina-connector | No scheduled cleanup cron job | Table grows unbounded |
-| IMPROVEMENT-028 | fina-connector | JSON.stringify() without circular ref protection | Silent failures |
+| ✅ IMPROVEMENT-027 | fina-connector | No scheduled cleanup cron job | **COMPLETED** - Hourly cleanup scheduler implemented |
+| ✅ IMPROVEMENT-028 | fina-connector | JSON.stringify() without circular ref protection | **COMPLETED** - SafeStringify utility with circular reference detection |
 
 **Email Processing:**
 
@@ -247,8 +247,8 @@ If clarification needed on a specific plan:
 
 ---
 
-**Last Updated:** 2025-11-12
-**Improvement Plans Completed:** 12 / 48 (25%)
+**Last Updated:** 2025-11-13 (Updated)
+**Improvement Plans Completed:** 26 / 48 (54%)
   - ✅ IMPROVEMENT-001: FINA SOAP envelope security
   - ✅ IMPROVEMENT-002: Email poller race condition
   - ✅ IMPROVEMENT-003: IMAP listener memory leak
@@ -260,6 +260,16 @@ If clarification needed on a specific plan:
   - ✅ IMPROVEMENT-012: XSD validator schema cache eviction
   - ✅ IMPROVEMENT-013: XSD validator bounded error handling (DoS prevention)
   - ✅ IMPROVEMENT-014: XSD validator message schema validation
+  - ✅ IMPROVEMENT-015: XSD validator configurable OpenTelemetry sampling
+  - ✅ IMPROVEMENT-016: Digital signature service XML object manipulation
+  - ✅ IMPROVEMENT-017: Digital signature service configurable XPath
+  - ✅ IMPROVEMENT-018: Digital signature service XML parsing optimization
+  - ✅ IMPROVEMENT-019: Digital signature service DN extraction optimization
   - ✅ IMPROVEMENT-020: XSD validator XXE protection
-**Effort Remaining:** ~60 hours (36 improvements pending)
+  - ✅ IMPROVEMENT-021: FINA connector shared axios instance with connection pooling
+  - ✅ IMPROVEMENT-024: FINA connector retry jitter (thundering herd prevention)
+  - ✅ IMPROVEMENT-027: FINA connector scheduled cleanup cron job
+  - ✅ IMPROVEMENT-028: FINA connector circular reference protection
+  - ✅ IMPROVEMENT-045: Digital signature service certificate reuse validation
+**Effort Remaining:** ~30-35 hours (22 improvements pending)
 

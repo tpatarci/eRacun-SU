@@ -30,6 +30,23 @@ import type {
 } from './types.js';
 
 /**
+ * IMPROVEMENT-028: Safe JSON stringify with circular reference protection
+ */
+function safeStringify(obj: any): string {
+  const seen = new WeakSet();
+
+  return JSON.stringify(obj, (key, value) => {
+    if (typeof value === 'object' && value !== null) {
+      if (seen.has(value)) {
+        return '[Circular Reference]';
+      }
+      seen.add(value);
+    }
+    return value;
+  });
+}
+
+/**
  * Application Configuration
  */
 interface AppConfig {
@@ -109,6 +126,8 @@ class FINAConnectorApp {
   private fiscalizationService: FiscalizationService | null = null;
   private offlineQueueManager: OfflineQueueManager | null = null;
   private isShuttingDown = false;
+  // IMPROVEMENT-027: Scheduled cleanup timer for expired queue entries
+  private cleanupTimer: NodeJS.Timer | null = null;
 
   constructor(config: AppConfig) {
     this.config = config;
@@ -179,10 +198,65 @@ class FINAConnectorApp {
     // Initialize HTTP server
     this.initializeHttpServer();
 
+    // IMPROVEMENT-027: Start scheduled cleanup of expired queue entries
+    this.startCleanupScheduler();
+
     // Set up graceful shutdown
     this.setupGracefulShutdown();
 
     logger.info('FINA Connector service initialized successfully');
+  }
+
+  /**
+   * IMPROVEMENT-027: Start scheduled cleanup of expired offline queue entries
+   * Runs every hour to remove entries older than the configured max age
+   */
+  private startCleanupScheduler(): void {
+    if (!this.offlineQueueManager) {
+      logger.warn('Offline queue manager not initialized, skipping cleanup scheduler');
+      return;
+    }
+
+    // Run cleanup every hour (3,600,000 milliseconds)
+    const CLEANUP_INTERVAL_MS = 60 * 60 * 1000;
+
+    this.cleanupTimer = setInterval(async () => {
+      try {
+        if (this.isShuttingDown || !this.offlineQueueManager) {
+          return;
+        }
+
+        const removedCount = await this.offlineQueueManager.cleanupExpired();
+
+        if (removedCount > 0) {
+          logger.info({
+            removedCount,
+          }, 'Scheduled cleanup removed expired queue entries');
+        }
+      } catch (error) {
+        logger.error({ error }, 'Scheduled cleanup failed, will retry at next interval');
+        // Don't throw - let cleanup retry at next interval
+      }
+    }, CLEANUP_INTERVAL_MS);
+
+    // Also run cleanup immediately on startup (with delay to allow initialization)
+    setTimeout(async () => {
+      try {
+        if (this.isShuttingDown || !this.offlineQueueManager) {
+          return;
+        }
+
+        const removedCount = await this.offlineQueueManager.cleanupExpired();
+
+        logger.info({
+          removedCount,
+        }, 'Initial cleanup on startup removed expired entries');
+      } catch (error) {
+        logger.warn({ error }, 'Initial cleanup failed, will retry at next scheduled interval');
+      }
+    }, 5000); // Wait 5 seconds after startup before first cleanup
+
+    logger.info('Offline queue cleanup scheduler started (runs every hour)');
   }
 
   /**
@@ -337,7 +411,7 @@ class FINAConnectorApp {
 
       this.rabbitChannel!.sendToQueue(
         this.config.resultQueueName,
-        Buffer.from(JSON.stringify(resultMessage)),
+        Buffer.from(safeStringify(resultMessage)), // IMPROVEMENT-028: Use safe stringify
         {
           persistent: true,
           correlationId: originalMessage.correlationId,
@@ -495,6 +569,13 @@ class FINAConnectorApp {
       logger.info({ signal }, 'Shutting down gracefully');
 
       serviceUp.set(0);
+
+      // IMPROVEMENT-027: Clear cleanup scheduler timer
+      if (this.cleanupTimer) {
+        clearInterval(this.cleanupTimer);
+        this.cleanupTimer = null;
+        logger.info('Cleanup scheduler stopped');
+      }
 
       // Stop accepting new messages
       if (this.rabbitChannel) {

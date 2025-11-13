@@ -282,14 +282,21 @@ export class FiscalizationService {
         }
 
         if (attempt < this.config.maxRetries) {
-          const backoffMs = this.config.retryDelayBase * Math.pow(2, attempt - 1);
+          // IMPROVEMENT-024: Add jitter to exponential backoff to prevent thundering herd
+          // Exponential backoff: 2^(attempt-1), then apply random jitter (0.5x to 1.5x)
+          const baseBackoffMs = this.config.retryDelayBase * Math.pow(2, attempt - 1);
+          const jitter = 0.5 + Math.random(); // Random value between 0.5 and 1.5
+          const backoffMs = Math.floor(baseBackoffMs * jitter);
+
           logger.warn({
             invoiceNumber: invoice.brojRacuna,
             attempt,
             maxRetries: this.config.maxRetries,
+            baseBackoffMs,
             backoffMs,
+            jitterFactor: jitter.toFixed(2),
             error: (error as Error).message,
-          }, 'Transient error, will retry');
+          }, 'Transient error, will retry with jitter');
 
           await new Promise(resolve => setTimeout(resolve, backoffMs));
         }

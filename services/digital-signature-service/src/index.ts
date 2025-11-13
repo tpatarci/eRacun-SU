@@ -63,6 +63,26 @@ function getDaysUntilExpiration(expirationDate: Date): number {
 }
 
 /**
+ * IMPROVEMENT-045: Validate cached certificate before reuse
+ * Ensures certificate is still valid and hasn't been mutated
+ *
+ * @throws Error if certificate is invalid or expired
+ */
+function validateCachedCertificate(): void {
+  if (!defaultCertificate) {
+    throw new Error('No certificate loaded');
+  }
+
+  try {
+    // Re-validate certificate on each use (detects expiration, mutation, revocation)
+    assertCertificateValid(defaultCertificate.info);
+  } catch (error) {
+    logger.error({ error }, 'Cached certificate validation failed');
+    throw error;
+  }
+}
+
+/**
  * Load default certificate on startup (IMPROVEMENT-004: Added expiration monitoring)
  */
 async function loadDefaultCertificate(): Promise<void> {
@@ -188,6 +208,9 @@ app.post('/api/v1/sign/ubl', async (req: Request, res: Response): Promise<void> 
       return;
     }
 
+    // IMPROVEMENT-045: Validate certificate before use
+    validateCachedCertificate();
+
     const ublXml = typeof req.body === 'string' ? req.body : req.body.toString();
 
     if (!ublXml || ublXml.trim() === '') {
@@ -236,6 +259,9 @@ app.post('/api/v1/sign/xml', async (req: Request, res: Response) => {
       });
     }
 
+    // IMPROVEMENT-045: Validate certificate before use
+    validateCachedCertificate();
+
     const xmlContent = typeof req.body === 'string' ? req.body : req.body.toString();
 
     if (!xmlContent || xmlContent.trim() === '') {
@@ -282,6 +308,9 @@ app.post('/api/v1/sign/zki', async (req: Request, res: Response) => {
         message: 'No certificate loaded',
       });
     }
+
+    // IMPROVEMENT-045: Validate certificate before use
+    validateCachedCertificate();
 
     const params: ZKIParams = req.body;
 

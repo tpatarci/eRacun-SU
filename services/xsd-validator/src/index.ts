@@ -14,6 +14,7 @@ import {
   getMetrics,
   createSpan,
   setSpanError,
+  getSamplingRate,
 } from './observability.js';
 import { context, trace } from '@opentelemetry/api';
 
@@ -242,6 +243,11 @@ function createHealthServer(): http.Server {
             status: 'ready',
             schemas_loaded: validator.getLoadedSchemas().length,
             rabbitmq_connected: rabbitmqConnection !== null,
+            // IMPROVEMENT-015: Include sampling rate in ready endpoint
+            observability: {
+              tracing_sampling_rate: getSamplingRate(),
+              tracing_sampling_percentage: Math.round(getSamplingRate() * 100),
+            },
           })
         );
       } else {
@@ -251,6 +257,11 @@ function createHealthServer(): http.Server {
             status: 'not_ready',
             schemas_loaded: validator?.getLoadedSchemas().length || 0,
             rabbitmq_connected: rabbitmqConnection !== null,
+            // IMPROVEMENT-015: Include sampling rate in not-ready endpoint
+            observability: {
+              tracing_sampling_rate: getSamplingRate(),
+              tracing_sampling_percentage: Math.round(getSamplingRate() * 100),
+            },
           })
         );
       }

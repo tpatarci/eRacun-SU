@@ -1,5 +1,5 @@
 import * as soap from 'soap';
-import axios from 'axios';
+import axios, { AxiosInstance } from 'axios';
 import {
   logger,
   fiscalizationTotal,
@@ -21,6 +21,32 @@ import type {
   FINAValidationResponse,
   FINAError,
 } from './types.js';
+
+/**
+ * IMPROVEMENT-021: Shared axios instance for all SOAP clients
+ * Reuses connection pool and prevents creating new instance per client
+ * This reduces overhead and improves connection reuse
+ */
+let sharedHttpClient: AxiosInstance | null = null;
+
+/**
+ * Initialize or get shared HTTP client with connection pooling
+ */
+function getOrCreateSharedHttpClient(timeout: number): AxiosInstance {
+  if (!sharedHttpClient) {
+    sharedHttpClient = axios.create({
+      timeout,
+      httpsAgent: new (require('https').Agent)({
+        rejectUnauthorized: true, // Validate FINA SSL certificate
+        keepAlive: true, // Reuse TCP connections
+      }),
+    });
+
+    logger.info('Created shared HTTP client with connection pooling');
+  }
+
+  return sharedHttpClient;
+}
 
 /**
  * SOAP Client Configuration
@@ -104,14 +130,9 @@ export class FINASOAPClient {
         endpoint: this.config.endpointUrl,
       });
 
-      // Set timeout
+      // IMPROVEMENT-021: Use shared HTTP client with connection pooling
       if (this.client) {
-        (this.client as any).httpClient = axios.create({
-          timeout: this.config.timeout,
-          httpsAgent: new (await import('https')).Agent({
-            rejectUnauthorized: true, // Validate FINA SSL certificate
-          }),
-        });
+        (this.client as any).httpClient = getOrCreateSharedHttpClient(this.config.timeout);
       }
 
       wsdlCacheHealth.set({
