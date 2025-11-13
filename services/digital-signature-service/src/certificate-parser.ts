@@ -181,17 +181,22 @@ export function parseCertificate(
 export function extractCertificateInfo(
   certificate: forge.pki.Certificate
 ): CertificateInfo {
-  // Extract subject DN
-  const subjectAttributes = certificate.subject.attributes.map(
-    (attr) => `${attr.shortName}=${attr.value}`
-  );
-  const subjectDN = subjectAttributes.join(', ');
+  // IMPROVEMENT-019: Optimize DN extraction without intermediate array allocation
+  // Use reduce to build string directly instead of mapping to array then joining
+  const subjectDN = certificate.subject.attributes
+    .reduce((dn, attr, index) => {
+      return index === 0
+        ? `${attr.shortName}=${attr.value}`
+        : `${dn}, ${attr.shortName}=${attr.value}`;
+    }, '');
 
-  // Extract issuer DN
-  const issuerAttributes = certificate.issuer.attributes.map(
-    (attr) => `${attr.shortName}=${attr.value}`
-  );
-  const issuerDN = issuerAttributes.join(', ');
+  // Extract issuer DN (same optimization)
+  const issuerDN = certificate.issuer.attributes
+    .reduce((dn, attr, index) => {
+      return index === 0
+        ? `${attr.shortName}=${attr.value}`
+        : `${dn}, ${attr.shortName}=${attr.value}`;
+    }, '');
 
   // Extract issuer CN (Common Name)
   const issuerCN = certificate.issuer.getField('CN');
