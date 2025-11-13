@@ -99,22 +99,55 @@ export function maskOIB(oib: string): string {
 }
 
 /**
- * OpenTelemetry Tracing (TODO-008 Compliance)
+ * OpenTelemetry Tracing (IMPROVEMENT-015: Configurable sampling)
  *
- * 100% sampling per TODO-008 decision
+ * IMPROVEMENT-015: Reduce from 100% sampling to configurable rate (default: 10%)
+ * 100% sampling creates latency overhead; 10% provides good observability with low overhead
+ *
+ * Environment variable: OTEL_TRACES_SAMPLER_ARG
+ * Default: 0.1 (10% sampling rate)
+ * Range: 0.0 (no sampling) to 1.0 (100% sampling)
  */
+const samplingRate = parseFloat(process.env.OTEL_TRACES_SAMPLER_ARG || '0.1');
+
 export const tracer = trace.getTracer('xsd-validator', '0.1.0');
 
 /**
+ * IMPROVEMENT-015: Determine if trace should be sampled
+ * Uses reservoir sampling with configurable rate
+ *
+ * @returns true if trace should be recorded, false otherwise
+ */
+function shouldSample(): boolean {
+  return Math.random() < samplingRate;
+}
+
+/**
  * Create a new trace span with standard attributes
+ *
+ * IMPROVEMENT-015: Only creates span if shouldSample() returns true
+ * This reduces overhead from 100% sampling to configurable rate
  */
 export function createSpan(
   spanName: string,
   attributes: Record<string, string | number | boolean> = {}
 ) {
+  // IMPROVEMENT-015: Skip span creation if not sampled
+  if (!shouldSample()) {
+    // Return a no-op span that doesn't record anything
+    return {
+      setStatus: () => {},
+      recordException: () => {},
+      end: () => {},
+      setAttributes: () => {},
+      addEvent: () => {},
+    };
+  }
+
   return tracer.startSpan(spanName, {
     attributes: {
       'service.name': 'xsd-validator',
+      'sampling.enabled': true,
       ...attributes,
     },
   });
@@ -139,11 +172,28 @@ export async function getMetrics(): Promise<string> {
 }
 
 /**
+ * IMPROVEMENT-015: Get current sampling rate
+ * @returns Sampling rate (0.0 to 1.0)
+ */
+export function getSamplingRate(): number {
+  return samplingRate;
+}
+
+/**
  * Initialize observability
+ *
+ * IMPROVEMENT-015: Logs configured sampling rate
  */
 export function initObservability() {
   // Set service up
   serviceUp.set(1);
 
-  logger.info('Observability initialized');
+  // IMPROVEMENT-015: Log sampling configuration
+  logger.info(
+    {
+      sampling_rate: samplingRate,
+      sampling_percentage: Math.round(samplingRate * 100),
+    },
+    'Observability initialized with OpenTelemetry sampling'
+  );
 }
