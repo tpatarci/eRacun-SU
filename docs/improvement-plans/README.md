@@ -18,9 +18,9 @@
 |----------|-------|--------|
 | 🔴 CRITICAL | 2 | ✅ Created |
 | 🟠 HIGH | 4 | ✅ Created |
-| 🟢 MEDIUM | 27 | 2 completed, 25 pending |
+| 🟢 MEDIUM | 27 | 6 completed, 21 pending |
 | ⚪ LOW | 15 | Listed Below |
-| **TOTAL** | **48** | **2 + 4 + 2 = 8 complete, 40 pending** |
+| **TOTAL** | **48** | **2 + 4 + 6 = 12 complete, 36 pending** |
 
 ### Total Improvement Effort
 
@@ -248,7 +248,7 @@ If clarification needed on a specific plan:
 ---
 
 **Last Updated:** 2025-11-12
-**Improvement Plans Completed:** 8 / 48 (17%)
+**Improvement Plans Completed:** 12 / 48 (25%)
   - ✅ IMPROVEMENT-001: FINA SOAP envelope security
   - ✅ IMPROVEMENT-002: Email poller race condition
   - ✅ IMPROVEMENT-003: IMAP listener memory leak
@@ -257,5 +257,9 @@ If clarification needed on a specific plan:
   - ✅ IMPROVEMENT-006: WSDL cache expiration
   - ✅ IMPROVEMENT-007: XML parser optimization (IMPROVEMENT-008, 009, 010 also resolved)
   - ✅ IMPROVEMENT-011: XSD validator parsed XML caching
-**Effort Remaining:** ~65 hours (40 improvements pending)
+  - ✅ IMPROVEMENT-012: XSD validator schema cache eviction
+  - ✅ IMPROVEMENT-013: XSD validator bounded error handling (DoS prevention)
+  - ✅ IMPROVEMENT-014: XSD validator message schema validation
+  - ✅ IMPROVEMENT-020: XSD validator XXE protection
+**Effort Remaining:** ~60 hours (36 improvements pending)
 
