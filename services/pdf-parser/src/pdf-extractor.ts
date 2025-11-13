@@ -19,6 +19,8 @@ import {
 
 /**
  * Extracted PDF content
+ *
+ * IMPROVEMENT-039: Add quality metrics for observability
  */
 export interface ExtractedPDF {
   /** Extracted text content */
@@ -37,8 +39,19 @@ export interface ExtractedPDF {
   };
   /** Whether PDF is scanned (image-based, requires OCR) */
   isScanned: boolean;
+  /** Scanned detection confidence (0-1, higher = more confident it's scanned) */
+  scannedConfidence: number;
   /** Text extraction quality */
   quality: 'high' | 'medium' | 'low';
+  /** Diagnostic metrics */
+  metrics: {
+    /** Total text length extracted */
+    textLength: number;
+    /** Average text per page */
+    avgTextPerPage: number;
+    /** Ratio of meaningful characters to whitespace */
+    meaningfulCharRatio: number;
+  };
   /** File size in bytes */
   size: number;
 }
@@ -117,8 +130,8 @@ export class PDFExtractor {
       // Extract metadata
       const metadata = this.extractMetadata(data.info);
 
-      // Detect if PDF is scanned
-      const isScanned = this.detectScannedPDF(data.text, data.numpages);
+      // Detect if PDF is scanned with confidence score
+      const { isScanned, confidence: scannedConfidence, metrics } = this.detectScannedPDFWithMetrics(data.text, data.numpages);
 
       // Determine extraction quality
       const quality = this.assessQuality(data.text, data.numpages, isScanned);
@@ -139,7 +152,9 @@ export class PDFExtractor {
         pageCount: data.numpages,
         metadata,
         isScanned,
+        scannedConfidence,
         quality,
+        metrics,
         size: buffer.length,
       };
     } catch (error) {
@@ -239,39 +254,85 @@ export class PDFExtractor {
   }
 
   /**
-   * Detect if PDF is scanned (image-based)
+   * Detect if PDF is scanned (image-based) with confidence score
    *
-   * IMPROVEMENT-033: Optimize string operations to reduce redundant iterations
+   * IMPROVEMENT-033: Optimize string operations
+   * IMPROVEMENT-034: Pre-compiled regex for whitespace detection
+   * IMPROVEMENT-035: Return confidence score for heuristic-based detection
+   *
    * Heuristic: If text length is very low relative to page count,
    * PDF is likely scanned and requires OCR
+   *
+   * @returns Object with isScanned boolean, confidence (0-1), and diagnostic metrics
    */
-  private detectScannedPDF(text: string, pageCount: number): boolean {
+  private detectScannedPDFWithMetrics(
+    text: string,
+    pageCount: number
+  ): {
+    isScanned: boolean;
+    confidence: number;
+    metrics: {
+      textLength: number;
+      avgTextPerPage: number;
+      meaningfulCharRatio: number;
+    };
+  } {
     // Trim text once to avoid multiple trim calls
     const trimmedText = text.trim();
     const textLength = trimmedText.length;
     const avgTextPerPage = textLength / pageCount;
 
-    // If average text per page < minTextLength, consider it scanned
-    if (avgTextPerPage < this.config.minTextLength) {
-      logger.info(
-        { textLength, pageCount, avgTextPerPage },
-        'Detected scanned PDF (low text content)'
-      );
-      return true;
-    }
-
     // Check for high ratio of whitespace/garbage characters
     // IMPROVEMENT-033 & IMPROVEMENT-034: Use pre-compiled regex and avoid intermediate string allocation
-    // Count meaningful chars by removing whitespace using cached regex
     const meaningfulChars = trimmedText.replace(this.whitespaceRegex, '').length;
-    const meaningfulRatio = meaningfulChars / textLength;
+    const meaningfulRatio = textLength > 0 ? meaningfulChars / textLength : 0;
 
-    if (meaningfulRatio < 0.3) {
-      logger.info({ meaningfulRatio }, 'Detected scanned PDF (low meaningful text ratio)');
-      return true;
+    // Calculate confidence score based on multiple heuristics
+    let confidence = 0;
+
+    // Heuristic 1: Low text per page (high confidence it's scanned)
+    if (avgTextPerPage < this.config.minTextLength) {
+      confidence += 0.6;
+      logger.info(
+        { textLength, pageCount, avgTextPerPage },
+        'Scanned PDF indicator: low text content'
+      );
     }
 
-    return false;
+    // Heuristic 2: High whitespace ratio (high confidence it's scanned)
+    if (meaningfulRatio < 0.3) {
+      confidence += 0.4;
+      logger.info({ meaningfulRatio }, 'Scanned PDF indicator: low meaningful text ratio');
+    }
+
+    // Determine if PDF should be considered scanned (confidence threshold: >0.5)
+    const isScanned = confidence > 0.5;
+
+    // Log metrics for diagnosis
+    if (isScanned) {
+      logger.info(
+        { confidence, avgTextPerPage, meaningfulRatio },
+        'PDF classified as scanned (image-based)'
+      );
+    }
+
+    return {
+      isScanned,
+      confidence: Math.min(confidence, 1.0), // Cap at 1.0
+      metrics: {
+        textLength,
+        avgTextPerPage: Number(avgTextPerPage.toFixed(2)),
+        meaningfulCharRatio: Number(meaningfulRatio.toFixed(3)),
+      },
+    };
+  }
+
+  /**
+   * Detect if PDF is scanned (image-based) - Legacy method for backward compatibility
+   */
+  private detectScannedPDF(text: string, pageCount: number): boolean {
+    const { isScanned } = this.detectScannedPDFWithMetrics(text, pageCount);
+    return isScanned;
   }
 
   /**
