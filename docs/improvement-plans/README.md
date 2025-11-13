@@ -248,7 +248,7 @@ If clarification needed on a specific plan:
 ---
 
 **Last Updated:** 2025-11-13 (Updated)
-**Improvement Plans Completed:** 34 / 48 (71%)
+**Improvement Plans Completed:** 36 / 48 (75%)
   - ✅ IMPROVEMENT-001: FINA SOAP envelope security
   - ✅ IMPROVEMENT-002: Email poller race condition
   - ✅ IMPROVEMENT-003: IMAP listener memory leak
@@ -276,8 +276,10 @@ If clarification needed on a specific plan:
   - ✅ IMPROVEMENT-030: Email ingestion worker address parsing optimization (reduce-based)
   - ✅ IMPROVEMENT-031: Email ingestion worker configurable parallel processing
   - ✅ IMPROVEMENT-032: Email ingestion worker enhanced error logging
+  - ✅ IMPROVEMENT-040: Email ingestion worker Base64 encoding caching
+  - ✅ IMPROVEMENT-041: Email ingestion worker message batch publishing
   - ✅ IMPROVEMENT-042: Email ingestion worker URL masking cache
   - ✅ IMPROVEMENT-043: Email ingestion worker publish retry logic
   - ✅ IMPROVEMENT-045: Digital signature service certificate reuse validation
-**Effort Remaining:** ~15-20 hours (14 improvements pending)
+**Effort Remaining:** ~10-15 hours (12 improvements pending)
 
