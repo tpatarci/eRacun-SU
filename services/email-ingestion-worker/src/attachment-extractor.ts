@@ -337,9 +337,17 @@ export class AttachmentExtractor {
    *
    * IMPROVEMENT-030: Using extractAddresses() helper to avoid code duplication
    * and benefit from optimized reduce()-based address extraction
+   *
+   * IMPROVEMENT-048: Standardize header handling and address extraction
+   * - Use extractFrom() helper instead of duplicating logic
+   * - Use direct Map construction to avoid manual iteration overhead
+   * - Consistent with streaming path for memory efficiency
    */
   private convertToParseEmail(parsed: ParsedMail): ParsedEmail {
-    const from = parsed.from?.value?.[0]?.address || parsed.from?.text || 'unknown';
+    // IMPROVEMENT-048: Use extractFrom helper (already handles value extraction)
+    const from = this.extractFrom({
+      get: (key: string) => key === 'from' ? parsed.from : undefined,
+    });
 
     // Handle 'to' field - extract addresses from AddressObject (IMPROVEMENT-030)
     const to = this.extractAddresses(parsed.to);
@@ -347,12 +355,8 @@ export class AttachmentExtractor {
     // Handle 'cc' field - extract addresses from AddressObject (IMPROVEMENT-030)
     const cc = this.extractAddresses(parsed.cc);
 
-    const headers = new Map<string, string>();
-    if (parsed.headers) {
-      for (const [key, value] of parsed.headers) {
-        headers.set(key, String(value));
-      }
-    }
+    // IMPROVEMENT-048: Use direct Map construction (more efficient than manual iteration)
+    const headers = parsed.headers ? new Map(parsed.headers) : new Map<string, any>();
 
     return {
       messageId: parsed.messageId || uuidv4(),
