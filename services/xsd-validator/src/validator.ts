@@ -86,6 +86,10 @@ export class XSDValidator {
   /** IMPROVEMENT-012: Schema cache configuration */
   private schemaCacheTtl: number = 24 * 60 * 60 * 1000; // 24 hours default
   private schemaRefreshIntervalMs: number = 24 * 60 * 60 * 1000; // Auto-refresh interval
+  /** IMPROVEMENT-013: Maximum validation errors to collect (DoS prevention) */
+  private maxValidationErrors: number = 100;
+  /** IMPROVEMENT-020: XXE protection - entity resolution limits */
+  private xxeProtectionEnabled: boolean = true;
 
   constructor(schemaPath?: string, maxCacheSize?: number, schemaCacheTtlHours?: number) {
     this.schemaPath = schemaPath || path.join(__dirname, '../schemas/ubl-2.1');
@@ -156,6 +160,123 @@ export class XSDValidator {
       cachedAt: Date.now(),
       ttl,
     });
+  }
+
+  /**
+   * IMPROVEMENT-014: Validate message structure before schema validation
+   * Ensures message format is correct and contains required fields
+   *
+   * @param xmlContent - XML content to validate
+   * @returns Array of ValidationError if message validation fails
+   */
+  private validateMessageSchema(xmlContent: Buffer | string): ValidationError[] {
+    const errors: ValidationError[] = [];
+    const content = typeof xmlContent === 'string' ? xmlContent : xmlContent.toString('utf-8');
+
+    // Check for empty content
+    if (!content || content.trim().length === 0) {
+      errors.push({
+        code: 'INVALID_MESSAGE',
+        message: 'Message content is empty',
+      });
+    }
+
+    // Check for valid XML declaration
+    const trimmed = content.trim();
+    if (!trimmed.startsWith('<')) {
+      errors.push({
+        code: 'INVALID_MESSAGE',
+        message: 'Message does not start with XML element',
+      });
+    }
+
+    // Check for root element
+    const rootMatch = trimmed.match(/<(\w+)[>\s]/);
+    if (!rootMatch) {
+      errors.push({
+        code: 'INVALID_MESSAGE',
+        message: 'Message has no valid root element',
+      });
+    }
+
+    return errors;
+  }
+
+  /**
+   * IMPROVEMENT-013: Extract validation errors with bounds checking
+   * Prevents DoS by limiting error collection to reasonable maximum
+   *
+   * @param validationErrors - Array of errors from libxmljs2
+   * @returns Bounded array of ValidationError objects
+   */
+  private extractValidationErrors(validationErrors: any[]): ValidationError[] {
+    const errors: ValidationError[] = [];
+
+    if (!validationErrors || !Array.isArray(validationErrors)) {
+      return errors;
+    }
+
+    // IMPROVEMENT-013: Limit error collection to prevent DoS
+    const maxErrors = Math.min(this.maxValidationErrors, validationErrors.length);
+
+    for (let i = 0; i < maxErrors; i++) {
+      const error = validationErrors[i];
+      errors.push({
+        code: 'XSD_VALIDATION_ERROR',
+        message: error.message || 'Validation error',
+        line: error.line,
+        column: error.column,
+      });
+    }
+
+    // Add summary if errors were truncated
+    if (validationErrors.length > maxErrors) {
+      errors.push({
+        code: 'VALIDATION_ERRORS_TRUNCATED',
+        message: `Validation had ${validationErrors.length} errors, showing first ${maxErrors}`,
+      });
+    }
+
+    return errors;
+  }
+
+  /**
+   * IMPROVEMENT-020: Validate XXE protection in XML parsing
+   * Ensures no external entities are present in parsed XML
+   *
+   * @param xmlContent - XML content to check
+   * @returns Array of XXE-related errors, or empty array if safe
+   */
+  private validateXXEProtection(xmlContent: Buffer | string): ValidationError[] {
+    const errors: ValidationError[] = [];
+    const content = typeof xmlContent === 'string' ? xmlContent : xmlContent.toString('utf-8');
+
+    // IMPROVEMENT-020: Check for XXE attack patterns
+    // Pattern 1: DOCTYPE declarations with external entities
+    if (content.includes('<!DOCTYPE') || content.includes('<!ENTITY')) {
+      errors.push({
+        code: 'XXE_VULNERABILITY',
+        message: 'XML contains potentially dangerous DOCTYPE or ENTITY declarations (XXE protection)',
+      });
+    }
+
+    // Pattern 2: SYSTEM identifiers (external resource access)
+    if (content.includes('SYSTEM') && (content.includes('<!ENTITY') || content.includes('<!DOCTYPE'))) {
+      errors.push({
+        code: 'XXE_VULNERABILITY',
+        message: 'XML contains SYSTEM identifiers that could access external resources',
+      });
+    }
+
+    // Pattern 3: Parameter entities (billion laughs variation)
+    if (content.includes('<!ENTITY %')) {
+      errors.push({
+        code: 'XXE_VULNERABILITY',
+        message: 'XML contains parameter entities (billion laughs variant)',
+      });
+    }
+
+    return errors;
   }
 
   /**
@@ -287,9 +408,31 @@ export class XSDValidator {
     schemaType: SchemaType
   ): Promise<ValidationResult> {
     const startTime = Date.now();
-    const errors: ValidationError[] = [];
+    let errors: ValidationError[] = [];
 
     try {
+      // IMPROVEMENT-014: Validate message structure first (early failure)
+      const messageErrors = this.validateMessageSchema(xmlContent);
+      if (messageErrors.length > 0) {
+        errors.push(...messageErrors);
+        return {
+          status: ValidationStatus.ERROR,
+          errors,
+          validationTimeMs: Date.now() - startTime,
+        };
+      }
+
+      // IMPROVEMENT-020: Validate XXE protection before parsing
+      const xxeErrors = this.validateXXEProtection(xmlContent);
+      if (xxeErrors.length > 0) {
+        errors.push(...xxeErrors);
+        return {
+          status: ValidationStatus.ERROR,
+          errors,
+          validationTimeMs: Date.now() - startTime,
+        };
+      }
+
       // IMPROVEMENT-011: Use parseXmlWithCache to avoid redundant parsing
       const xmlDoc = this.parseXmlWithCache(xmlContent);
 
@@ -312,17 +455,9 @@ export class XSDValidator {
       const isValid = xmlDoc.validate(schema);
 
       if (!isValid) {
-        // Extract validation errors from libxmljs2
+        // IMPROVEMENT-013: Extract errors with bounds checking (prevent DoS)
         const validationErrors = xmlDoc.validationErrors || [];
-
-        for (const error of validationErrors) {
-          errors.push({
-            code: 'XSD_VALIDATION_ERROR',
-            message: error.message || 'Validation error',
-            line: error.line,
-            column: error.column,
-          });
-        }
+        errors = this.extractValidationErrors(validationErrors);
       }
 
       return {
