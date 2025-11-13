@@ -87,10 +87,15 @@ export class SignatureServiceError extends Error {
  * Integrates with digital-signature-service for:
  * - ZKI code generation (B2C fiscalization)
  * - XMLDSig signature generation (UBL invoices)
+ *
+ * IMPROVEMENT-025: ZKI caching to avoid regenerating same codes
  */
 export class SignatureServiceClient {
   private client: AxiosInstance;
   private config: SignatureServiceConfig;
+  // IMPROVEMENT-025: ZKI cache with TTL (in-memory)
+  private zkiCache: Map<string, { zki: string; timestamp: number }> = new Map();
+  private zkiCacheTTL = 3600000; // 1 hour in milliseconds
 
   constructor(config: SignatureServiceConfig) {
     this.config = config;
@@ -106,6 +111,8 @@ export class SignatureServiceClient {
   /**
    * Generate ZKI code for B2C invoice
    *
+   * IMPROVEMENT-025: Cache ZKI results to avoid regenerating for same invoice parameters
+   *
    * @param invoice - FINA invoice data
    * @returns ZKI code (32 hex characters)
    */
@@ -115,6 +122,18 @@ export class SignatureServiceClient {
     });
 
     try {
+      // IMPROVEMENT-025: Check ZKI cache first
+      const cacheKey = this.getZKICacheKey(invoice);
+      const cached = this.getZKIFromCache(cacheKey);
+      if (cached) {
+        logger.debug({
+          invoiceNumber: invoice.brojRacuna,
+          cached: true,
+        }, 'Using cached ZKI code');
+        endSpanSuccess(span);
+        return cached;
+      }
+
       logger.info({
         invoiceNumber: invoice.brojRacuna,
         premises: invoice.oznPoslProstora,
@@ -135,6 +154,9 @@ export class SignatureServiceClient {
       );
 
       const zki = response.zki;
+
+      // IMPROVEMENT-025: Cache the generated ZKI
+      this.setZKIInCache(cacheKey, zki);
 
       endSpanSuccess(span);
 
@@ -357,6 +379,67 @@ export class SignatureServiceClient {
     }
 
     throw lastError;
+  }
+
+  /**
+   * Generate cache key for ZKI based on invoice parameters
+   *
+   * IMPROVEMENT-025: ZKI cache key generation
+   * Uses deterministic invoice parameters to create a cache key
+   *
+   * @param invoice - FINA invoice data
+   * @returns Cache key
+   */
+  private getZKICacheKey(invoice: FINAInvoice): string {
+    // Combine all ZKI-determining parameters into a cache key
+    // ZKI depends on: oib, dateTime, invoiceNumber, premises, device, totalAmount
+    return `${invoice.oib}|${invoice.datVrijeme}|${invoice.brojRacuna}|${invoice.oznPoslProstora}|${invoice.oznNapUr}|${invoice.ukupanIznos}`;
+  }
+
+  /**
+   * Retrieve ZKI from cache if available and not expired
+   *
+   * IMPROVEMENT-025: ZKI cache lookup with TTL checking
+   *
+   * @param cacheKey - Cache key from getZKICacheKey()
+   * @returns Cached ZKI or null if not found or expired
+   */
+  private getZKIFromCache(cacheKey: string): string | null {
+    const cached = this.zkiCache.get(cacheKey);
+    if (!cached) {
+      return null;
+    }
+
+    // Check if cache entry has expired
+    const age = Date.now() - cached.timestamp;
+    if (age > this.zkiCacheTTL) {
+      this.zkiCache.delete(cacheKey);
+      return null;
+    }
+
+    return cached.zki;
+  }
+
+  /**
+   * Store ZKI in cache with current timestamp
+   *
+   * IMPROVEMENT-025: ZKI cache storage with TTL
+   *
+   * @param cacheKey - Cache key from getZKICacheKey()
+   * @param zki - ZKI code to cache
+   */
+  private setZKIInCache(cacheKey: string, zki: string): void {
+    this.zkiCache.set(cacheKey, {
+      zki,
+      timestamp: Date.now(),
+    });
+
+    // Log cache size periodically (debug purposes)
+    if (this.zkiCache.size % 100 === 0) {
+      logger.debug({
+        cacheSize: this.zkiCache.size,
+      }, 'ZKI cache size milestone reached');
+    }
   }
 }
 
