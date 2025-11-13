@@ -33,6 +33,8 @@ export interface EmailPollerConfig {
   enabled: boolean;
   /** Poll timeout in milliseconds (default: 30000) */
   pollTimeoutMs: number;
+  /** IMPROVEMENT-031: Maximum concurrent emails to process in parallel (default: 3) */
+  concurrencyLimit: number;
 }
 
 /**
@@ -224,10 +226,10 @@ export class EmailPoller {
           'Processing email batch'
         );
 
-        // IMPROVEMENT-002: Process in controlled parallel batches (max 3 concurrent)
-        const concurrencyLimit = 3;
-        for (let i = 0; i < batchUids.length; i += concurrencyLimit) {
-          const batch = batchUids.slice(i, i + concurrencyLimit);
+        // IMPROVEMENT-002 & IMPROVEMENT-031: Process in controlled parallel batches with configurable concurrency
+        for (let i = 0; i < batchUids.length; i += this.config.concurrencyLimit) {
+          const batch = batchUids.slice(i, i + this.config.concurrencyLimit);
+          span.setAttribute('concurrency_limit', this.config.concurrencyLimit);
 
           // Use Promise.allSettled to handle individual email failures
           await Promise.allSettled(
@@ -247,6 +249,8 @@ export class EmailPoller {
 
   /**
    * Process a single email by UID
+   *
+   * IMPROVEMENT-032: Enhanced error logging with full context
    */
   private async processEmail(uid: number): Promise<void> {
     const endTimer = emailProcessingDuration.startTimer({ operation: 'process_email' });
@@ -268,17 +272,39 @@ export class EmailPoller {
             logger.info({ uid }, 'Email processed successfully');
             span.setAttribute('status', 'success');
           } catch (err) {
-            logger.error({ err, uid }, 'Failed to process email');
+            const errorMessage = err instanceof Error ? err.message : String(err);
+            const errorStack = err instanceof Error ? err.stack : undefined;
+            const errorCode = (err as any)?.code || 'unknown';
+
+            logger.error({
+              err,
+              uid,
+              errorMessage,
+              errorStack,
+              errorCode,
+            }, 'Failed to process email - not marking as seen, will retry on next poll');
+
             span.setAttribute('status', 'error');
+            span.setAttribute('error_message', errorMessage);
+            span.setAttribute('error_code', errorCode);
             span.recordException(err as Error);
-            // Don't mark as seen - will be retried on next poll
+
+            // IMPROVEMENT-032: Don't mark as seen - will be retried on next poll
+            // Rethrow to ensure caller knows about the error
             throw err;
           }
         }
       );
     } catch (err) {
-      // Error already logged in withSpan
-      // Continue processing other emails
+      // IMPROVEMENT-032: Log error context if not already logged by processor
+      const errorCode = (err as any)?.code || 'unknown';
+      logger.error({
+        err,
+        uid,
+        errorCode,
+      }, 'Email processing failed in poller context');
+
+      // Continue processing other emails in batch, but track the error
     } finally {
       endTimer();
     }
@@ -303,6 +329,7 @@ export class EmailPoller {
  * Create email poller from environment variables
  *
  * IMPROVEMENT-002: Added pollTimeoutMs configuration
+ * IMPROVEMENT-031: Added concurrencyLimit configuration
  */
 export function createEmailPollerFromEnv(
   imapClient: ImapClient,
@@ -314,6 +341,7 @@ export function createEmailPollerFromEnv(
     batchSize: parseInt(process.env.EMAIL_BATCH_SIZE || '10', 10),
     enabled: process.env.EMAIL_POLLING_ENABLED !== 'false',
     pollTimeoutMs: parseInt(process.env.EMAIL_POLL_TIMEOUT_MS || '30000', 10), // 30 seconds
+    concurrencyLimit: parseInt(process.env.EMAIL_CONCURRENCY_LIMIT || '3', 10), // IMPROVEMENT-031: configurable parallel processing
   };
 
   logger.info({ config }, 'Creating email poller');

@@ -311,6 +311,9 @@ export class AttachmentExtractor {
 
   /**
    * Extract email addresses from header value
+   *
+   * IMPROVEMENT-030: Optimized using reduce() to avoid intermediate array allocation
+   * Instead of map().filter() (2 passes, intermediate array), single reduce() pass
    */
   private extractAddresses(addressValue: any): string[] {
     if (!addressValue) return [];
@@ -319,28 +322,30 @@ export class AttachmentExtractor {
     const value = addressValue.value || addressValue;
     if (!Array.isArray(value)) return [];
 
-    return value
-      .map((addr: any) => addr.address || addr)
-      .filter((addr: string) => addr && typeof addr === 'string');
+    // Single pass with reduce() instead of map().filter() (which creates intermediate array)
+    return value.reduce((addresses: string[], addr: any) => {
+      const address = typeof addr === 'string' ? addr : addr?.address;
+      if (address && typeof address === 'string') {
+        addresses.push(address);
+      }
+      return addresses;
+    }, []);
   }
 
   /**
    * Convert mailparser ParsedMail to ParsedEmail (legacy, buffers attachments)
+   *
+   * IMPROVEMENT-030: Using extractAddresses() helper to avoid code duplication
+   * and benefit from optimized reduce()-based address extraction
    */
   private convertToParseEmail(parsed: ParsedMail): ParsedEmail {
     const from = parsed.from?.value?.[0]?.address || parsed.from?.text || 'unknown';
 
-    // Handle 'to' field - extract addresses from AddressObject
-    const toValue = parsed.to as any;
-    const to: string[] = toValue?.value
-      ? (Array.isArray(toValue.value) ? toValue.value : [toValue.value]).map((addr: any) => addr.address || '')
-      : [];
+    // Handle 'to' field - extract addresses from AddressObject (IMPROVEMENT-030)
+    const to = this.extractAddresses(parsed.to);
 
-    // Handle 'cc' field - extract addresses from AddressObject
-    const ccValue = parsed.cc as any;
-    const cc: string[] = ccValue?.value
-      ? (Array.isArray(ccValue.value) ? ccValue.value : [ccValue.value]).map((addr: any) => addr.address || '')
-      : [];
+    // Handle 'cc' field - extract addresses from AddressObject (IMPROVEMENT-030)
+    const cc = this.extractAddresses(parsed.cc);
 
     const headers = new Map<string, string>();
     if (parsed.headers) {
