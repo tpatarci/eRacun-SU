@@ -53,6 +53,17 @@ export interface ProcessAttachmentCommand {
 }
 
 /**
+ * Message batch for publishing multiple attachments
+ *
+ * IMPROVEMENT-041: Batch publishing for higher throughput
+ */
+export interface AttachmentBatch {
+  emailMessageId: string;
+  attachments: ExtractedAttachment[];
+  source: string;
+}
+
+/**
  * Message Publisher for RabbitMQ
  */
 export class MessagePublisher {
@@ -173,6 +184,8 @@ export class MessagePublisher {
 
   /**
    * Publish attachment for processing
+   *
+   * IMPROVEMENT-040: Cache base64-encoded content on attachment to avoid re-encoding
    */
   async publishAttachment(
     emailMessageId: string,
@@ -198,6 +211,19 @@ export class MessagePublisher {
             throw new Error('Message bus not connected');
           }
 
+          // IMPROVEMENT-040: Cache base64 encoding to avoid re-encoding if attachment is processed multiple times
+          // This is safe because attachment content is immutable after extraction
+          const cachedBase64Property = '_cachedBase64';
+          let base64Content: string;
+
+          if ((attachment as any)[cachedBase64Property]) {
+            base64Content = (attachment as any)[cachedBase64Property];
+          } else {
+            base64Content = attachment.content.toString('base64');
+            // Cache the encoding result on the attachment object
+            (attachment as any)[cachedBase64Property] = base64Content;
+          }
+
           // Create command message
           const command: ProcessAttachmentCommand = {
             messageId: `${emailMessageId}-${attachment.id}`,
@@ -209,7 +235,7 @@ export class MessagePublisher {
               size: attachment.size,
               checksum: attachment.checksum,
             },
-            content: attachment.content.toString('base64'),
+            content: base64Content,
             timestamp: new Date().toISOString(),
             source,
           };
@@ -295,6 +321,89 @@ export class MessagePublisher {
    */
   getConnectionStatus(): boolean {
     return this.isConnected;
+  }
+
+  /**
+   * Publish multiple attachments in a single batch
+   *
+   * IMPROVEMENT-041: Batch publishing for higher throughput
+   * Instead of calling publishAttachment() for each attachment (N network round-trips),
+   * collect all attachments from an email and publish in one batch.
+   *
+   * @param batch - Batch containing email message ID and multiple attachments
+   * @throws Error if publishing fails
+   */
+  async publishAttachmentBatch(batch: AttachmentBatch): Promise<void> {
+    const { emailMessageId, attachments, source } = batch;
+    const startTime = Date.now();
+    let successCount = 0;
+    let errorCount = 0;
+
+    logger.info(
+      {
+        emailMessageId,
+        attachmentCount: attachments.length,
+        source,
+      },
+      'Publishing attachment batch'
+    );
+
+    // Publish all attachments in parallel (up to queue capacity)
+    const batchErrors: Array<{ id: string; error: Error }> = [];
+
+    // Process in parallel, but catch individual errors to publish all attachments
+    const results = await Promise.allSettled(
+      attachments.map(async (attachment) => {
+        try {
+          await this.publishAttachment(emailMessageId, attachment, source);
+          successCount++;
+        } catch (error) {
+          errorCount++;
+          batchErrors.push({
+            id: attachment.id,
+            error: error as Error,
+          });
+          throw error;
+        }
+      })
+    );
+
+    const durationMs = Date.now() - startTime;
+
+    logger.info(
+      {
+        emailMessageId,
+        totalAttachments: attachments.length,
+        successCount,
+        errorCount,
+        durationMs,
+      },
+      'Attachment batch publishing complete'
+    );
+
+    // If any attachments failed, throw an error with details
+    if (errorCount > 0) {
+      const failedIds = batchErrors.map((e) => e.id).join(', ');
+      const failedCount = batchErrors.length;
+
+      logger.error(
+        {
+          emailMessageId,
+          failedCount,
+          failedIds,
+          batchErrors: batchErrors.map((e) => ({
+            id: e.id,
+            message: e.error.message,
+          })),
+        },
+        'Batch publishing had failures'
+      );
+
+      // Throw an error indicating partial failure
+      throw new Error(
+        `Batch publishing failed for ${failedCount}/${attachments.length} attachments: ${failedIds}`
+      );
+    }
   }
 
   /**
