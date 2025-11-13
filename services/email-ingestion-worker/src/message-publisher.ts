@@ -62,6 +62,8 @@ export class MessagePublisher {
   private isConnected = false;
   private queueDepth = 0; // IMPROVEMENT-005: Track queue depth for backpressure
   private maxQueueDepth = 1000; // IMPROVEMENT-005: Maximum queue depth before backpressure
+  // IMPROVEMENT-042: Cache masked URL to avoid creating new URL object per log
+  private cachedMaskedUrl: string | null = null;
 
   constructor(config: MessageBusConfig) {
     this.config = config;
@@ -241,16 +243,19 @@ export class MessagePublisher {
           }
 
           try {
-            // Publish message to exchange
-            this.channel.publish(
-              this.config.exchange,
-              this.config.routingKey,
-              messageBuffer,
-              publishOptions
-            );
+            // IMPROVEMENT-043: Retry publishing with exponential backoff on failure
+            await this.retryWithBackoff(async () => {
+              // Publish message to exchange
+              this.channel!.publish(
+                this.config.exchange,
+                this.config.routingKey,
+                messageBuffer,
+                publishOptions
+              );
 
-            // Wait for broker confirmation
-            await this.channel.waitForConfirms();
+              // Wait for broker confirmation
+              await this.channel!.waitForConfirms();
+            }, 3);
 
             logger.info(
               { messageId: command.messageId },
@@ -264,7 +269,7 @@ export class MessagePublisher {
           } catch (err) {
             logger.error(
               { err, messageId: command.messageId },
-              'Failed to publish message'
+              'Failed to publish message after retries'
             );
             messagesPublishedTotal.inc({
               message_type: 'attachment',
@@ -293,15 +298,66 @@ export class MessagePublisher {
   }
 
   /**
+   * IMPROVEMENT-043: Retry publishing with exponential backoff
+   * @param fn - Function to retry
+   * @param maxRetries - Maximum retry attempts (default: 3)
+   */
+  private async retryWithBackoff<T>(
+    fn: () => Promise<T>,
+    maxRetries: number = 3
+  ): Promise<T> {
+    let lastError: Error | undefined;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await fn();
+      } catch (error) {
+        lastError = error as Error;
+
+        if (attempt < maxRetries) {
+          // Exponential backoff: 100ms, 200ms, 400ms
+          const delayMs = 100 * Math.pow(2, attempt - 1);
+          logger.warn(
+            {
+              attempt,
+              maxRetries,
+              delayMs,
+              error: lastError.message,
+            },
+            'Publish failed, will retry'
+          );
+
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+      }
+    }
+
+    throw lastError;
+  }
+
+  /**
    * Mask sensitive information in URL
    */
+  // IMPROVEMENT-042: Cache masked URL to avoid creating new URL object every time
   private maskUrl(url: string): string {
+    // Return cached result if URL hasn't changed
+    if (this.cachedMaskedUrl !== null && url === this.config.url) {
+      return this.cachedMaskedUrl;
+    }
+
     try {
       const parsed = new URL(url);
       if (parsed.password) {
         parsed.password = '***';
       }
-      return parsed.toString();
+      const masked = parsed.toString();
+
+      // Cache the result for repeated access
+      if (url === this.config.url) {
+        this.cachedMaskedUrl = masked;
+      }
+
+      return masked;
     } catch {
       return 'invalid-url';
     }
