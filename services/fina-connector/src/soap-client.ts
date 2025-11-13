@@ -388,21 +388,22 @@ export class FINASOAPClient {
           OznNapUr: invoice.oznNapUr,
         },
       },
-      Pdv: invoice.pdv?.map((pdv) => ({
+      // IMPROVEMENT-044: Complete optional chaining with null/undefined element validation
+      Pdv: invoice.pdv?.map((pdv) => pdv ? {
         Porez: pdv.porez,
         Stopa: pdv.stopa,
         Iznos: pdv.iznos,
-      })),
-      Pnp: invoice.pnp?.map((pnp) => ({
+      } : undefined).filter(Boolean),
+      Pnp: invoice.pnp?.map((pnp) => pnp ? {
         Porez: pnp.porez,
         Stopa: pnp.stopa,
         Iznos: pnp.iznos,
-      })),
-      OstaliPor: invoice.ostaliPor?.map((por) => ({
+      } : undefined).filter(Boolean),
+      OstaliPor: invoice.ostaliPor?.map((por) => por ? {
         Naziv: por.naziv,
         Stopa: por.stopa,
         Iznos: por.iznos,
-      })),
+      } : undefined).filter(Boolean),
       IznosUkupno: invoice.ukupanIznos,
       NacinPlac: invoice.nacinPlac,
       ZastKod: invoice.zki,
@@ -447,7 +448,9 @@ export class FINASOAPClient {
       // IMPROVEMENT-023: Extract error data (already have responseData cached)
       // Check for Greska (error case) - no need to re-access response[0]
       const greska = responseData.Greska || responseData.greska;
-      if (greska) {
+
+      // IMPROVEMENT-044: Validate greska is an object before accessing properties
+      if (greska && typeof greska === 'object') {
         return {
           success: false,
           error: {
@@ -484,6 +487,7 @@ export class FINASOAPClient {
    * Parse validation response and extract errors
    *
    * IMPROVEMENT-022: Cache response[0] to avoid multiple accesses
+   * IMPROVEMENT-044: Validate array elements before accessing properties
    */
   private parseValidationResponse(response: any): string[] {
     try {
@@ -498,9 +502,12 @@ export class FINASOAPClient {
       // FINA returns validation errors in Greske array
       const greske = responseData.Greske || responseData.greske || [];
 
+      // IMPROVEMENT-044: Validate each array element is an object before accessing properties
       for (const greska of greske) {
-        const errorMsg = greska.Poruka || greska.poruka || 'Unknown error';
-        errors.push(errorMsg);
+        if (greska && typeof greska === 'object') {
+          const errorMsg = greska.Poruka || greska.poruka || 'Unknown error';
+          errors.push(errorMsg);
+        }
       }
 
       return errors;

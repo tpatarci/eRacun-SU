@@ -378,6 +378,7 @@ export class OfflineQueueManager {
   /**
    * Get queue statistics
    *
+   * IMPROVEMENT-044: Safe array access with bounds checking
    * @returns Queue stats
    */
   async getStats(): Promise<{
@@ -396,12 +397,22 @@ export class OfflineQueueManager {
         FROM offline_queue
       `);
 
-      const row = result.rows[0];
+      // IMPROVEMENT-044: Check array has elements before accessing
+      const row = result.rows?.[0];
+      if (!row) {
+        logger.warn('No rows returned from offline queue stats query');
+        return {
+          pending: 0,
+          processing: 0,
+          failed: 0,
+          oldestEntryAge: null,
+        };
+      }
 
       return {
-        pending: parseInt(row.pending) || 0,
-        processing: parseInt(row.processing) || 0,
-        failed: parseInt(row.failed) || 0,
+        pending: parseInt(row.pending || 0) || 0,
+        processing: parseInt(row.processing || 0) || 0,
+        failed: parseInt(row.failed || 0) || 0,
         oldestEntryAge: row.oldest_age ? parseFloat(row.oldest_age) : null,
       };
     } catch (error) {
