@@ -18,9 +18,9 @@
 |----------|-------|--------|
 | 🔴 CRITICAL | 2 | ✅ Created |
 | 🟠 HIGH | 4 | ✅ Created |
-| 🟢 MEDIUM | 27 | 16 completed, 11 pending |
+| 🟢 MEDIUM | 27 | 20 completed, 7 pending |
 | ⚪ LOW | 15 | Listed Below |
-| **TOTAL** | **48** | **2 + 4 + 16 = 22 complete, 26 pending** |
+| **TOTAL** | **48** | **2 + 4 + 20 = 26 complete, 22 pending** |
 
 ### Total Improvement Effort
 
@@ -84,14 +84,14 @@
 
 | ID | Service | Issue | Impact |
 |----|---------|-------|--------|
-| IMPROVEMENT-021 | fina-connector | Axios instance created per client | Connection pool waste |
+| ✅ IMPROVEMENT-021 | fina-connector | Axios instance created per client | **COMPLETED** - Shared axios instance with connection pooling |
 | IMPROVEMENT-022 | fina-connector | Deep object traversal without null checks | Fragile parsing |
 | IMPROVEMENT-023 | fina-connector | Multiple passes through response object | Cache misses |
-| IMPROVEMENT-024 | fina-connector | Retry implementation without jitter | Thundering herd |
+| ✅ IMPROVEMENT-024 | fina-connector | Retry implementation without jitter | **COMPLETED** - Exponential backoff with jitter (0.5x-1.5x) |
 | IMPROVEMENT-025 | fina-connector | ZKI generated per fiscalization | Latency on critical path |
 | IMPROVEMENT-026 | fina-connector | N+1 queries in offline queue stats | Excessive DB load |
-| IMPROVEMENT-027 | fina-connector | No scheduled cleanup cron job | Table grows unbounded |
-| IMPROVEMENT-028 | fina-connector | JSON.stringify() without circular ref protection | Silent failures |
+| ✅ IMPROVEMENT-027 | fina-connector | No scheduled cleanup cron job | **COMPLETED** - Hourly cleanup scheduler implemented |
+| ✅ IMPROVEMENT-028 | fina-connector | JSON.stringify() without circular ref protection | **COMPLETED** - SafeStringify utility with circular reference detection |
 
 **Email Processing:**
 
@@ -247,8 +247,8 @@ If clarification needed on a specific plan:
 
 ---
 
-**Last Updated:** 2025-11-13
-**Improvement Plans Completed:** 22 / 48 (46%)
+**Last Updated:** 2025-11-13 (Updated)
+**Improvement Plans Completed:** 26 / 48 (54%)
   - ✅ IMPROVEMENT-001: FINA SOAP envelope security
   - ✅ IMPROVEMENT-002: Email poller race condition
   - ✅ IMPROVEMENT-003: IMAP listener memory leak
@@ -266,6 +266,10 @@ If clarification needed on a specific plan:
   - ✅ IMPROVEMENT-018: Digital signature service XML parsing optimization
   - ✅ IMPROVEMENT-019: Digital signature service DN extraction optimization
   - ✅ IMPROVEMENT-020: XSD validator XXE protection
+  - ✅ IMPROVEMENT-021: FINA connector shared axios instance with connection pooling
+  - ✅ IMPROVEMENT-024: FINA connector retry jitter (thundering herd prevention)
+  - ✅ IMPROVEMENT-027: FINA connector scheduled cleanup cron job
+  - ✅ IMPROVEMENT-028: FINA connector circular reference protection
   - ✅ IMPROVEMENT-045: Digital signature service certificate reuse validation
-**Effort Remaining:** ~40-45 hours (26 improvements pending)
+**Effort Remaining:** ~30-35 hours (22 improvements pending)
 
