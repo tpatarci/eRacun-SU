@@ -248,7 +248,7 @@ If clarification needed on a specific plan:
 ---
 
 **Last Updated:** 2025-11-13 (Updated)
-**Improvement Plans Completed:** 36 / 48 (75%)
+**Improvement Plans Completed:** 38 / 48 (79%)
   - ✅ IMPROVEMENT-001: FINA SOAP envelope security
   - ✅ IMPROVEMENT-002: Email poller race condition
   - ✅ IMPROVEMENT-003: IMAP listener memory leak
@@ -270,6 +270,8 @@ If clarification needed on a specific plan:
   - ✅ IMPROVEMENT-022: FINA connector response parsing null checks and caching
   - ✅ IMPROVEMENT-023: FINA connector single-pass response traversal
   - ✅ IMPROVEMENT-024: FINA connector retry jitter (thundering herd prevention)
+  - ✅ IMPROVEMENT-025: FINA connector ZKI caching (1-hour TTL)
+  - ✅ IMPROVEMENT-026: Offline queue N+1 query optimization (batch methods)
   - ✅ IMPROVEMENT-027: FINA connector scheduled cleanup cron job
   - ✅ IMPROVEMENT-028: FINA connector circular reference protection
   - ✅ IMPROVEMENT-029: Email ingestion worker crypto module caching (verified optimal)
@@ -281,5 +283,5 @@ If clarification needed on a specific plan:
   - ✅ IMPROVEMENT-042: Email ingestion worker URL masking cache
   - ✅ IMPROVEMENT-043: Email ingestion worker publish retry logic
   - ✅ IMPROVEMENT-045: Digital signature service certificate reuse validation
-**Effort Remaining:** ~10-15 hours (12 improvements pending)
+**Effort Remaining:** ~8-12 hours (10 improvements pending)
 
