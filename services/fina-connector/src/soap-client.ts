@@ -414,12 +414,28 @@ export class FINASOAPClient {
 
   /**
    * Parse racuni response and extract JIR
+   *
+   * IMPROVEMENT-022: Cache response[0] to avoid multiple accesses
+   * IMPROVEMENT-023: Extract all data in single pass, reuse parsed values
    */
   private parseRacuniResponse(response: any): FINAFiscalizationResponse {
     try {
-      // FINA returns JIR in response
-      const jir = response[0]?.Jir || response[0]?.jir;
+      // IMPROVEMENT-022: Cache first element to avoid repeated access
+      const responseData = response?.[0];
+      if (!responseData) {
+        return {
+          success: false,
+          error: {
+            code: 'EMPTY_RESPONSE',
+            message: 'Empty response from FINA',
+          },
+          rawResponse: response,
+        };
+      }
 
+      // IMPROVEMENT-023: Extract all fields in single pass, check in order
+      // Check for JIR (success case)
+      const jir = responseData.Jir || responseData.jir;
       if (jir) {
         return {
           success: true,
@@ -428,12 +444,16 @@ export class FINASOAPClient {
         };
       }
 
-      // Check for error in response
-      const error = this.parseResponseError(response);
-      if (error) {
+      // IMPROVEMENT-023: Extract error data (already have responseData cached)
+      // Check for Greska (error case) - no need to re-access response[0]
+      const greska = responseData.Greska || responseData.greska;
+      if (greska) {
         return {
           success: false,
-          error,
+          error: {
+            code: greska.SifraGreske || greska.sifraGreske || 'UNKNOWN_ERROR',
+            message: greska.PorukaGreske || greska.porukaGreske || 'Unknown error',
+          },
           rawResponse: response,
         };
       }
@@ -462,13 +482,21 @@ export class FINASOAPClient {
 
   /**
    * Parse validation response and extract errors
+   *
+   * IMPROVEMENT-022: Cache response[0] to avoid multiple accesses
    */
   private parseValidationResponse(response: any): string[] {
     try {
       const errors: string[] = [];
 
+      // IMPROVEMENT-022: Cache first element to avoid repeated access
+      const responseData = response?.[0];
+      if (!responseData) {
+        return [];
+      }
+
       // FINA returns validation errors in Greske array
-      const greske = response[0]?.Greske || response[0]?.greske || [];
+      const greske = responseData.Greske || responseData.greske || [];
 
       for (const greska of greske) {
         const errorMsg = greska.Poruka || greska.poruka || 'Unknown error';
@@ -483,33 +511,19 @@ export class FINASOAPClient {
   }
 
   /**
-   * Parse response error (non-SOAP fault errors)
-   */
-  private parseResponseError(response: any): FINAError | null {
-    try {
-      // Check for error in response structure
-      const error = response[0]?.Greska || response[0]?.greska;
-
-      if (error) {
-        return {
-          code: error.SifraGreske || error.sifraGreske || 'UNKNOWN_ERROR',
-          message: error.PorukaGreske || error.porukaGreske || 'Unknown error',
-        };
-      }
-
-      return null;
-    } catch (error) {
-      return null;
-    }
-  }
-
-  /**
    * Parse SOAP fault and convert to FINAError
+   *
+   * IMPROVEMENT-022: Cache nested objects to avoid repeated deep traversal
    */
   private parseSoapFault(error: any): FINAError {
     try {
-      // SOAP fault structure
-      const fault = error.root?.Envelope?.Body?.Fault;
+      // IMPROVEMENT-022: Cache intermediate objects to avoid repeated navigation
+      // Instead of: error.root?.Envelope?.Body?.Fault (multiple null checks)
+      // Cache each level and check once
+      const root = error?.root;
+      const envelope = root?.Envelope;
+      const body = envelope?.Body;
+      const fault = body?.Fault;
 
       if (fault) {
         const faultcode = fault.faultcode || 's:999';
