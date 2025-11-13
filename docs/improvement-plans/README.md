@@ -18,9 +18,9 @@
 |----------|-------|--------|
 | 🔴 CRITICAL | 2 | ✅ Created |
 | 🟠 HIGH | 4 | ✅ Created |
-| 🟢 MEDIUM | 27 | 11 completed, 16 pending |
+| 🟢 MEDIUM | 27 | 16 completed, 11 pending |
 | ⚪ LOW | 15 | Listed Below |
-| **TOTAL** | **48** | **2 + 4 + 11 = 17 complete, 31 pending** |
+| **TOTAL** | **48** | **2 + 4 + 16 = 22 complete, 26 pending** |
 
 ### Total Improvement Effort
 
@@ -74,11 +74,11 @@
 
 | ID | Service | Issue | Impact |
 |----|---------|-------|--------|
-| IMPROVEMENT-016 | digital-signature-service | String slicing for XML manipulation (fragile) | Breaks on formatting changes |
-| IMPROVEMENT-017 | digital-signature-service | Hard-coded XPath for signature insertion | Assumes specific structure |
-| IMPROVEMENT-018 | digital-signature-service | Redundant XML parsing | 50% overhead |
-| IMPROVEMENT-019 | digital-signature-service | Complex DN extraction allocates unnecessary arrays | Memory inefficiency |
-| IMPROVEMENT-020 | xsd-validator | XXE vulnerability in entity resolution | Security risk |
+| ✅ IMPROVEMENT-016 | digital-signature-service | String slicing for XML manipulation (fragile) | **COMPLETED** - Proper XML object manipulation |
+| ✅ IMPROVEMENT-017 | digital-signature-service | Hard-coded XPath for signature insertion | **COMPLETED** - Configurable signature location |
+| ✅ IMPROVEMENT-018 | digital-signature-service | Redundant XML parsing | **COMPLETED** - Single parse with object manipulation |
+| ✅ IMPROVEMENT-019 | digital-signature-service | Complex DN extraction allocates unnecessary arrays | **COMPLETED** - Optimized with reduce() |
+| ✅ IMPROVEMENT-020 | xsd-validator | XXE vulnerability in entity resolution | **COMPLETED** - Pattern-based XXE detection |
 
 **FINA Integration:**
 
@@ -248,7 +248,7 @@ If clarification needed on a specific plan:
 ---
 
 **Last Updated:** 2025-11-13
-**Improvement Plans Completed:** 17 / 48 (35%)
+**Improvement Plans Completed:** 22 / 48 (46%)
   - ✅ IMPROVEMENT-001: FINA SOAP envelope security
   - ✅ IMPROVEMENT-002: Email poller race condition
   - ✅ IMPROVEMENT-003: IMAP listener memory leak
@@ -261,6 +261,11 @@ If clarification needed on a specific plan:
   - ✅ IMPROVEMENT-013: XSD validator bounded error handling (DoS prevention)
   - ✅ IMPROVEMENT-014: XSD validator message schema validation
   - ✅ IMPROVEMENT-015: XSD validator configurable OpenTelemetry sampling
+  - ✅ IMPROVEMENT-016: Digital signature service XML object manipulation
+  - ✅ IMPROVEMENT-017: Digital signature service configurable XPath
+  - ✅ IMPROVEMENT-018: Digital signature service XML parsing optimization
+  - ✅ IMPROVEMENT-019: Digital signature service DN extraction optimization
   - ✅ IMPROVEMENT-020: XSD validator XXE protection
-**Effort Remaining:** ~50-55 hours (31 improvements pending)
+  - ✅ IMPROVEMENT-045: Digital signature service certificate reuse validation
+**Effort Remaining:** ~40-45 hours (26 improvements pending)
 
