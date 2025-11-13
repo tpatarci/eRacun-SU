@@ -48,7 +48,7 @@ echo "🌐 Rule 2: Checking for direct service-to-service HTTP calls..."
 # Excludes: Infrastructure (rabbitmq, postgres, redis), localhost, comments
 if grep -rE "http[s]?://[^/.:]+:[0-9]" services/*/src --include="*.ts" 2>/dev/null | \
    grep -v "// TODO" | \
-   grep -v "// " | \
+   grep -vE "^[[:space:]]*//" | \
    grep -v "localhost" | \
    grep -v "127.0.0.1" | \
    grep -v "rabbitmq" | \
