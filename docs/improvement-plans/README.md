@@ -18,9 +18,9 @@
 |----------|-------|--------|
 | 🔴 CRITICAL | 2 | ✅ Created |
 | 🟠 HIGH | 4 | ✅ Created |
-| 🟢 MEDIUM | 27 | 6 completed, 21 pending |
+| 🟢 MEDIUM | 27 | 11 completed, 16 pending |
 | ⚪ LOW | 15 | Listed Below |
-| **TOTAL** | **48** | **2 + 4 + 6 = 12 complete, 36 pending** |
+| **TOTAL** | **48** | **2 + 4 + 11 = 17 complete, 31 pending** |
 
 ### Total Improvement Effort
 
@@ -65,10 +65,10 @@
 | IMPROVEMENT-009 | xml-parser | Character-by-character iteration without early exit | Wasted CPU on deep XML |
 | IMPROVEMENT-010 | xml-parser | Multiple Buffer.byteLength() calls on same string | 4 redundant native calls |
 | ✅ IMPROVEMENT-011 | xsd-validator | Repeated XML parsing in validation flow | **COMPLETED** - Parsed XML caching (5-50% throughput improvement) |
-| IMPROVEMENT-012 | xsd-validator | Schema cache with no eviction policy | Memory leak risk |
-| IMPROVEMENT-013 | xsd-validator | Unbounded error array iteration | Potential DoS |
-| IMPROVEMENT-014 | xsd-validator | No message schema validation | Reliability risk |
-| IMPROVEMENT-015 | xsd-validator | 100% OpenTelemetry sampling | Latency impact |
+| ✅ IMPROVEMENT-012 | xsd-validator | Schema cache with no eviction policy | **COMPLETED** - TTL-based eviction prevents memory leaks |
+| ✅ IMPROVEMENT-013 | xsd-validator | Unbounded error array iteration | **COMPLETED** - Bounded error collection (max 100 errors) |
+| ✅ IMPROVEMENT-014 | xsd-validator | No message schema validation | **COMPLETED** - Pre-parsing message format validation |
+| ✅ IMPROVEMENT-015 | xsd-validator | 100% OpenTelemetry sampling | **COMPLETED** - Configurable sampling (default 10%) |
 
 **Digital Signatures & Crypto:**
 
@@ -247,8 +247,8 @@ If clarification needed on a specific plan:
 
 ---
 
-**Last Updated:** 2025-11-12
-**Improvement Plans Completed:** 12 / 48 (25%)
+**Last Updated:** 2025-11-13
+**Improvement Plans Completed:** 17 / 48 (35%)
   - ✅ IMPROVEMENT-001: FINA SOAP envelope security
   - ✅ IMPROVEMENT-002: Email poller race condition
   - ✅ IMPROVEMENT-003: IMAP listener memory leak
@@ -260,6 +260,7 @@ If clarification needed on a specific plan:
   - ✅ IMPROVEMENT-012: XSD validator schema cache eviction
   - ✅ IMPROVEMENT-013: XSD validator bounded error handling (DoS prevention)
   - ✅ IMPROVEMENT-014: XSD validator message schema validation
+  - ✅ IMPROVEMENT-015: XSD validator configurable OpenTelemetry sampling
   - ✅ IMPROVEMENT-020: XSD validator XXE protection
-**Effort Remaining:** ~60 hours (36 improvements pending)
+**Effort Remaining:** ~50-55 hours (31 improvements pending)
 
