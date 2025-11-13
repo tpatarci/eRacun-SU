@@ -69,6 +69,8 @@ const DEFAULT_CONFIG: ExtractionConfig = {
  */
 export class PDFExtractor {
   private config: ExtractionConfig;
+  // IMPROVEMENT-034: Pre-compiled regex for whitespace/garbage detection
+  private readonly whitespaceRegex = /[\s\n\r\t]/g;
 
   constructor(config: Partial<ExtractionConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -181,22 +183,57 @@ export class PDFExtractor {
 
   /**
    * Parse PDF date string (format: D:YYYYMMDDHHmmSSOHH'mm')
+   *
+   * IMPROVEMENT-036: Handle more date formats and log failures instead of silent failures
    */
   private parsePDFDate(dateString: string): Date | undefined {
+    if (!dateString || typeof dateString !== 'string') {
+      return undefined;
+    }
+
     try {
       // Remove D: prefix if present
-      const cleaned = dateString.replace(/^D:/, '');
+      const cleaned = dateString.replace(/^D:/, '').trim();
+
+      // Minimum length for YYYYMMDD
+      if (cleaned.length < 8) {
+        logger.warn({ dateString }, 'PDF date string too short');
+        return undefined;
+      }
 
       // Extract date components
       const year = parseInt(cleaned.substring(0, 4), 10);
       const month = parseInt(cleaned.substring(4, 6), 10) - 1; // 0-indexed
       const day = parseInt(cleaned.substring(6, 8), 10);
-      const hour = parseInt(cleaned.substring(8, 10), 10) || 0;
-      const minute = parseInt(cleaned.substring(10, 12), 10) || 0;
-      const second = parseInt(cleaned.substring(12, 14), 10) || 0;
+      const hour = cleaned.length >= 10 ? parseInt(cleaned.substring(8, 10), 10) : 0;
+      const minute = cleaned.length >= 12 ? parseInt(cleaned.substring(10, 12), 10) : 0;
+      const second = cleaned.length >= 14 ? parseInt(cleaned.substring(12, 14), 10) : 0;
 
-      return new Date(year, month, day, hour, minute, second);
-    } catch {
+      // Validate ranges
+      if (year < 1900 || year > 2100) {
+        logger.warn({ dateString, year }, 'Invalid PDF date year out of range');
+        return undefined;
+      }
+      if (month < 0 || month > 11) {
+        logger.warn({ dateString, month: month + 1 }, 'Invalid PDF date month');
+        return undefined;
+      }
+      if (day < 1 || day > 31) {
+        logger.warn({ dateString, day }, 'Invalid PDF date day');
+        return undefined;
+      }
+
+      const parsedDate = new Date(year, month, day, hour, minute, second);
+
+      // Verify the date was created successfully
+      if (isNaN(parsedDate.getTime())) {
+        logger.warn({ dateString }, 'PDF date parsing resulted in invalid date');
+        return undefined;
+      }
+
+      return parsedDate;
+    } catch (error) {
+      logger.warn({ dateString, error: error instanceof Error ? error.message : 'Unknown error' }, 'Failed to parse PDF date');
       return undefined;
     }
   }
@@ -204,11 +241,14 @@ export class PDFExtractor {
   /**
    * Detect if PDF is scanned (image-based)
    *
+   * IMPROVEMENT-033: Optimize string operations to reduce redundant iterations
    * Heuristic: If text length is very low relative to page count,
    * PDF is likely scanned and requires OCR
    */
   private detectScannedPDF(text: string, pageCount: number): boolean {
-    const textLength = text.trim().length;
+    // Trim text once to avoid multiple trim calls
+    const trimmedText = text.trim();
+    const textLength = trimmedText.length;
     const avgTextPerPage = textLength / pageCount;
 
     // If average text per page < minTextLength, consider it scanned
@@ -221,7 +261,9 @@ export class PDFExtractor {
     }
 
     // Check for high ratio of whitespace/garbage characters
-    const meaningfulChars = text.replace(/[\s\n\r\t]/g, '').length;
+    // IMPROVEMENT-033 & IMPROVEMENT-034: Use pre-compiled regex and avoid intermediate string allocation
+    // Count meaningful chars by removing whitespace using cached regex
+    const meaningfulChars = trimmedText.replace(this.whitespaceRegex, '').length;
     const meaningfulRatio = meaningfulChars / textLength;
 
     if (meaningfulRatio < 0.3) {
