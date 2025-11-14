@@ -14,14 +14,14 @@ describe('MockHSM', () => {
   });
 
   afterEach(async () => {
-    await hsm.destroy();
+    await hsm.close();
   });
 
   describe('initialize', () => {
     it('should initialize successfully', async () => {
       const newHsm = new MockHSM();
       await expect(newHsm.initialize()).resolves.not.toThrow();
-      await newHsm.destroy();
+      await newHsm.close();
     });
 
     it('should fail if initialized twice', async () => {
@@ -247,12 +247,12 @@ c3QgQ2VydDAeFw0yNTAxMDEwMDAwMDBaFw0yNjAxMDEwMDAwMDBaMBMxETAPBgNV
     });
   });
 
-  describe('destroy', () => {
-    it('should destroy HSM and clear all keys', async () => {
+  describe('close', () => {
+    it('should close HSM connection and clear all keys', async () => {
       await hsm.generateKeyPair('key1', 'RSA-2048', true);
       await hsm.generateKeyPair('key2', 'RSA-2048', true);
 
-      await hsm.destroy();
+      await hsm.close();
 
       // HSM should be uninitialized now
       await expect(hsm.getKey('key1')).rejects.toThrow('HSM not initialized');
