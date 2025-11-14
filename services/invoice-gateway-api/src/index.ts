@@ -4,6 +4,8 @@
  */
 
 import 'reflect-metadata';
+// Initialize tracing BEFORE importing other modules
+import { startTracing, stopTracing } from './tracing';
 import { createApp } from './app';
 import { createContainer } from '@eracun/di-container';
 import pino from 'pino';
@@ -14,6 +16,8 @@ const logger = pino({
 });
 
 async function start() {
+  // Initialize OpenTelemetry tracing
+  await startTracing();
   try {
     // Create DI container
     const container = createContainer();
@@ -33,7 +37,8 @@ async function start() {
     const shutdown = async (signal: string) => {
       logger.info({ signal }, 'Received shutdown signal');
 
-      server.close(() => {
+      server.close(async () => {
+        await stopTracing();
         logger.info('HTTP server closed');
         process.exit(0);
       });

@@ -13,9 +13,11 @@ import { errorHandler } from './middleware/error-handler';
 import { rateLimiter } from './middleware/rate-limiter';
 import { idempotencyMiddleware } from './middleware/idempotency';
 import { requestIdMiddleware } from './middleware/request-id';
+import { metricsMiddleware } from './middleware/metrics';
 
 import { invoiceRoutes } from './routes/invoice.routes';
 import { healthRoutes } from './routes/health.routes';
+import { register } from './metrics';
 
 const logger = pino({ name: 'invoice-gateway-api' });
 
@@ -35,6 +37,9 @@ export function createApp(container: Container): Application {
   // Request ID middleware (must be before other middleware)
   app.use(requestIdMiddleware);
 
+  // Metrics middleware (track all requests)
+  app.use(metricsMiddleware);
+
   // Body parsing
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
@@ -49,6 +54,16 @@ export function createApp(container: Container): Application {
   // Routes
   app.use('/api/v1/invoices', invoiceRoutes(container));
   app.use('/api/v1/health', healthRoutes(container));
+
+  // Prometheus metrics endpoint
+  app.get('/metrics', async (req: Request, res: Response) => {
+    try {
+      res.set('Content-Type', register.contentType);
+      res.end(await register.metrics());
+    } catch (error) {
+      res.status(500).end(error);
+    }
+  });
 
   // Root endpoint
   app.get('/', (req: Request, res: Response) => {
