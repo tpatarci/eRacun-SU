@@ -1,108 +1,52 @@
-# eRacun Archive Service
-#
-# 11-year compliant document storage with WORM simulation, compression, and encryption.
-# Ensures Croatian fiscal law compliance for long-term invoice retention.
-#
-# INSTALLATION:
-# sudo cp eracun-archive-service.service /etc/systemd/system/
-# sudo systemctl daemon-reload
-# sudo systemctl enable eracun-archive-service
-# sudo systemctl start eracun-archive-service
-
 [Unit]
-Description=eRacun Document Archive Service (11-year retention)
-Documentation=https://github.com/eracun/eRacun-development
-After=network-online.target postgresql.service rabbitmq-server.service
-Wants=network-online.target postgresql.service rabbitmq-server.service
+Description=eRacun Archive Service (11-Year Retention)
+Documentation=https://github.com/tpatarci/eRacun-development
+After=network-online.target postgresql.service eracun-digital-signature-service.service
+Wants=network-online.target
+Requires=postgresql.service
 
 [Service]
 Type=simple
 User=eracun
 Group=eracun
 WorkingDirectory=/opt/eracun/services/archive-service
-
-# Environment configuration
-EnvironmentFile=/etc/eracun/platform.conf
-EnvironmentFile=/etc/eracun/environment.conf
-EnvironmentFile=/etc/eracun/services/archive-service.conf
-EnvironmentFile=/run/eracun/secrets.env
-
-# Decrypt secrets before starting
-ExecStartPre=/usr/local/bin/decrypt-secrets.sh archive-service
-
-# Start service
-ExecStart=/usr/local/bin/node dist/index.js
-
-# Restart policy
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/eracun/archive-service.env
+ExecStartPre=/usr/local/bin/sops-decrypt.sh archive-service
+ExecStart=/usr/bin/node dist/index.js
+ExecStop=/bin/kill -SIGTERM $MAINPID
 Restart=on-failure
 RestartSec=10s
+StartLimitInterval=300s
 StartLimitBurst=5
-StartLimitIntervalSec=300s
-
-# Resource limits (higher for large document processing)
 MemoryMax=2G
-MemoryHigh=1600M
+MemoryHigh=1536M
 CPUQuota=200%
 TasksMax=512
-
-# ============================================================================
-# Systemd Hardening
-# ============================================================================
-
-# Filesystem Protection
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/var/log/eracun/archive-service /var/lib/eracun/archive
-ReadOnlyPaths=/etc/eracun/secrets
-
-# Prevent Privilege Escalation
+ReadWritePaths=/var/lib/eracun/archive-service /var/log/eracun /mnt/archive-storage
 NoNewPrivileges=true
-
-# Prevent Access to Sensitive Files
-InaccessiblePaths=/etc/eracun/.age-key /root /home
-
-# Namespace Isolation
-PrivateDevices=true
+CapabilityBoundingSet=
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @debug @mount @swap @reboot @module @raw-io
+SystemCallErrorNumber=EPERM
+RestrictAddressFamilies=AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+IPAddressAllow=10.0.0.0/8
+IPAddressAllow=172.16.0.0/12
+IPAddressAllow=192.168.0.0/16
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectKernelLogs=true
 ProtectControlGroups=true
-ProtectClock=true
-ProtectHostname=true
-
-# Capability Restrictions
-CapabilityBoundingSet=
-AmbientCapabilities=
-
-# System Call Filtering
-SystemCallFilter=@system-service
-SystemCallFilter=~@privileged @resources @obsolete @debug
-SystemCallErrorNumber=EPERM
-
-# Restrict Address Families
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
-
-# Restrict Namespaces
-RestrictNamespaces=true
-
-# Lock Personality
 LockPersonality=true
-
-# Memory Deny Write Execute
-MemoryDenyWriteExecute=true
-
-# Restrict Realtime
 RestrictRealtime=true
-
-# Remove IPC
-RemoveIPC=true
-
-# Network Access (internal + database)
-# IPAddressDeny=any
-# IPAddressAllow=localhost 10.0.0.0/8
-
-# Logging
+RestrictSUIDSGID=true
+InaccessiblePaths=/etc/eracun/.age-key
+UMask=0077
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=eracun-archive-service

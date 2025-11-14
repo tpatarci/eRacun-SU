@@ -1,108 +1,41 @@
-# eRacun Certificate Lifecycle Manager Service
-#
-# Manages X.509 certificates for digital signing with FINA compliance.
-# Features: HSM integration, CRL/OCSP checking, automated renewal, distribution.
-#
-# INSTALLATION:
-# sudo cp eracun-cert-lifecycle-manager.service /etc/systemd/system/
-# sudo systemctl daemon-reload
-# sudo systemctl enable eracun-cert-lifecycle-manager
-# sudo systemctl start eracun-cert-lifecycle-manager
-
 [Unit]
 Description=eRacun Certificate Lifecycle Manager
-Documentation=https://github.com/eracun/eRacun-development
-After=network-online.target postgresql.service
-Wants=network-online.target postgresql.service
+Documentation=https://github.com/tpatarci/eRacun-development
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
 User=eracun
 Group=eracun
 WorkingDirectory=/opt/eracun/services/cert-lifecycle-manager
-
-# Environment configuration (precedence: later overrides earlier)
-EnvironmentFile=/etc/eracun/platform.conf
-EnvironmentFile=/etc/eracun/environment.conf
-EnvironmentFile=/etc/eracun/services/cert-lifecycle-manager.conf
-EnvironmentFile=/run/eracun/secrets.env
-
-# Decrypt secrets before starting
-ExecStartPre=/usr/local/bin/decrypt-secrets.sh cert-lifecycle-manager
-
-# Start service
-ExecStart=/usr/local/bin/node dist/index.js
-
-# Restart policy
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/eracun/cert-lifecycle-manager.env
+ExecStartPre=/usr/local/bin/sops-decrypt.sh cert-lifecycle-manager
+ExecStart=/usr/bin/node dist/index.js
+ExecStop=/bin/kill -SIGTERM $MAINPID
 Restart=on-failure
 RestartSec=10s
-StartLimitBurst=5
-StartLimitIntervalSec=300s
-
-# Resource limits (higher for certificate operations)
-MemoryMax=1G
-MemoryHigh=800M
-CPUQuota=200%
-TasksMax=512
-
-# ============================================================================
-# Systemd Hardening (Security Best Practices)
-# ============================================================================
-
-# Filesystem Protection
+MemoryMax=512M
+CPUQuota=100%
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/var/log/eracun/cert-lifecycle-manager /var/lib/eracun/certs
-ReadOnlyPaths=/etc/eracun/secrets
-
-# Prevent Privilege Escalation
+ReadWritePaths=/var/lib/eracun/cert-lifecycle-manager /var/log/eracun /etc/eracun/secrets/certs
 NoNewPrivileges=true
-
-# Prevent Access to Sensitive Files
-InaccessiblePaths=/etc/eracun/.age-key /root /home
-
-# Namespace Isolation
-PrivateDevices=true
+CapabilityBoundingSet=
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @debug @mount @swap @reboot @module @raw-io
+RestrictAddressFamilies=AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+IPAddressAllow=10.0.0.0/8
 ProtectKernelTunables=true
 ProtectKernelModules=true
-ProtectKernelLogs=true
-ProtectControlGroups=true
-ProtectClock=true
-ProtectHostname=true
-
-# Capability Restrictions (drop ALL capabilities)
-CapabilityBoundingSet=
-AmbientCapabilities=
-
-# System Call Filtering (whitelist approach)
-SystemCallFilter=@system-service
-SystemCallFilter=~@privileged @resources @obsolete @debug
-SystemCallErrorNumber=EPERM
-
-# Restrict Address Families (only IPv4, IPv6, Unix sockets)
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
-
-# Restrict Namespaces
-RestrictNamespaces=true
-
-# Lock Personality (prevent personality changes)
 LockPersonality=true
-
-# Memory Deny Write Execute (prevent code injection)
-MemoryDenyWriteExecute=true
-
-# Restrict Realtime (prevent realtime scheduling)
 RestrictRealtime=true
-
-# Remove IPC (no shared memory access)
-RemoveIPC=true
-
-# Network Access (allow for OCSP/CRL checks)
-# IPAddressDeny=any
-# IPAddressAllow=localhost 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16
-
-# Logging
+InaccessiblePaths=/etc/eracun/.age-key
+UMask=0077
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=eracun-cert-lifecycle-manager

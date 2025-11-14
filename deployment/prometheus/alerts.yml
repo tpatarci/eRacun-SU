@@ -1,0 +1,154 @@
+groups:
+  - name: eracun_team3_services
+    rules:
+      # Service Health
+      - alert: ServiceDown
+        expr: up{team="team-3"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: team-3
+        annotations:
+          summary: "Service {{ $labels.service }} is down"
+          description: "{{ $labels.service }} has been down for more than 1 minute"
+
+      # Digital Signature Service Alerts
+      - alert: BatchSigningLowThroughput
+        expr: rate(batch_signature_total{status="success"}[5m]) * avg(batch_signature_size) < 100
+        for: 10m
+        labels:
+          severity: warning
+          service: digital-signature-service
+        annotations:
+          summary: "Batch signing throughput below 100 signatures/second"
+
+      - alert: BatchSigningHighFailureRate
+        expr: rate(batch_signature_errors_total{error_type="individual_signature_failed"}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: digital-signature-service
+        annotations:
+          summary: "Batch signing failure rate above 10%"
+
+      - alert: CertificateExpiringSoon
+        expr: certificate_expiration_days_remaining < 30
+        for: 1h
+        labels:
+          severity: warning
+          service: digital-signature-service
+        annotations:
+          summary: "Certificate expiring in {{ $value }} days"
+
+      - alert: CertificateExpired
+        expr: certificate_expiration_days_remaining <= 0
+        for: 5m
+        labels:
+          severity: critical
+          service: digital-signature-service
+        annotations:
+          summary: "Certificate has expired"
+
+      # FINA Connector Alerts
+      - alert: CircuitBreakerOpen
+        expr: circuit_breaker_open{circuit=~"fina-.*|signature-service-.*"} == 1
+        for: 1m
+        labels:
+          severity: critical
+          service: fina-connector
+        annotations:
+          summary: "Circuit breaker {{ $labels.circuit }} is OPEN"
+          description: "Service {{ $labels.circuit }} has high failure rate"
+
+      - alert: CircuitBreakerHalfOpen
+        expr: circuit_breaker_half_open{circuit=~"fina-.*|signature-service-.*"} == 1
+        for: 5m
+        labels:
+          severity: warning
+          service: fina-connector
+        annotations:
+          summary: "Circuit breaker {{ $labels.circuit }} stuck in HALF_OPEN"
+          description: "Service {{ $labels.circuit }} attempting recovery but not succeeding"
+
+      - alert: FINAHighErrorRate
+        expr: rate(fina_fiscalization_total{status="failure"}[5m]) > 0.1
+        for: 5m
+        labels:
+          severity: warning
+          service: fina-connector
+        annotations:
+          summary: "High FINA fiscalization error rate"
+
+      - alert: FINAOfflineQueueGrowing
+        expr: fina_offline_queue_depth > 100
+        for: 10m
+        labels:
+          severity: warning
+          service: fina-connector
+        annotations:
+          summary: "FINA offline queue growing"
+
+      - alert: FINAOfflineQueueExpiringSoon
+        expr: fina_offline_queue_max_age_seconds > 172800
+        labels:
+          severity: critical
+          service: fina-connector
+        annotations:
+          summary: "FINA offline queue entries expiring soon (48 hours)"
+
+      # Archive Service Alerts
+      - alert: ArchiveStorageHighUsage
+        expr: archive_storage_usage_bytes / archive_storage_capacity_bytes > 0.8
+        for: 10m
+        labels:
+          severity: warning
+          service: archive-service
+        annotations:
+          summary: "Archive storage usage above 80%"
+
+      - alert: SignatureValidationFailures
+        expr: rate(archive_signature_validations_total{result="invalid"}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          service: archive-service
+        annotations:
+          summary: "High signature validation failure rate"
+
+      # Dead Letter Handler Alerts
+      - alert: DeadLetterQueueGrowing
+        expr: dead_letter_queue_depth > 50
+        for: 15m
+        labels:
+          severity: warning
+          service: dead-letter-handler
+        annotations:
+          summary: "Dead letter queue growing beyond 50 messages"
+
+      - alert: DeadLetterRecoveryFailures
+        expr: rate(dead_letter_recovery_failures_total[5m]) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+          service: dead-letter-handler
+        annotations:
+          summary: "High dead letter recovery failure rate"
+
+      # General Performance Alerts
+      - alert: HighLatency
+        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m])) > 5
+        for: 5m
+        labels:
+          severity: warning
+          team: team-3
+        annotations:
+          summary: "High request latency (p95 > 5s) on {{ $labels.service }}"
+
+      - alert: HighErrorRate
+        expr: rate(http_requests_total{status=~"5.."}[5m]) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          team: team-3
+        annotations:
+          summary: "High error rate (>5%) on {{ $labels.service }}"

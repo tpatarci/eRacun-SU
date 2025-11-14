@@ -1,0 +1,22 @@
+# SOPS Configuration for eRacun Project
+# Uses age encryption for secrets management
+
+creation_rules:
+  # Environment files for all services
+  - path_regex: secrets/.*\.env$
+    age: >-
+      age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+  # YAML secrets
+  - path_regex: secrets/.*\.ya?ml$
+    age: >-
+      age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+  # Certificate passwords
+  - path_regex: secrets/certs/.*\.txt$
+    age: >-
+      age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+  # Default rule (fallback)
+  - age: >-
+      age1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
