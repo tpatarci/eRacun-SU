@@ -1,6 +1,8 @@
 import * as soap from 'soap';
 import axios, { AxiosInstance } from 'axios';
 import CircuitBreaker from 'opossum';
+import fs from 'fs';
+import https from 'https';
 import {
   logger,
   fiscalizationTotal,
@@ -23,6 +25,7 @@ import type {
   FINAValidationResponse,
   FINAError,
 } from './types.js';
+import type { TLSConfig } from './config.js';
 
 /**
  * IMPROVEMENT-021: Shared axios instance for all SOAP clients
@@ -30,24 +33,99 @@ import type {
  * This reduces overhead and improves connection reuse
  */
 let sharedHttpClient: AxiosInstance | null = null;
+let sharedHttpClientSignature: string | null = null;
 
 /**
  * Initialize or get shared HTTP client with connection pooling
  */
-function getOrCreateSharedHttpClient(timeout: number): AxiosInstance {
-  if (!sharedHttpClient) {
+function getOrCreateSharedHttpClient(
+  timeout: number,
+  tls?: TLSConfig
+): AxiosInstance {
+  const signature = buildHttpClientSignature(timeout, tls);
+
+  if (!sharedHttpClient || sharedHttpClientSignature !== signature) {
     sharedHttpClient = axios.create({
       timeout,
-      httpsAgent: new (require('https').Agent)({
-        rejectUnauthorized: true, // Validate FINA SSL certificate
-        keepAlive: true, // Reuse TCP connections
-      }),
+      httpsAgent: createHttpsAgent(tls),
     });
 
-    logger.info('Created shared HTTP client with connection pooling');
+    sharedHttpClientSignature = signature;
+
+    logger.info(
+      { tlsConfigured: Boolean(tls) },
+      'Created shared HTTP client with connection pooling'
+    );
   }
 
   return sharedHttpClient;
+}
+
+function buildHttpClientSignature(timeout: number, tls?: TLSConfig): string {
+  return JSON.stringify({
+    timeout,
+    certPath: tls?.certPath,
+    keyPath: tls?.keyPath,
+    caPath: tls?.caPath,
+    hasPassphrase: Boolean(tls?.passphrase),
+  });
+}
+
+function createHttpsAgent(tls?: TLSConfig): https.Agent {
+  const agentOptions: https.AgentOptions = {
+    rejectUnauthorized: true,
+    keepAlive: true,
+  };
+
+  if (tls) {
+    const material = loadTlsMaterial(tls);
+
+    if (material) {
+      agentOptions.cert = material.cert;
+      agentOptions.key = material.key;
+      agentOptions.passphrase = material.passphrase;
+
+      if (material.ca) {
+        agentOptions.ca = material.ca;
+      }
+
+      logger.info(
+        { certPath: tls.certPath, keyPath: tls.keyPath },
+        'Loaded TLS material for FINA SOAP client'
+      );
+    }
+  }
+
+  return new https.Agent(agentOptions);
+}
+
+function loadTlsMaterial(
+  config: TLSConfig
+): { cert: Buffer; key: Buffer; ca?: Buffer; passphrase?: string } | null {
+  try {
+    const material: { cert: Buffer; key: Buffer; ca?: Buffer; passphrase?: string } = {
+      cert: fs.readFileSync(config.certPath),
+      key: fs.readFileSync(config.keyPath),
+      passphrase: config.passphrase,
+    };
+
+    if (config.caPath) {
+      material.ca = fs.readFileSync(config.caPath);
+    }
+
+    return material;
+  } catch (error) {
+    logger.error(
+      {
+        error: (error as Error).message,
+        certPath: config.certPath,
+        keyPath: config.keyPath,
+        caPath: config.caPath,
+      },
+      'Failed to load TLS material for FINA SOAP client'
+    );
+    return null;
+  }
 }
 
 /**
@@ -66,6 +144,8 @@ export interface SOAPClientConfig {
   wsdlRefreshIntervalHours?: number;
   /** IMPROVEMENT-006: WSDL request timeout in milliseconds (default: 10000) */
   wsdlRequestTimeoutMs?: number;
+  /** Optional TLS material for mutual authentication */
+  tls?: TLSConfig;
 }
 
 /**
@@ -157,7 +237,10 @@ export class FINASOAPClient {
 
       // IMPROVEMENT-021: Use shared HTTP client with connection pooling
       if (this.client) {
-        (this.client as any).httpClient = getOrCreateSharedHttpClient(this.config.timeout);
+        (this.client as any).httpClient = getOrCreateSharedHttpClient(
+          this.config.timeout,
+          this.config.tls
+        );
       }
 
       wsdlCacheHealth.set({
