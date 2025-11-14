@@ -1,0 +1,83 @@
+[Unit]
+Description=eRačun UBL Transformer (Format Converter)
+Documentation=https://github.com/tpatarci/eRacun-development
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=eracun
+Group=eracun
+WorkingDirectory=/opt/eracun/services/ubl-transformer
+
+# Environment
+Environment="NODE_ENV=production"
+Environment="PORT=3002"
+EnvironmentFile=-/etc/eracun/services/ubl-transformer.env
+
+# Secrets Management (SOPS)
+ExecStartPre=/usr/local/bin/sops-decrypt.sh ubl-transformer
+
+# Service Execution
+ExecStart=/usr/bin/node /opt/eracun/services/ubl-transformer/dist/index.js
+ExecStop=/bin/kill -SIGTERM $MAINPID
+
+# Restart Policy
+Restart=on-failure
+RestartSec=10s
+TimeoutStartSec=30s
+TimeoutStopSec=30s
+
+# Resource Limits (Higher for XML processing)
+MemoryMax=2G
+MemoryHigh=1536M
+CPUQuota=300%
+
+# Security Hardening - Filesystem Protection
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/eracun/ubl-transformer
+ReadWritePaths=/var/log/eracun/ubl-transformer
+ReadWritePaths=/run/eracun
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+
+# Security Hardening - Privilege Restrictions
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SecureBits=noroot-locked
+
+# Security Hardening - System Call Filtering
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @mount
+SystemCallErrorNumber=EPERM
+SystemCallArchitectures=native
+
+# Security Hardening - Network
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+PrivateUsers=false
+
+# Security Hardening - Miscellaneous
+ProtectHostname=true
+ProtectClock=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RemoveIPC=true
+UMask=0027
+
+# Secrets Protection
+InaccessiblePaths=/etc/eracun/.age-key
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=eracun-ubl-transformer
+
+[Install]
+WantedBy=multi-user.target
