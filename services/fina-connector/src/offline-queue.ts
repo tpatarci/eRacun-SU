@@ -15,6 +15,24 @@ import type {
 import { randomUUID } from 'crypto';
 
 /**
+ * IMPROVEMENT-028: Safe JSON stringify with circular reference protection
+ * Prevents "Converting circular structure to JSON" errors
+ */
+function safeStringify(obj: any): string {
+  const seen = new WeakSet();
+
+  return JSON.stringify(obj, (key, value) => {
+    if (typeof value === 'object' && value !== null) {
+      if (seen.has(value)) {
+        return '[Circular Reference]'; // Replace circular references with placeholder
+      }
+      seen.add(value);
+    }
+    return value;
+  });
+}
+
+/**
  * Offline Queue Configuration
  */
 export interface OfflineQueueConfig {
@@ -123,9 +141,9 @@ export class OfflineQueueManager {
         [
           id,
           invoiceId,
-          JSON.stringify(request),
+          safeStringify(request), // IMPROVEMENT-028: Use safe stringify
           0,
-          error ? JSON.stringify(error) : null,
+          error ? safeStringify(error) : null, // IMPROVEMENT-028: Use safe stringify
           'pending',
         ]
       );
@@ -273,7 +291,7 @@ export class OfflineQueueManager {
              END,
              last_retry_at = NOW()
          WHERE id = $1`,
-        [id, JSON.stringify(error), this.config.maxRetries]
+        [id, safeStringify(error), this.config.maxRetries] // IMPROVEMENT-028: Use safe stringify
       );
 
       endSpanSuccess(span);
