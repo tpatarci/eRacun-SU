@@ -41,6 +41,28 @@ Build rock-solid integrations with Croatian regulatory systems (FINA, Porezna Up
 
 ---
 
+## Blockers & Immediate Unblocking Actions
+
+### 🔴 PENDING-006 – Architecture Compliance Remediation
+- Create a temporary in-memory message bus adapter under `shared/messaging/` so every connector, certificate workflow, and reporting job already publishes/consumes messages instead of using direct HTTP calls.
+- Wrap existing direct integrations with the adapter now; when the real bus topology lands we only swap the transport layer and keep the service contracts unchanged.
+- Automate the guardrail locally by running `./scripts/check-architecture-compliance.sh` in CI and before every merge request; paste the report into the daily standup so other teams can consume the signal without waiting for a central fix.
+
+### 🟡 PENDING-004 – Archive Throughput Benchmarking
+- Spin up the local infra stack with `docker-compose up -d rabbitmq postgres prometheus grafana` and attach the archive-service + digital-signature-service to it so load testing is not blocked by staging capacity.
+- Generate synthetic invoice corpora (≥100k docs) via the existing Faker-based builders already referenced in the mock services; persist them under `services/archive-service/fixtures/` for repeatable replay.
+- Schedule nightly `k6` runs (use the provided script in this doc) against the local stack and log metrics to Prometheus/Grafana; update `docs/pending/004-archive-performance-benchmarking.md` with raw numbers even if the official environment is unavailable.
+
+### External API & Certificate Dependencies
+- Finalize the MockFINAService/MockPoreznaService and publish them as npm packages within the monorepo (`services/fina-connector/mocks` etc.) so Team 1/2 can point their integration tests to localhost without waiting for production API whitelisting.
+- Maintain a shared mock certificate bundle (`shared/certificates/dev-root-ca.pem`) signed by the mock CA; circulate the PEM via git so no engineer is blocked waiting for credential provisioning.
+
+### Cross-Team Feedback Loop
+- Host a lightweight sandbox every evening by running `docker-compose up` plus `npm run dev` for all Team 3 services and exposing the mock endpoints on the shared dev network; publish the URLs + sample payloads in SHARED_CONTRACTS.md.
+- Track any downstream dependency or schema change in SHARED_CONTRACTS.md immediately—never wait for blocker removal—and broadcast updates in the daily sync so all teams can continue coding against the mocks.
+
+---
+
 ## External Dependencies & Perfect Mocking Strategy
 
 ### FINA API Mock Implementation
