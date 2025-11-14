@@ -450,6 +450,78 @@ Build rock-solid integrations with Croatian regulatory systems (FINA, Porezna Up
 - **Total LOC:** ~1,957 lines (~1,800 implementation)
 - **Test Coverage:** 0% (target: 85%+ - next priority)
 
+### ✅ COMPLETED - Phase 6 (Circuit Breakers for fina-connector)
+
+**Date:** 2025-11-14
+**Commit:** `cb3697d` on branch `claude/team-c-setup-011NHeiaZ7EyjENTCr1JCNJB`
+**Status:** Pushed to remote
+
+#### Features Delivered
+
+**1. Circuit Breaker Module** (`src/circuit-breaker.ts` ~370 LOC)
+- ✅ Circuit breaker factory with opossum integration
+- ✅ Three states: CLOSED (normal), OPEN (failing fast), HALF_OPEN (testing recovery)
+- ✅ Configurable thresholds (error rate, volume, reset timeout)
+- ✅ FINA-specific circuit breaker factory (10s timeout, 50% error threshold)
+- ✅ Signature service circuit breaker factory (5s timeout, 50% error threshold)
+- ✅ Manual open/close operations for testing
+- ✅ Circuit breaker statistics API
+
+**2. FINA SOAP Client Integration** (`src/soap-client.ts` ~50 LOC added)
+- ✅ Circuit breaker for fiscalizeInvoice operation
+- ✅ Circuit breaker for echo operation (health check)
+- ✅ Circuit breaker for validateInvoice operation (test only)
+- ✅ Fail-fast behavior when circuit is OPEN (prevents cascading failures)
+- ✅ Automatic recovery testing after reset timeout
+
+**3. Signature Service Integration** (`src/signature-integration.ts` ~60 LOC added)
+- ✅ Circuit breaker for generateZKI operation (ZKI code generation)
+- ✅ Circuit breaker for signUBLInvoice operation (XMLDSig signing)
+- ✅ Circuit breaker for verifySignature operation (signature verification)
+- ✅ Cache-first for ZKI (circuit breaker only called on cache miss)
+
+**4. Circuit Breaker Metrics** (`src/observability.ts` ~65 LOC added)
+- ✅ `circuit_breaker_state_changes_total` - State transition counter
+- ✅ `circuit_breaker_open` - OPEN state gauge
+- ✅ `circuit_breaker_half_open` - HALF_OPEN state gauge
+- ✅ `circuit_breaker_closed` - CLOSED state gauge
+- ✅ `circuit_breaker_success_total` - Success counter
+- ✅ `circuit_breaker_failure_total` - Failure counter
+- ✅ `circuit_breaker_timeout_total` - Timeout counter
+- ✅ `circuit_breaker_fallback_total` - Fallback counter
+
+**5. Configuration** (`.env.example`, `package.json`)
+- ✅ `CIRCUIT_BREAKER_ENABLED` - Enable/disable circuit breakers (default: true)
+- ✅ `CIRCUIT_BREAKER_ERROR_THRESHOLD` - Error percentage to open circuit (default: 50%)
+- ✅ `CIRCUIT_BREAKER_VOLUME_THRESHOLD` - Minimum requests before circuit opens (default: 10)
+- ✅ `CIRCUIT_BREAKER_RESET_TIMEOUT_MS` - Time circuit stays open (default: 30 seconds)
+- ✅ Added `opossum@^8.1.2` dependency
+- ✅ Added `@types/opossum@^8.1.2` dev dependency
+
+**6. Documentation** (`README.md` ~130 LOC added)
+- ✅ Circuit breaker overview and behavior
+- ✅ Protected operations (FINA SOAP API + Signature Service)
+- ✅ Configuration options and defaults
+- ✅ State transition explanations (CLOSED → OPEN → HALF_OPEN → CLOSED)
+- ✅ Circuit breaker metrics documentation
+- ✅ Prometheus alert rules for circuit breaker states
+- ✅ Disabling circuit breakers for testing
+
+#### Key Achievements
+- 🎯 **Cascading Failure Protection** - Prevents system-wide failures when external services down
+- 🎯 **Fail-Fast Behavior** - Improves response times by not waiting for timeouts
+- 🎯 **Automatic Recovery** - Self-healing with HALF_OPEN state testing
+- 🎯 **Complete Observability** - 8 Prometheus metrics for circuit breaker monitoring
+- 🎯 **Production-Ready** - Can be disabled for testing, comprehensive documentation
+
+#### Stats
+- **Files Modified:** 5 (soap-client.ts, signature-integration.ts, observability.ts, .env.example, README.md)
+- **Files Created:** 1 (circuit-breaker.ts)
+- **Total LOC Added:** ~645 lines (~370 circuit-breaker module, ~110 integrations, ~65 metrics, ~100 docs)
+- **Dependencies Added:** opossum@^8.1.2
+- **Metrics Added:** 8 circuit breaker metrics
+- **Protected Operations:** 6 (3 FINA SOAP + 3 Signature Service)
+
 ### ⏳ IN PROGRESS - Week 1 Remaining
 
 #### High Priority (P0/P1 Services)
@@ -457,7 +529,7 @@ Build rock-solid integrations with Croatian regulatory systems (FINA, Porezna Up
 - [x] Enhance cert-lifecycle-manager (certificate renewal automation) ✅ COMPLETED
 - [x] Enhance archive-service (11-year retention, WORM) ✅ COMPLETED
 - [x] Complete dead-letter-handler implementation ✅ COMPLETED
-- [ ] Add circuit breakers to fina-connector
+- [x] Add circuit breakers to fina-connector ✅ COMPLETED
 - [ ] Add batch signing to digital-signature-service
 
 #### Infrastructure & DevOps (Option C)
