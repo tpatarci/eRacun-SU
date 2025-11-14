@@ -204,33 +204,36 @@
 
 ---
 
-### ⚪ [PENDING-003] - Service Documentation Gap (pdf-parser, file-classifier)
+### ⚪ [PENDING-003] - Service Documentation Gap (pdf-parser)
 
 **Priority:** ⚪ P3 (Low)
 **Created:** 2025-11-12
-**Estimated Effort:** 2 hours
+**Estimated Effort:** 1 hour (reduced from 2 hours)
 
-**Problem:** pdf-parser and file-classifier services lack README.md files documenting purpose, API contracts, dependencies, and operational characteristics.
+**Problem:** pdf-parser service lacks README.md file documenting purpose, API contracts, dependencies, and operational characteristics.
 
 **Blocks:**
-- Onboarding new developers to these services
+- Onboarding new developers to pdf-parser service
 - Operational runbooks (understanding failure modes)
 
 **Does NOT Block:**
-- Production deployment (services are functional)
+- Production deployment (service is functional)
 - Other service development
 
 **Deliverables Required:**
 - [ ] `services/pdf-parser/README.md` with standard service documentation
-- [ ] `services/file-classifier/README.md` with standard service documentation
 - [ ] Document API contracts (HTTP endpoints, message formats)
 - [ ] Document failure modes and recovery procedures
 
-**Next Action:** Create README.md files following template in CLAUDE.md section 2.2
+**Deliverables Completed:**
+- [x] `services/file-classifier/README.md` (✅ Team 2, 2025-11-14)
+- [x] `services/email-ingestion-worker/README.md` (✅ Team 2, 2025-11-14)
+
+**Next Action:** Team 1 to create pdf-parser README.md following template in CLAUDE.md section 2.2
 
 **Deferred Because:** P1 service implementations prioritized (attachment-handler, ubl-transformer)
 
-**Note:** Identified in Team B verification report (2025-11-12-team-b-verification.md)
+**Note:** Identified in Team B verification report (2025-11-12-team-b-verification.md). Team 2 completed their portion on 2025-11-14.
 
 ---
 
