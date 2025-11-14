@@ -4,9 +4,21 @@ import {
   isExpired,
   isTrustedIssuer,
   getCertificateStatus,
+  getCertificateStatusWithRevocation,
   getAlertSeverity,
 } from '../../src/cert-validator';
 import { CertificateInfo } from '../../src/cert-parser';
+
+// Mock revocation checker
+jest.mock('../../src/revocation-check', () => ({
+  getRevocationChecker: jest.fn(() => ({
+    checkRevocation: jest.fn().mockResolvedValue({
+      revoked: false,
+      method: 'mock',
+      checkedAt: new Date(),
+    }),
+  })),
+}));
 
 // Helper to create test certificate
 function createTestCertificate(
@@ -334,6 +346,190 @@ describe('cert-validator', () => {
 
     it('should return "info" for certificate expiring in 60 days', () => {
       expect(getAlertSeverity(60)).toBe('info');
+    });
+  });
+
+  describe('validateCertificate with revocation checking', () => {
+    it('should include revocation status in validation result', async () => {
+      const cert = createTestCertificate();
+
+      const result = await validateCertificate(cert);
+
+      expect(result).toHaveProperty('revocationStatus');
+      expect(result.revocationStatus).toBeDefined();
+      expect(result.revocationStatus!.revoked).toBe(false);
+      expect(result.revocationStatus!.method).toBe('mock');
+    });
+
+    it('should reject revoked certificate', async () => {
+      const { getRevocationChecker } = require('../../src/revocation-check');
+      getRevocationChecker.mockReturnValue({
+        checkRevocation: jest.fn().mockResolvedValue({
+          revoked: true,
+          method: 'mock',
+          checkedAt: new Date(),
+          reason: 'keyCompromise',
+          revokedAt: new Date(),
+        }),
+      });
+
+      const cert = createTestCertificate({
+        serialNumber: 'TEST-REVOKED-001',
+      });
+
+      const result = await validateCertificate(cert);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.includes('revoked'))).toBe(true);
+      expect(result.revocationStatus!.revoked).toBe(true);
+      expect(result.revocationStatus!.reason).toBe('keyCompromise');
+
+      // Reset mock
+      getRevocationChecker.mockReturnValue({
+        checkRevocation: jest.fn().mockResolvedValue({
+          revoked: false,
+          method: 'mock',
+          checkedAt: new Date(),
+        }),
+      });
+    });
+
+    it('should warn if revocation check fails', async () => {
+      const { getRevocationChecker } = require('../../src/revocation-check');
+      getRevocationChecker.mockReturnValue({
+        checkRevocation: jest.fn().mockResolvedValue({
+          revoked: false,
+          method: 'crl',
+          checkedAt: new Date(),
+          error: 'CRL download failed',
+        }),
+      });
+
+      const cert = createTestCertificate();
+
+      const result = await validateCertificate(cert);
+
+      expect(result.valid).toBe(true); // Not invalid, just warning
+      expect(result.warnings.some((w) => w.includes('Could not verify revocation status'))).toBe(true);
+
+      // Reset mock
+      getRevocationChecker.mockReturnValue({
+        checkRevocation: jest.fn().mockResolvedValue({
+          revoked: false,
+          method: 'mock',
+          checkedAt: new Date(),
+        }),
+      });
+    });
+
+    it('should handle revocation check exception gracefully', async () => {
+      const { getRevocationChecker } = require('../../src/revocation-check');
+      getRevocationChecker.mockReturnValue({
+        checkRevocation: jest.fn().mockRejectedValue(new Error('Network error')),
+      });
+
+      const cert = createTestCertificate();
+
+      const result = await validateCertificate(cert);
+
+      expect(result.valid).toBe(true); // Not invalid, just warning
+      expect(result.warnings.some((w) => w.includes('Revocation check failed'))).toBe(true);
+
+      // Reset mock
+      getRevocationChecker.mockReturnValue({
+        checkRevocation: jest.fn().mockResolvedValue({
+          revoked: false,
+          method: 'mock',
+          checkedAt: new Date(),
+        }),
+      });
+    });
+  });
+
+  describe('getCertificateStatusWithRevocation', () => {
+    it('should return "revoked" for revoked certificate', async () => {
+      const { getRevocationChecker } = require('../../src/revocation-check');
+      getRevocationChecker.mockReturnValue({
+        checkRevocation: jest.fn().mockResolvedValue({
+          revoked: true,
+          method: 'mock',
+          checkedAt: new Date(),
+          reason: 'keyCompromise',
+        }),
+      });
+
+      const cert = createTestCertificate({
+        serialNumber: 'TEST-REVOKED-001',
+      });
+
+      const status = await getCertificateStatusWithRevocation(cert);
+
+      expect(status).toBe('revoked');
+
+      // Reset mock
+      getRevocationChecker.mockReturnValue({
+        checkRevocation: jest.fn().mockResolvedValue({
+          revoked: false,
+          method: 'mock',
+          checkedAt: new Date(),
+        }),
+      });
+    });
+
+    it('should return "expired" for expired certificate even if not revoked', async () => {
+      const pastDate = new Date();
+      pastDate.setFullYear(pastDate.getFullYear() - 1);
+
+      const cert = createTestCertificate({ notAfter: pastDate });
+
+      const status = await getCertificateStatusWithRevocation(cert);
+
+      expect(status).toBe('expired');
+    });
+
+    it('should return "expiring_soon" for expiring certificate', async () => {
+      const soonDate = new Date();
+      soonDate.setDate(soonDate.getDate() + 15);
+
+      const cert = createTestCertificate({ notAfter: soonDate });
+
+      const status = await getCertificateStatusWithRevocation(cert);
+
+      expect(status).toBe('expiring_soon');
+    });
+
+    it('should return "active" for valid certificate', async () => {
+      const farDate = new Date();
+      farDate.setDate(farDate.getDate() + 60);
+
+      const cert = createTestCertificate({ notAfter: farDate });
+
+      const status = await getCertificateStatusWithRevocation(cert);
+
+      expect(status).toBe('active');
+    });
+
+    it('should handle revocation check failure and continue', async () => {
+      const { getRevocationChecker } = require('../../src/revocation-check');
+      getRevocationChecker.mockReturnValue({
+        checkRevocation: jest.fn().mockRejectedValue(new Error('Network error')),
+      });
+
+      const cert = createTestCertificate();
+
+      const status = await getCertificateStatusWithRevocation(cert);
+
+      // Should continue with expiration check despite revocation error
+      expect(status).toBe('active');
+
+      // Reset mock
+      getRevocationChecker.mockReturnValue({
+        checkRevocation: jest.fn().mockResolvedValue({
+          revoked: false,
+          method: 'mock',
+          checkedAt: new Date(),
+        }),
+      });
     });
   });
 });
