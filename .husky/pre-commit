@@ -1,4 +1,17 @@
 #!/usr/bin/env sh
 . "$(dirname -- "$0")/_/husky.sh"
 
+echo "🔍 Running pre-commit checks..."
+echo ""
+
+# Run lint-staged for staged files
+echo "📝 Checking staged files with ESLint and Prettier..."
+npx lint-staged
+
+# Run architecture compliance check
+echo ""
+echo "🏗️  Checking architecture compliance..."
 npm run check:architecture
+
+echo ""
+echo "✅ Pre-commit checks passed!"

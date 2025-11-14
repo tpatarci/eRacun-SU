@@ -1,0 +1,111 @@
+# eRacun Porezna Uprava Connector Service
+#
+# Integration with Croatian Tax Administration (Porezna Uprava) for tax reporting.
+# Handles tax report submission, VAT validation, company registry queries.
+#
+# INSTALLATION:
+# sudo cp eracun-porezna-connector.service /etc/systemd/system/
+# sudo systemctl daemon-reload
+# sudo systemctl enable eracun-porezna-connector
+# sudo systemctl start eracun-porezna-connector
+
+[Unit]
+Description=eRacun Porezna Uprava Tax Connector
+Documentation=https://github.com/eracun/eRacun-development
+After=network-online.target rabbitmq-server.service
+Wants=network-online.target rabbitmq-server.service
+
+[Service]
+Type=simple
+User=eracun
+Group=eracun
+WorkingDirectory=/opt/eracun/services/porezna-connector
+
+# Environment configuration
+EnvironmentFile=/etc/eracun/platform.conf
+EnvironmentFile=/etc/eracun/environment.conf
+EnvironmentFile=/etc/eracun/services/porezna-connector.conf
+EnvironmentFile=/run/eracun/secrets.env
+
+# Decrypt secrets before starting
+ExecStartPre=/usr/local/bin/decrypt-secrets.sh porezna-connector
+
+# Start service
+ExecStart=/usr/local/bin/node dist/index.js
+
+# Restart policy
+Restart=on-failure
+RestartSec=5s
+StartLimitBurst=10
+StartLimitIntervalSec=300s
+
+# Resource limits
+MemoryMax=512M
+MemoryHigh=400M
+CPUQuota=100%
+TasksMax=256
+
+# ============================================================================
+# Systemd Hardening
+# ============================================================================
+
+# Filesystem Protection
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/log/eracun/porezna-connector
+ReadOnlyPaths=/etc/eracun/secrets
+
+# Prevent Privilege Escalation
+NoNewPrivileges=true
+
+# Prevent Access to Sensitive Files
+InaccessiblePaths=/etc/eracun/.age-key /root /home
+
+# Namespace Isolation
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+
+# Capability Restrictions
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# System Call Filtering
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @debug
+SystemCallErrorNumber=EPERM
+
+# Restrict Address Families
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+# Restrict Namespaces
+RestrictNamespaces=true
+
+# Lock Personality
+LockPersonality=true
+
+# Memory Deny Write Execute
+MemoryDenyWriteExecute=true
+
+# Restrict Realtime
+RestrictRealtime=true
+
+# Remove IPC
+RemoveIPC=true
+
+# Network Access (required for Porezna API)
+# IPAddressDeny=any
+# IPAddressAllow=localhost 161.53.0.0/16  # Porezna endpoints
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=eracun-porezna-connector
+
+[Install]
+WantedBy=multi-user.target

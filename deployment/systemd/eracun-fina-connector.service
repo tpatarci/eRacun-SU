@@ -1,0 +1,111 @@
+# eRacun FINA Connector Service
+#
+# Integration with Croatian Tax Authority (FINA) for invoice fiscalization.
+# Handles B2C/B2B invoice submission, JIR/ZKI generation, certificate validation.
+#
+# INSTALLATION:
+# sudo cp eracun-fina-connector.service /etc/systemd/system/
+# sudo systemctl daemon-reload
+# sudo systemctl enable eracun-fina-connector
+# sudo systemctl start eracun-fina-connector
+
+[Unit]
+Description=eRacun FINA Tax Authority Connector
+Documentation=https://github.com/eracun/eRacun-development
+After=network-online.target rabbitmq-server.service eracun-cert-lifecycle-manager.service
+Wants=network-online.target rabbitmq-server.service
+
+[Service]
+Type=simple
+User=eracun
+Group=eracun
+WorkingDirectory=/opt/eracun/services/fina-connector
+
+# Environment configuration
+EnvironmentFile=/etc/eracun/platform.conf
+EnvironmentFile=/etc/eracun/environment.conf
+EnvironmentFile=/etc/eracun/services/fina-connector.conf
+EnvironmentFile=/run/eracun/secrets.env
+
+# Decrypt secrets before starting
+ExecStartPre=/usr/local/bin/decrypt-secrets.sh fina-connector
+
+# Start service
+ExecStart=/usr/local/bin/node dist/index.js
+
+# Restart policy (critical service)
+Restart=on-failure
+RestartSec=5s
+StartLimitBurst=10
+StartLimitIntervalSec=300s
+
+# Resource limits
+MemoryMax=1G
+MemoryHigh=800M
+CPUQuota=200%
+TasksMax=512
+
+# ============================================================================
+# Systemd Hardening
+# ============================================================================
+
+# Filesystem Protection
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/log/eracun/fina-connector /var/lib/eracun/certs
+ReadOnlyPaths=/etc/eracun/secrets
+
+# Prevent Privilege Escalation
+NoNewPrivileges=true
+
+# Prevent Access to Sensitive Files
+InaccessiblePaths=/etc/eracun/.age-key /root /home
+
+# Namespace Isolation
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+
+# Capability Restrictions
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# System Call Filtering
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @debug
+SystemCallErrorNumber=EPERM
+
+# Restrict Address Families
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+# Restrict Namespaces
+RestrictNamespaces=true
+
+# Lock Personality
+LockPersonality=true
+
+# Memory Deny Write Execute
+MemoryDenyWriteExecute=true
+
+# Restrict Realtime
+RestrictRealtime=true
+
+# Remove IPC
+RemoveIPC=true
+
+# Network Access (required for FINA API)
+# IPAddressDeny=any
+# IPAddressAllow=localhost 193.198.0.0/16  # FINA endpoints
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=eracun-fina-connector
+
+[Install]
+WantedBy=multi-user.target
