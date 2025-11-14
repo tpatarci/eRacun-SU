@@ -23,6 +23,8 @@
     "chaos:partition": "cd tests/chaos && chmod +x network-partition.sh && ./network-partition.sh",
     "chaos:smoke": "cd tests/chaos && chmod +x run-smoke.sh && ./run-smoke.sh",
     "chaos:full": "cd tests/chaos && chmod +x run-full.sh && ./run-full.sh",
+    "test:all": "for dir in services/*/; do (cd \"$dir\" && [ -f package.json ] && echo \"Testing $(basename $dir)...\" && npm test --if-present) || true; done",
+    "check:architecture": "./scripts/check-architecture-compliance.sh",
     "check:all": "npm run lint && npm run format:check && npm run typecheck && npm run check:architecture"
   },
   "devDependencies": {
