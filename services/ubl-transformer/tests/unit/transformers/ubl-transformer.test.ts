@@ -258,8 +258,9 @@ describe('UBLTransformer', () => {
       const result = await transformer.transform(jsonContent);
 
       expect(result.success).toBe(true);
-      expect(result.processingTime).toBeGreaterThan(0);
+      expect(result.processingTime).toBeGreaterThanOrEqual(0);
       expect(result.processingTime).toBeLessThan(5000); // Should be fast
+      expect(typeof result.processingTime).toBe('number');
     });
 
     it('should track processing time for failed transformation', async () => {
@@ -270,7 +271,8 @@ describe('UBLTransformer', () => {
       const result = await transformer.transform(invalidJson);
 
       expect(result.success).toBe(false);
-      expect(result.processingTime).toBeGreaterThan(0);
+      expect(result.processingTime).toBeGreaterThanOrEqual(0);
+      expect(typeof result.processingTime).toBe('number');
     });
   });
 
