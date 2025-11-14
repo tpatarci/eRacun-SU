@@ -391,13 +391,72 @@ Build rock-solid integrations with Croatian regulatory systems (FINA, Porezna Up
 - **Test Coverage:** 0% (target: 100% - next priority)
 - **Documentation:** Comprehensive inline documentation
 
+### ✅ COMPLETED - Phase 5 (dead-letter-handler Implementation)
+
+**Date:** 2025-11-14
+**Commit:** `0597f83` on branch `claude/team-c-setup-011NHeiaZ7EyjENTCr1JCNJB`
+**Status:** Pushed to remote
+
+#### Features Delivered
+
+**1. Error Classification System** (`src/classifier.ts` ~360 LOC)
+- ✅ 4-way classification: TRANSIENT, BUSINESS, TECHNICAL, UNKNOWN
+- ✅ Pattern-based detection (network timeouts, validation failures, null pointers)
+- ✅ Croatian-specific patterns (OIB, KPD, CIUS, FINA, Porezna, JIR, ZKI)
+- ✅ Service name + invoice ID extraction
+
+**2. Error Router** (`src/router.ts` ~300 LOC)
+- ✅ TRANSIENT → retry-scheduler (auto-retry with exponential backoff)
+- ✅ BUSINESS/TECHNICAL/UNKNOWN → manual review + PostgreSQL + notifications
+- ✅ Max retry enforcement (default: 3 attempts)
+- ✅ Kafka error events publishing (optional)
+
+**3. PostgreSQL Repository** (`src/repository.ts` ~480 LOC)
+- ✅ Full CRUD for manual review errors
+- ✅ Mock implementation for development
+- ✅ Statistics API (by classification, service, status)
+- ✅ Cleanup utility (90-day retention)
+
+**4. DLQ Consumer** (`src/consumer.ts` ~260 LOC)
+- ✅ RabbitMQ DLQ consumption (binds to dlx exchange)
+- ✅ Prefetch limit (default: 10 concurrent)
+- ✅ Periodic stats updater (every 30s)
+- ✅ Graceful shutdown
+
+**5. HTTP REST API** (`src/api.ts` ~340 LOC)
+- ✅ GET /api/v1/errors - List with pagination
+- ✅ GET /api/v1/errors/:id - View details
+- ✅ POST /api/v1/errors/:id/resolve - Mark resolved
+- ✅ POST /api/v1/errors/:id/resubmit - Resubmit to original queue
+- ✅ GET /api/v1/errors/stats - Statistics
+
+**6. Prometheus Observability** (`src/observability.ts` ~120 LOC)
+- ✅ 8+ metrics: messages processed, retries scheduled, manual review routed, processing duration, etc.
+
+**7. Main Orchestration** (`src/index.ts` ~140 LOC)
+- ✅ Environment configuration
+- ✅ Consumer + API + metrics server startup
+- ✅ Graceful shutdown (SIGTERM/SIGINT)
+
+#### Key Achievements
+- 🎯 **Complete DLQ Processing** - Monitors all service DLQs
+- 🎯 **Intelligent Routing** - Transient auto-retry, business → manual review
+- 🎯 **Admin Portal Ready** - Full CRUD API for error management
+- 🎯 **Production Observability** - 8+ Prometheus metrics
+- 🎯 **Croatian Compliance Aware** - Detects FINA/Porezna/OIB/KPD errors
+
+#### Stats
+- **Files Created:** 11 (9 TypeScript + 2 config)
+- **Total LOC:** ~1,957 lines (~1,800 implementation)
+- **Test Coverage:** 0% (target: 85%+ - next priority)
+
 ### ⏳ IN PROGRESS - Week 1 Remaining
 
 #### High Priority (P0/P1 Services)
 - [x] Write comprehensive tests (100% coverage target) ✅ COMPLETED
 - [x] Enhance cert-lifecycle-manager (certificate renewal automation) ✅ COMPLETED
 - [x] Enhance archive-service (11-year retention, WORM) ✅ COMPLETED
-- [ ] Complete dead-letter-handler implementation
+- [x] Complete dead-letter-handler implementation ✅ COMPLETED
 - [ ] Add circuit breakers to fina-connector
 - [ ] Add batch signing to digital-signature-service
 
