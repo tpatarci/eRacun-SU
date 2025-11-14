@@ -3,20 +3,49 @@
  */
 
 import { Request, Response } from 'express';
-import { Container } from 'inversify';
 import { InvoiceController } from '../../../src/controllers/invoice.controller';
+import { InvoiceRepository } from '../../../src/repositories/invoice.repository';
+import { ProcessInvoiceCommandPublisher } from '../../../src/messaging/process-invoice.publisher';
 
 describe('InvoiceController', () => {
   let controller: InvoiceController;
-  let container: Container;
+  let repository: jest.Mocked<InvoiceRepository>;
+  let publisher: jest.Mocked<ProcessInvoiceCommandPublisher>;
   let mockRequest: Partial<Request>;
   let mockResponse: Partial<Response>;
   let jsonSpy: jest.Mock;
   let statusSpy: jest.Mock;
 
   beforeEach(() => {
-    container = new Container();
-    controller = new InvoiceController(container);
+    repository = {
+      saveInvoice: jest.fn(),
+      findById: jest.fn(),
+      findByIdempotencyKey: jest.fn(),
+      updateStatus: jest.fn(),
+      close: jest.fn(),
+    } as unknown as jest.Mocked<InvoiceRepository>;
+    publisher = {
+      publish: jest.fn(),
+    } as jest.Mocked<ProcessInvoiceCommandPublisher>;
+
+    const baseRecord = {
+      id: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+      idempotencyKey: 'test-idempotency-key',
+      invoiceNumber: 'INV-BASE',
+      supplierOIB: '12345678901',
+      buyerOIB: '10987654321',
+      totalAmount: 125,
+      currency: 'EUR',
+      status: 'QUEUED' as const,
+      createdAt: new Date('2025-01-01T00:00:00.000Z'),
+      updatedAt: new Date('2025-01-01T00:00:00.000Z'),
+    };
+
+    repository.saveInvoice.mockResolvedValue(baseRecord);
+    repository.findById.mockResolvedValue(baseRecord);
+    publisher.publish.mockResolvedValue();
+
+    controller = new InvoiceController(repository, publisher);
 
     jsonSpy = jest.fn().mockReturnThis();
     statusSpy = jest.fn().mockReturnThis();
@@ -82,17 +111,41 @@ describe('InvoiceController', () => {
 
       mockRequest.body = validInvoice;
 
+      const persistedRecord = {
+        id: '11111111-1111-1111-1111-111111111111',
+        idempotencyKey: mockRequest.idempotencyKey!,
+        invoiceNumber: validInvoice.invoiceNumber,
+        supplierOIB: '12345678901',
+        buyerOIB: '10987654321',
+        totalAmount: validInvoice.amounts.gross,
+        currency: validInvoice.amounts.currency,
+        status: 'QUEUED' as const,
+        createdAt: new Date('2025-01-01T00:00:00.000Z'),
+        updatedAt: new Date('2025-01-01T00:00:00.000Z'),
+      };
+
+      repository.saveInvoice.mockResolvedValue(persistedRecord);
+      publisher.publish.mockResolvedValue();
+
       await controller.submitInvoice(mockRequest as Request, mockResponse as Response);
 
       expect(statusSpy).toHaveBeenCalledWith(202);
       expect(jsonSpy).toHaveBeenCalledWith(
         expect.objectContaining({
-          invoiceId: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i),
-          status: 'QUEUED',
-          trackingUrl: expect.stringContaining('/api/v1/invoices/'),
-          acceptedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/),
+          invoiceId: persistedRecord.id,
+          status: persistedRecord.status,
+          trackingUrl: expect.stringContaining(`/api/v1/invoices/${persistedRecord.id}`),
+          acceptedAt: persistedRecord.createdAt.toISOString(),
         })
       );
+
+      expect(repository.saveInvoice).toHaveBeenCalledWith(
+        expect.objectContaining({
+          invoiceNumber: validInvoice.invoiceNumber,
+          status: 'QUEUED',
+        })
+      );
+      expect(publisher.publish).toHaveBeenCalled();
     });
 
     it('should generate tracking URL with correct protocol and host', async () => {
@@ -115,6 +168,7 @@ describe('InvoiceController', () => {
   describe('getInvoiceStatus', () => {
     it('should return 404 for non-existent invoice', async () => {
       mockRequest.params = { invoiceId: '00000000-0000-0000-0000-000000000000' };
+      repository.findById.mockResolvedValue(null);
 
       await expect(
         controller.getInvoiceStatus(mockRequest as Request, mockResponse as Response)
@@ -132,23 +186,39 @@ describe('InvoiceController', () => {
         amounts: { net: 100, vat: [{ rate: 25, base: 100, amount: 25, category: 'STANDARD' }], gross: 125, currency: 'EUR' },
       };
 
+      const storedRecord = {
+        id: '22222222-2222-2222-2222-222222222222',
+        idempotencyKey: mockRequest.idempotencyKey!,
+        invoiceNumber: 'INV-002',
+        supplierOIB: '12345678901',
+        buyerOIB: '10987654321',
+        totalAmount: 125,
+        currency: 'EUR',
+        status: 'QUEUED' as const,
+        createdAt: new Date('2025-01-01T00:00:00.000Z'),
+        updatedAt: new Date('2025-01-01T00:00:00.000Z'),
+      };
+
+      repository.saveInvoice.mockResolvedValue(storedRecord);
+      publisher.publish.mockResolvedValue();
+
       await controller.submitInvoice(mockRequest as Request, mockResponse as Response);
-      const submissionResult = jsonSpy.mock.calls[0][0];
-      const invoiceId = submissionResult.invoiceId;
+
+      repository.findById.mockResolvedValue(storedRecord);
 
       // Reset mocks
       jsonSpy.mockClear();
       statusSpy.mockClear();
 
       // Now get status
-      mockRequest.params = { invoiceId };
+      mockRequest.params = { invoiceId: storedRecord.id };
 
       await controller.getInvoiceStatus(mockRequest as Request, mockResponse as Response);
 
       expect(statusSpy).toHaveBeenCalledWith(200);
       expect(jsonSpy).toHaveBeenCalledWith(
         expect.objectContaining({
-          invoiceId,
+          invoiceId: storedRecord.id,
           invoiceNumber: 'INV-002',
           status: 'QUEUED',
           progress: expect.objectContaining({

@@ -146,6 +146,35 @@ export class RabbitMQClient {
   }
 
   /**
+   * Publish command without waiting for RPC response
+   */
+  async publishToQueue(
+    queue: string,
+    payload: Record<string, any>,
+    properties?: amqp.Options.Publish
+  ): Promise<void> {
+    if (!this.channel) {
+      throw new Error('RabbitMQ channel not initialized. Call connect() first.');
+    }
+
+    await this.channel.assertQueue(queue, { durable: true });
+
+    const messageBuffer = Buffer.from(JSON.stringify(payload));
+    const publishSucceeded = this.channel.sendToQueue(queue, messageBuffer, {
+      persistent: true,
+      contentType: 'application/json',
+      timestamp: Date.now(),
+      ...properties,
+    });
+
+    if (!publishSucceeded) {
+      await new Promise<void>((resolve) => this.channel!.once('drain', resolve));
+    }
+
+    logger.debug({ queue, commandType: payload.type }, 'Command published to queue');
+  }
+
+  /**
    * Consume commands from queue (for service workers)
    */
   async consumeCommands(
