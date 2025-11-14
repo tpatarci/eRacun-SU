@@ -11,7 +11,7 @@ import {
   DistributionTarget,
 } from '../../src/cert-distribution';
 import { Certificate } from '../../src/repository';
-import { promises as fs } from 'fs';
+import * as fs from 'fs/promises';
 import { join } from 'path';
 
 // Mock file system
