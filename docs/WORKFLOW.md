@@ -37,10 +37,12 @@ refactor/<service-name>/<improvement>
 **On Every Commit:**
 1. Lint (ESLint, Prettier)
 2. Type check (TypeScript strict mode)
-3. Unit tests (Jest)
+3. Unit tests (`npm test` orchestrates every service suite with coverage gate)
 4. Security scan (Snyk, Trivy)
 5. Build Docker images
 6. Push to registry (only on `main`)
+
+> **Canonical test command:** `npm test` (wrapping `scripts/run-service-tests.mjs`). CI and local workflows must use this so coverage summaries stay visible and the compliance gate fails fast whenever any service regresses.
 
 **On Merge to Main:**
 7. Integration tests (Testcontainers)

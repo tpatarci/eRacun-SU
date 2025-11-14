@@ -89,6 +89,9 @@ npm run format
 # Type-check all services
 npm run typecheck
 
+# Run the canonical monorepo test suite with coverage summaries
+npm test
+
 # Check architecture compliance
 npm run check:architecture
 
@@ -401,11 +404,14 @@ Configure auto-fix on save:
 
 ```bash
 # Before pushing, run full checks
+npm test
 npm run check:all
 
 # If passing, push
 git push origin feature-branch
 ```
+
+`npm test` uses the shared `scripts/run-service-tests.mjs` orchestrator to execute every service suite, fail fast on errors, and print the aggregated coverage summaries you must meet before opening a PR.
 
 ## Configuration Files
 

@@ -11,7 +11,8 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,json,md,yml,yaml}\"",
     "typecheck": "npm run typecheck:services",
     "typecheck:services": "for dir in services/*/; do (cd \"$dir\" && [ -f tsconfig.json ] && echo \"Type-checking $(basename $dir)...\" && npm run build --if-present) || true; done",
-    "test": "echo 'Running tests across all services...'",
+    "test": "npm run test:all",
+    "test:all": "node ./scripts/run-service-tests.mjs",
     "check:architecture": "./scripts/check-architecture-compliance.sh",
     "chaos:database": "cd tests/chaos && chmod +x database-failure.sh && ./database-failure.sh",
     "chaos:rabbitmq": "cd tests/chaos && chmod +x rabbitmq-failure.sh && ./rabbitmq-failure.sh",
@@ -21,9 +22,7 @@
     "chaos:cascade": "cd tests/chaos && chmod +x cascading-failure.sh && ./cascading-failure.sh",
     "chaos:partition": "cd tests/chaos && chmod +x network-partition.sh && ./network-partition.sh",
     "chaos:smoke": "cd tests/chaos && chmod +x run-smoke.sh && ./run-smoke.sh",
-    "chaos:full": "cd tests/chaos && chmod +x run-full.sh && ./run-full.sh"
-    "test:all": "for dir in services/*/; do (cd \"$dir\" && [ -f package.json ] && echo \"Testing $(basename $dir)...\" && npm test --if-present) || true; done",
-    "check:architecture": "./scripts/check-architecture-compliance.sh",
+    "chaos:full": "cd tests/chaos && chmod +x run-full.sh && ./run-full.sh",
     "check:all": "npm run lint && npm run format:check && npm run typecheck && npm run check:architecture"
   },
   "devDependencies": {
