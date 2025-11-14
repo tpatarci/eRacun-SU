@@ -1,10 +1,12 @@
 import axios, { AxiosInstance } from 'axios';
+import CircuitBreaker from 'opossum';
 import {
   logger,
   createSpan,
   setSpanError,
   endSpanSuccess,
 } from './observability.js';
+import { createSignatureServiceCircuitBreaker } from './circuit-breaker.js';
 import type { FINAInvoice } from './types.js';
 
 /**
@@ -89,6 +91,7 @@ export class SignatureServiceError extends Error {
  * - XMLDSig signature generation (UBL invoices)
  *
  * IMPROVEMENT-025: ZKI caching to avoid regenerating same codes
+ * Circuit Breaker Integration: Protects against cascading failures when signature service is unavailable
  */
 export class SignatureServiceClient {
   private client: AxiosInstance;
@@ -96,6 +99,9 @@ export class SignatureServiceClient {
   // IMPROVEMENT-025: ZKI cache with TTL (in-memory)
   private zkiCache: Map<string, { zki: string; timestamp: number }> = new Map();
   private zkiCacheTTL = 3600000; // 1 hour in milliseconds
+  private generateZKICircuitBreaker: CircuitBreaker<[FINAInvoice], string>;
+  private signUBLCircuitBreaker: CircuitBreaker<[string, string?], string>;
+  private verifySignatureCircuitBreaker: CircuitBreaker<[string], boolean>;
 
   constructor(config: SignatureServiceConfig) {
     this.config = config;
@@ -106,10 +112,30 @@ export class SignatureServiceClient {
         'Content-Type': 'application/json',
       },
     });
+
+    // Create circuit breakers for signature service operations
+    this.generateZKICircuitBreaker = createSignatureServiceCircuitBreaker(
+      this.generateZKIInternal.bind(this),
+      'generate-zki',
+      config.timeout
+    );
+
+    this.signUBLCircuitBreaker = createSignatureServiceCircuitBreaker(
+      this.signUBLInvoiceInternal.bind(this),
+      'sign-ubl',
+      config.timeout
+    );
+
+    this.verifySignatureCircuitBreaker = createSignatureServiceCircuitBreaker(
+      this.verifySignatureInternal.bind(this),
+      'verify-signature',
+      config.timeout
+    );
   }
 
   /**
    * Generate ZKI code for B2C invoice
+   * Circuit breaker protected - fails fast if signature service is unavailable
    *
    * IMPROVEMENT-025: Cache ZKI results to avoid regenerating for same invoice parameters
    *
@@ -117,22 +143,33 @@ export class SignatureServiceClient {
    * @returns ZKI code (32 hex characters)
    */
   async generateZKI(invoice: FINAInvoice): Promise<string> {
+    // Check cache first (before circuit breaker to avoid unnecessary calls)
+    const cacheKey = this.getZKICacheKey(invoice);
+    const cached = this.getZKIFromCache(cacheKey);
+    if (cached) {
+      logger.debug({
+        invoiceNumber: invoice.brojRacuna,
+        cached: true,
+      }, 'Using cached ZKI code');
+      return cached;
+    }
+
+    // Call through circuit breaker
+    return await this.generateZKICircuitBreaker.fire(invoice);
+  }
+
+  /**
+   * Generate ZKI code (internal implementation)
+   *
+   * @param invoice - FINA invoice data
+   * @returns ZKI code (32 hex characters)
+   */
+  private async generateZKIInternal(invoice: FINAInvoice): Promise<string> {
     const span = createSpan('generate_zki', {
       invoice_number: invoice.brojRacuna,
     });
 
     try {
-      // IMPROVEMENT-025: Check ZKI cache first
-      const cacheKey = this.getZKICacheKey(invoice);
-      const cached = this.getZKIFromCache(cacheKey);
-      if (cached) {
-        logger.debug({
-          invoiceNumber: invoice.brojRacuna,
-          cached: true,
-        }, 'Using cached ZKI code');
-        endSpanSuccess(span);
-        return cached;
-      }
 
       logger.info({
         invoiceNumber: invoice.brojRacuna,
@@ -186,12 +223,27 @@ export class SignatureServiceClient {
 
   /**
    * Sign UBL invoice with XMLDSig
+   * Circuit breaker protected - fails fast if signature service is unavailable
    *
    * @param xmlDocument - UBL XML document (unsigned)
    * @param certificateAlias - Certificate alias (optional)
    * @returns Signed XML document
    */
   async signUBLInvoice(
+    xmlDocument: string,
+    certificateAlias?: string
+  ): Promise<string> {
+    return await this.signUBLCircuitBreaker.fire(xmlDocument, certificateAlias);
+  }
+
+  /**
+   * Sign UBL invoice (internal implementation)
+   *
+   * @param xmlDocument - UBL XML document (unsigned)
+   * @param certificateAlias - Certificate alias (optional)
+   * @returns Signed XML document
+   */
+  private async signUBLInvoiceInternal(
     xmlDocument: string,
     certificateAlias?: string
   ): Promise<string> {
@@ -243,11 +295,22 @@ export class SignatureServiceClient {
 
   /**
    * Verify UBL invoice signature
+   * Circuit breaker protected - fails fast if signature service is unavailable
    *
    * @param signedXml - Signed XML document
    * @returns True if signature is valid
    */
   async verifySignature(signedXml: string): Promise<boolean> {
+    return await this.verifySignatureCircuitBreaker.fire(signedXml);
+  }
+
+  /**
+   * Verify signature (internal implementation)
+   *
+   * @param signedXml - Signed XML document
+   * @returns True if signature is valid
+   */
+  private async verifySignatureInternal(signedXml: string): Promise<boolean> {
     const span = createSpan('verify_signature');
 
     try {
