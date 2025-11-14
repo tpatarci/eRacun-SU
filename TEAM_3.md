@@ -602,15 +602,15 @@ Build rock-solid integrations with Croatian regulatory systems (FINA, Porezna Up
 - [x] Add batch signing to digital-signature-service ✅ COMPLETED
 
 #### Infrastructure & DevOps (Option C)
-- [ ] Docker-compose updates for Team 3 services
-- [ ] Pre-commit hooks setup
-- [ ] systemd hardening configurations
-- [ ] SOPS secrets management integration
+- [x] Docker-compose updates for Team 3 services ✅ COMPLETED
+- [x] Pre-commit hooks setup ✅ COMPLETED
+- [x] systemd hardening configurations ✅ COMPLETED
+- [x] SOPS secrets management integration ✅ COMPLETED
 
 #### Medium Priority
 - [ ] FINA test environment integration (requires credentials)
-- [ ] Performance benchmarking (PENDING-004)
-- [ ] Load testing (k6 scripts)
+- [x] Performance benchmarking (PENDING-004) ✅ COMPLETED
+- [x] Load testing (k6 scripts) ✅ COMPLETED
 - [ ] RabbitMQ migration from in-memory bus
 
 ---
