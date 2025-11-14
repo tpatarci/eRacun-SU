@@ -174,11 +174,11 @@ No workstream should wait for unblock; if a dependency cannot be mocked, escalat
 - [ ] Health check endpoints with dependency status
 
 #### Day 5: Testing Infrastructure
-- [ ] Unit tests with 100% coverage
-- [ ] Integration tests with mock services
-- [ ] Property-based tests for validators
-- [ ] Load testing setup (k6/Artillery)
-- [ ] Chaos testing scenarios
+- [x] Unit tests with 100% coverage
+- [x] Integration tests with mock services
+- [x] Property-based tests for validators
+- [x] Load testing setup (k6/Artillery)
+- [x] Chaos testing scenarios
 
 ### Week 2: Core Services Implementation
 **Owner:** Backend Engineer 1 & 2
@@ -417,18 +417,18 @@ k6 run --vus 100 --duration 30m tests/load/invoice-submission.js
 ## Deliverables Checklist
 
 ### Code Deliverables
-- [ ] 4 microservices with 100% test coverage
-- [ ] Mock adapter implementations for all external dependencies
-- [ ] Shared test fixture library
-- [ ] Performance benchmark suite
-- [ ] Chaos testing scenarios
+- [x] 4 microservices with 100% test coverage
+- [x] Mock adapter implementations for all external dependencies
+- [x] Shared test fixture library
+- [x] Performance benchmark suite (k6 load tests)
+- [x] Chaos testing scenarios (7 scenarios + smoke/full test runners)
 
 ### Documentation Deliverables
-- [ ] OpenAPI specifications for all REST endpoints
-- [ ] gRPC proto files for internal APIs
-- [ ] Service README.md files (purpose, API, dependencies)
-- [ ] Runbooks for common operational tasks
-- [ ] Architecture Decision Records (ADRs)
+- [x] OpenAPI specifications for all REST endpoints
+- [x] gRPC proto files for internal APIs (N/A - using RabbitMQ/Kafka)
+- [x] Service README.md files (purpose, API, dependencies)
+- [x] Runbooks for common operational tasks (DEPLOYMENT_RUNBOOK.md)
+- [x] Architecture Decision Records (ADRs)
 
 ### Infrastructure Deliverables
 - [x] systemd service unit files (4 services with security hardening)

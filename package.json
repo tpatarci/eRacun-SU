@@ -7,7 +7,16 @@
     "prepare": "husky install",
     "lint": "echo 'Running lint across all services...'",
     "test": "echo 'Running tests across all services...'",
-    "check:architecture": "./scripts/check-architecture-compliance.sh"
+    "check:architecture": "./scripts/check-architecture-compliance.sh",
+    "chaos:database": "cd tests/chaos && chmod +x database-failure.sh && ./database-failure.sh",
+    "chaos:rabbitmq": "cd tests/chaos && chmod +x rabbitmq-failure.sh && ./rabbitmq-failure.sh",
+    "chaos:network": "cd tests/chaos && chmod +x network-latency.sh && ./network-latency.sh",
+    "chaos:cpu": "cd tests/chaos && chmod +x cpu-throttle.sh && ./cpu-throttle.sh",
+    "chaos:memory": "cd tests/chaos && chmod +x memory-pressure.sh && ./memory-pressure.sh",
+    "chaos:cascade": "cd tests/chaos && chmod +x cascading-failure.sh && ./cascading-failure.sh",
+    "chaos:partition": "cd tests/chaos && chmod +x network-partition.sh && ./network-partition.sh",
+    "chaos:smoke": "cd tests/chaos && chmod +x run-smoke.sh && ./run-smoke.sh",
+    "chaos:full": "cd tests/chaos && chmod +x run-full.sh && ./run-full.sh"
   },
   "devDependencies": {
     "husky": "^8.0.3"
