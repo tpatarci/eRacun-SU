@@ -306,14 +306,230 @@ Build rock-solid integrations with Croatian regulatory systems (FINA, Porezna Up
 - **Mocks:** HSM, file system, revocation checker
 - **To Run:** `npm install && npm test && npm run coverage`
 
+### ✅ COMPLETED - Phase 4 (archive-service Enhancement)
+
+**Date:** 2025-11-14
+**Commits:** `4404cf3`, `a49c6e8`, bug fixes: `637a8ee`, `bd099c6`, `8ac64d6`, `3d2e81e`, `65b8d9c`
+**Status:** Pushed to remote
+
+#### Features Delivered
+
+**1. WORM Storage Implementation** (`src/storage/`)
+- ✅ IWORMStorage interface with complete abstractions (~180 LOC)
+- ✅ MockWORMStorage - In-memory WORM with Object Lock simulation (~380 LOC)
+- ✅ S3WORMStorage stub - Production S3 Object Lock implementation (~100 LOC)
+- ✅ Three-tier architecture (HOT/WARM/COLD storage)
+- ✅ 11-year retention enforcement (Croatian law compliance)
+- ✅ SHA-512 integrity verification
+- ✅ Object Lock COMPLIANCE mode simulation
+- ✅ Presigned URL generation (HOT/WARM tiers)
+- ✅ Glacier restore workflow (COLD tier)
+
+**2. PostgreSQL Repository with Immutable Audit Trail** (`src/repositories/`)
+- ✅ InvoiceRepository - Full PostgreSQL implementation (~440 LOC)
+- ✅ SERIALIZABLE transactions for idempotency
+- ✅ Immutable audit trail (all operations logged, never modified)
+- ✅ MockInvoiceRepository for development
+- ✅ Audit events: ARCHIVED, SIGNATURE_VALIDATED, SIGNATURE_FAILED, RETRIEVED, RESTORED
+- ✅ Query API: findById, findByFilter (date range, channel, signature status)
+- ✅ Pagination support (limit/offset)
+
+**3. ArchiveService Business Logic** (`src/services/`)
+- ✅ Complete archival workflow orchestration (~330 LOC)
+- ✅ Idempotent archiveInvoice (SHA-512 hash-based duplicate detection)
+- ✅ Signature validation with integrity checks
+- ✅ Batch validation support
+- ✅ Integration with digital-signature-service (URL configurable)
+- ✅ Mock validation for development
+- ✅ 10MB max invoice size enforcement
+- ✅ Base64 XML encoding/decoding
+
+**4. Monthly Signature Validation Workflow** (`src/workflows/`)
+- ✅ MonthlyValidationWorkflow - Scheduled re-validation (~370 LOC)
+- ✅ Batch processing with concurrency control (configurable: 100 batch size, 10 concurrent)
+- ✅ Progress reporting (validCount, invalidCount, errorCount)
+- ✅ Error resilience (continues after individual failures)
+- ✅ Configurable thresholds (batch size, delay, concurrency)
+- ✅ Designed for systemd timer (monthly execution)
+- ✅ Filters invoices not checked in last 30 days
+
+**5. REST API Endpoints** (`src/api/server.ts`)
+- ✅ GET /v1/archive/invoices/:id - Retrieve with presigned URL or restore status (~250 LOC)
+- ✅ GET /v1/archive/invoices - Filter/list with pagination
+- ✅ GET /v1/archive/invoices/:id/audit - Audit trail retrieval
+- ✅ POST /v1/archive/invoices/:id/validate - Trigger signature validation
+- ✅ Health checks (/health/live, /health/ready)
+- ✅ Request ID middleware (correlation)
+- ✅ Error handling middleware
+- ✅ Environment-based configuration (mock vs production)
+
+**6. Bug Fixes - cert-lifecycle-manager Tests** (5 P1 bugs)
+- ✅ Fix MockHSM.destroy() → close() method alignment
+- ✅ Fix revocation checker method names (uppercase → lowercase)
+- ✅ Fix revocation checker serial numbers (TEST-REVOKED-001)
+- ✅ Fix revocation reasons (X.509 standard: keyCompromise, superseded)
+- ✅ Fix Jest API error (toHaveCalled → toHaveBeenCalled)
+- ✅ Fix fs/promises import alignment with mock
+- ✅ Fix Jest mock hoisting issue (cert-validator tests)
+
+#### Key Achievements
+- 🎯 **11-Year Retention Compliance** - Croatian Fiscalization 2.0 compliant
+- 🎯 **WORM Storage** - Immutable Object Lock with 3-tier architecture
+- 🎯 **Audit Trail** - Complete lifecycle tracking, never modified
+- 🎯 **Idempotent Operations** - Safe retries with SHA-512 duplicate detection
+- 🎯 **Monthly Re-Validation** - Automated signature checking workflow
+- 🎯 **REST API** - Complete retrieval, filtering, audit, validation endpoints
+- 🎯 **Mock-First Development** - Zero external dependencies required
+- 🎯 **Test Quality** - Fixed 5 P1 test bugs in cert-lifecycle-manager
+
+#### Stats
+- **Files Created:** 3 new files (interfaces, mock-worm-storage, monthly-validation)
+- **Files Enhanced:** 4 existing files (s3-worm-storage, repository, service, server)
+- **Test Fixes:** 5 files (mock-hsm.test.ts, revocation-check.ts, renewal-workflow.test.ts, cert-distribution.test.ts, cert-validator.test.ts)
+- **Total New LOC:** ~2,075 lines of TypeScript
+- **Total Service LOC:** ~2,500 (archive-service complete)
+- **Test Coverage:** 0% (target: 100% - next priority)
+- **Documentation:** Comprehensive inline documentation
+
+### ✅ COMPLETED - Phase 5 (dead-letter-handler Implementation)
+
+**Date:** 2025-11-14
+**Commit:** `0597f83` on branch `claude/team-c-setup-011NHeiaZ7EyjENTCr1JCNJB`
+**Status:** Pushed to remote
+
+#### Features Delivered
+
+**1. Error Classification System** (`src/classifier.ts` ~360 LOC)
+- ✅ 4-way classification: TRANSIENT, BUSINESS, TECHNICAL, UNKNOWN
+- ✅ Pattern-based detection (network timeouts, validation failures, null pointers)
+- ✅ Croatian-specific patterns (OIB, KPD, CIUS, FINA, Porezna, JIR, ZKI)
+- ✅ Service name + invoice ID extraction
+
+**2. Error Router** (`src/router.ts` ~300 LOC)
+- ✅ TRANSIENT → retry-scheduler (auto-retry with exponential backoff)
+- ✅ BUSINESS/TECHNICAL/UNKNOWN → manual review + PostgreSQL + notifications
+- ✅ Max retry enforcement (default: 3 attempts)
+- ✅ Kafka error events publishing (optional)
+
+**3. PostgreSQL Repository** (`src/repository.ts` ~480 LOC)
+- ✅ Full CRUD for manual review errors
+- ✅ Mock implementation for development
+- ✅ Statistics API (by classification, service, status)
+- ✅ Cleanup utility (90-day retention)
+
+**4. DLQ Consumer** (`src/consumer.ts` ~260 LOC)
+- ✅ RabbitMQ DLQ consumption (binds to dlx exchange)
+- ✅ Prefetch limit (default: 10 concurrent)
+- ✅ Periodic stats updater (every 30s)
+- ✅ Graceful shutdown
+
+**5. HTTP REST API** (`src/api.ts` ~340 LOC)
+- ✅ GET /api/v1/errors - List with pagination
+- ✅ GET /api/v1/errors/:id - View details
+- ✅ POST /api/v1/errors/:id/resolve - Mark resolved
+- ✅ POST /api/v1/errors/:id/resubmit - Resubmit to original queue
+- ✅ GET /api/v1/errors/stats - Statistics
+
+**6. Prometheus Observability** (`src/observability.ts` ~120 LOC)
+- ✅ 8+ metrics: messages processed, retries scheduled, manual review routed, processing duration, etc.
+
+**7. Main Orchestration** (`src/index.ts` ~140 LOC)
+- ✅ Environment configuration
+- ✅ Consumer + API + metrics server startup
+- ✅ Graceful shutdown (SIGTERM/SIGINT)
+
+#### Key Achievements
+- 🎯 **Complete DLQ Processing** - Monitors all service DLQs
+- 🎯 **Intelligent Routing** - Transient auto-retry, business → manual review
+- 🎯 **Admin Portal Ready** - Full CRUD API for error management
+- 🎯 **Production Observability** - 8+ Prometheus metrics
+- 🎯 **Croatian Compliance Aware** - Detects FINA/Porezna/OIB/KPD errors
+
+#### Stats
+- **Files Created:** 11 (9 TypeScript + 2 config)
+- **Total LOC:** ~1,957 lines (~1,800 implementation)
+- **Test Coverage:** 0% (target: 85%+ - next priority)
+
+### ✅ COMPLETED - Phase 6 (Circuit Breakers for fina-connector)
+
+**Date:** 2025-11-14
+**Commit:** `cb3697d` on branch `claude/team-c-setup-011NHeiaZ7EyjENTCr1JCNJB`
+**Status:** Pushed to remote
+
+#### Features Delivered
+
+**1. Circuit Breaker Module** (`src/circuit-breaker.ts` ~370 LOC)
+- ✅ Circuit breaker factory with opossum integration
+- ✅ Three states: CLOSED (normal), OPEN (failing fast), HALF_OPEN (testing recovery)
+- ✅ Configurable thresholds (error rate, volume, reset timeout)
+- ✅ FINA-specific circuit breaker factory (10s timeout, 50% error threshold)
+- ✅ Signature service circuit breaker factory (5s timeout, 50% error threshold)
+- ✅ Manual open/close operations for testing
+- ✅ Circuit breaker statistics API
+
+**2. FINA SOAP Client Integration** (`src/soap-client.ts` ~50 LOC added)
+- ✅ Circuit breaker for fiscalizeInvoice operation
+- ✅ Circuit breaker for echo operation (health check)
+- ✅ Circuit breaker for validateInvoice operation (test only)
+- ✅ Fail-fast behavior when circuit is OPEN (prevents cascading failures)
+- ✅ Automatic recovery testing after reset timeout
+
+**3. Signature Service Integration** (`src/signature-integration.ts` ~60 LOC added)
+- ✅ Circuit breaker for generateZKI operation (ZKI code generation)
+- ✅ Circuit breaker for signUBLInvoice operation (XMLDSig signing)
+- ✅ Circuit breaker for verifySignature operation (signature verification)
+- ✅ Cache-first for ZKI (circuit breaker only called on cache miss)
+
+**4. Circuit Breaker Metrics** (`src/observability.ts` ~65 LOC added)
+- ✅ `circuit_breaker_state_changes_total` - State transition counter
+- ✅ `circuit_breaker_open` - OPEN state gauge
+- ✅ `circuit_breaker_half_open` - HALF_OPEN state gauge
+- ✅ `circuit_breaker_closed` - CLOSED state gauge
+- ✅ `circuit_breaker_success_total` - Success counter
+- ✅ `circuit_breaker_failure_total` - Failure counter
+- ✅ `circuit_breaker_timeout_total` - Timeout counter
+- ✅ `circuit_breaker_fallback_total` - Fallback counter
+
+**5. Configuration** (`.env.example`, `package.json`)
+- ✅ `CIRCUIT_BREAKER_ENABLED` - Enable/disable circuit breakers (default: true)
+- ✅ `CIRCUIT_BREAKER_ERROR_THRESHOLD` - Error percentage to open circuit (default: 50%)
+- ✅ `CIRCUIT_BREAKER_VOLUME_THRESHOLD` - Minimum requests before circuit opens (default: 10)
+- ✅ `CIRCUIT_BREAKER_RESET_TIMEOUT_MS` - Time circuit stays open (default: 30 seconds)
+- ✅ Added `opossum@^8.1.2` dependency
+- ✅ Added `@types/opossum@^8.1.2` dev dependency
+
+**6. Documentation** (`README.md` ~130 LOC added)
+- ✅ Circuit breaker overview and behavior
+- ✅ Protected operations (FINA SOAP API + Signature Service)
+- ✅ Configuration options and defaults
+- ✅ State transition explanations (CLOSED → OPEN → HALF_OPEN → CLOSED)
+- ✅ Circuit breaker metrics documentation
+- ✅ Prometheus alert rules for circuit breaker states
+- ✅ Disabling circuit breakers for testing
+
+#### Key Achievements
+- 🎯 **Cascading Failure Protection** - Prevents system-wide failures when external services down
+- 🎯 **Fail-Fast Behavior** - Improves response times by not waiting for timeouts
+- 🎯 **Automatic Recovery** - Self-healing with HALF_OPEN state testing
+- 🎯 **Complete Observability** - 8 Prometheus metrics for circuit breaker monitoring
+- 🎯 **Production-Ready** - Can be disabled for testing, comprehensive documentation
+
+#### Stats
+- **Files Modified:** 5 (soap-client.ts, signature-integration.ts, observability.ts, .env.example, README.md)
+- **Files Created:** 1 (circuit-breaker.ts)
+- **Total LOC Added:** ~645 lines (~370 circuit-breaker module, ~110 integrations, ~65 metrics, ~100 docs)
+- **Dependencies Added:** opossum@^8.1.2
+- **Metrics Added:** 8 circuit breaker metrics
+- **Protected Operations:** 6 (3 FINA SOAP + 3 Signature Service)
+
 ### ⏳ IN PROGRESS - Week 1 Remaining
 
 #### High Priority (P0/P1 Services)
 - [x] Write comprehensive tests (100% coverage target) ✅ COMPLETED
 - [x] Enhance cert-lifecycle-manager (certificate renewal automation) ✅ COMPLETED
-- [ ] Enhance archive-service (11-year retention, WORM)
-- [ ] Complete dead-letter-handler implementation
-- [ ] Add circuit breakers to fina-connector
+- [x] Enhance archive-service (11-year retention, WORM) ✅ COMPLETED
+- [x] Complete dead-letter-handler implementation ✅ COMPLETED
+- [x] Add circuit breakers to fina-connector ✅ COMPLETED
 - [ ] Add batch signing to digital-signature-service
 
 #### Infrastructure & DevOps (Option C)
