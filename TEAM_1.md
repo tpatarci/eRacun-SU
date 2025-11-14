@@ -178,7 +178,7 @@ No workstream should wait for unblock; if a dependency cannot be mocked, escalat
 - [x] Integration tests with mock services
 - [x] Property-based tests for validators
 - [x] Load testing setup (k6/Artillery)
-- [x] Chaos testing scenarios
+- [x] Chaos testing scenarios (all 7 implemented + test runners)
 
 ### Week 2: Core Services Implementation
 **Owner:** Backend Engineer 1 & 2
@@ -247,8 +247,8 @@ No workstream should wait for unblock; if a dependency cannot be mocked, escalat
 - ✅ Integration tests with Testcontainers (PostgreSQL)
 - ✅ Comprehensive test coverage for all business logic
 - ✅ k6 load testing suite with progressive load profile (0→50→100→200 VUs)
-- ✅ Chaos testing scenarios (7 scenarios: database, RabbitMQ, network, CPU, memory, cascade, partition)
-- ✅ Smoke test runner (5 min) and full test runner (30 min)
+- ✅ Chaos testing scenarios (7/7 implemented: database, RabbitMQ, network, CPU, memory, cascade, partition)
+- ✅ Smoke test runner (run-smoke.sh) and full test runner (run-full.sh)
 - ✅ Test fixtures with valid UBL 2.1 XML invoices
 
 **Observability:**
@@ -260,7 +260,7 @@ No workstream should wait for unblock; if a dependency cannot be mocked, escalat
 **Deployment Infrastructure:**
 - ✅ systemd service files with comprehensive security hardening
 - ✅ Deployment automation (deploy, rollback, secrets decryption)
-- ✅ 500+ line deployment runbook with troubleshooting guide
+- ✅ 415-line deployment runbook with troubleshooting guide
 - ✅ SOPS + age encryption for secrets management
 
 **Message Bus Integration:**
@@ -269,12 +269,14 @@ No workstream should wait for unblock; if a dependency cannot be mocked, escalat
 - ✅ Automatic retry with exponential backoff
 - ✅ Dead letter queue handling
 
-**Shared Libraries (5/5):**
+**Shared Libraries (7/7):**
 - ✅ @eracun/contracts - Domain models and interfaces
 - ✅ @eracun/adapters - Service adapter interfaces
 - ✅ @eracun/mocks - Realistic mock implementations
 - ✅ @eracun/test-fixtures - Test data generators with OIB validation
 - ✅ @eracun/di-container - Dependency injection with feature flags
+- ✅ @eracun/messaging - RabbitMQ/Kafka abstractions with in-memory fallback
+- ✅ @eracun/team2-mocks - Mock implementations for Team 2 services (OCR, AI, Email, SFTP)
 
 **Documentation:**
 - ✅ ADR-006: Message Bus Architecture (RabbitMQ + Kafka decision)
@@ -282,8 +284,8 @@ No workstream should wait for unblock; if a dependency cannot be mocked, escalat
 - ✅ Service README.md files (all 4 core services)
 - ✅ OpenAPI 3.1 specification (invoice-gateway-api)
 - ✅ Load testing README with usage guide
-- ✅ Chaos testing README with 7 scenario guides
-- ✅ 500+ line deployment runbook (DEPLOYMENT_RUNBOOK.md)
+- ✅ Chaos testing README with 7 scenario guides (all 7 scenarios implemented as scripts)
+- ✅ 415-line deployment runbook (DEPLOYMENT_RUNBOOK.md)
 
 **Git Commits:**
 - 64ee899 - Complete Week 1 Day 5 testing infrastructure and documentation
@@ -434,7 +436,7 @@ k6 run --vus 100 --duration 30m tests/load/invoice-submission.js
 - [x] Mock adapter implementations for all external dependencies
 - [x] Shared test fixture library
 - [x] Performance benchmark suite (k6 load tests)
-- [x] Chaos testing scenarios (7 scenarios + smoke/full test runners)
+- [x] Chaos testing scenarios (7/7 implemented: database, RabbitMQ, network, CPU, memory, cascade, partition + smoke & full runners)
 
 ### Documentation Deliverables
 - [x] OpenAPI specifications for all REST endpoints
