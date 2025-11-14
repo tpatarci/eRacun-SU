@@ -1,3 +1,14 @@
+// Mock revocation checker (must be before imports to avoid capturing real implementation)
+jest.mock('../../src/revocation-check', () => ({
+  getRevocationChecker: jest.fn(() => ({
+    checkRevocation: jest.fn().mockResolvedValue({
+      revoked: false,
+      method: 'mock',
+      checkedAt: new Date(),
+    }),
+  })),
+}));
+
 import {
   validateCertificate,
   isExpiringSoon,
@@ -8,17 +19,6 @@ import {
   getAlertSeverity,
 } from '../../src/cert-validator';
 import { CertificateInfo } from '../../src/cert-parser';
-
-// Mock revocation checker
-jest.mock('../../src/revocation-check', () => ({
-  getRevocationChecker: jest.fn(() => ({
-    checkRevocation: jest.fn().mockResolvedValue({
-      revoked: false,
-      method: 'mock',
-      checkedAt: new Date(),
-    }),
-  })),
-}));
 
 // Helper to create test certificate
 function createTestCertificate(
