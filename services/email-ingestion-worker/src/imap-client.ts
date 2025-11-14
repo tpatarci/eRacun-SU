@@ -22,6 +22,8 @@ import {
 
 /**
  * IMAP connection configuration
+ *
+ * IMPROVEMENT-047: All configuration values support environment variable overrides
  */
 export interface ImapConfig {
   user: string;
@@ -39,6 +41,9 @@ export interface ImapConfig {
     idleInterval: number;
     forceNoop: boolean;
   };
+  // IMPROVEMENT-047: Reconnection configuration (previously hard-coded)
+  maxReconnectAttempts?: number;
+  reconnectBaseDelayMs?: number;
 }
 
 /**
@@ -63,8 +68,9 @@ export class ImapClient extends EventEmitter {
   private connection: Imap | null = null;
   private isConnected = false;
   private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
-  private reconnectBaseDelay = 2000; // 2 seconds
+  // IMPROVEMENT-047: Use configuration-based values instead of hard-coded defaults
+  private maxReconnectAttempts: number;
+  private reconnectBaseDelay: number;
   private reconnectTimer: NodeJS.Timeout | null = null;
   private currentMailbox: string | null = null;
   private connectionId = ''; // IMPROVEMENT-003: Connection ID for debugging
@@ -73,6 +79,9 @@ export class ImapClient extends EventEmitter {
   constructor(config: ImapConfig) {
     super();
     this.config = config;
+    // IMPROVEMENT-047: Initialize reconnection settings from config with safe defaults
+    this.maxReconnectAttempts = config.maxReconnectAttempts ?? 5;
+    this.reconnectBaseDelay = config.reconnectBaseDelayMs ?? 2000;
   }
 
   /**
@@ -190,10 +199,11 @@ export class ImapClient extends EventEmitter {
             return;
           }
 
-          // Wait for 'ready' event with 10-second timeout
+          // IMPROVEMENT-047: Wait for 'ready' event using configured connection timeout
+          const timeoutMs = this.config.connTimeout ?? 10000;
           const timeout = setTimeout(() => {
-            reject(new Error('IMAP connection timeout after 10s'));
-          }, 10000);
+            reject(new Error(`IMAP connection timeout after ${timeoutMs}ms`));
+          }, timeoutMs);
 
           const handleReady = () => {
             clearTimeout(timeout);
@@ -434,13 +444,18 @@ export function createImapClientFromEnv(): ImapClient {
     tlsOptions: {
       rejectUnauthorized: process.env.IMAP_TLS_REJECT_UNAUTHORIZED !== 'false',
     },
-    authTimeout: 10000,
-    connTimeout: 10000,
+    // IMPROVEMENT-047: Make connection timeouts configurable via environment variables
+    authTimeout: parseInt(process.env.IMAP_AUTH_TIMEOUT || '10000', 10),
+    connTimeout: parseInt(process.env.IMAP_CONN_TIMEOUT || '10000', 10),
+    // IMPROVEMENT-047: Make keepalive configuration flexible
     keepalive: {
-      interval: 10000,
-      idleInterval: 300000,
-      forceNoop: true,
+      interval: parseInt(process.env.IMAP_KEEPALIVE_INTERVAL || '10000', 10),
+      idleInterval: parseInt(process.env.IMAP_KEEPALIVE_IDLE_INTERVAL || '300000', 10),
+      forceNoop: process.env.IMAP_KEEPALIVE_FORCE_NOOP !== 'false',
     },
+    // IMPROVEMENT-047: Make reconnection strategy configurable
+    maxReconnectAttempts: parseInt(process.env.IMAP_MAX_RECONNECT_ATTEMPTS || '5', 10),
+    reconnectBaseDelayMs: parseInt(process.env.IMAP_RECONNECT_BASE_DELAY_MS || '2000', 10),
   };
 
   // Validate required configuration

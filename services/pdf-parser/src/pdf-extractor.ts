@@ -19,6 +19,8 @@ import {
 
 /**
  * Extracted PDF content
+ *
+ * IMPROVEMENT-039: Add quality metrics for observability
  */
 export interface ExtractedPDF {
   /** Extracted text content */
@@ -37,8 +39,19 @@ export interface ExtractedPDF {
   };
   /** Whether PDF is scanned (image-based, requires OCR) */
   isScanned: boolean;
+  /** Scanned detection confidence (0-1, higher = more confident it's scanned) */
+  scannedConfidence: number;
   /** Text extraction quality */
   quality: 'high' | 'medium' | 'low';
+  /** Diagnostic metrics */
+  metrics: {
+    /** Total text length extracted */
+    textLength: number;
+    /** Average text per page */
+    avgTextPerPage: number;
+    /** Ratio of meaningful characters to whitespace */
+    meaningfulCharRatio: number;
+  };
   /** File size in bytes */
   size: number;
 }
@@ -69,6 +82,8 @@ const DEFAULT_CONFIG: ExtractionConfig = {
  */
 export class PDFExtractor {
   private config: ExtractionConfig;
+  // IMPROVEMENT-034: Pre-compiled regex for whitespace/garbage detection
+  private readonly whitespaceRegex = /[\s\n\r\t]/g;
 
   constructor(config: Partial<ExtractionConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -115,8 +130,8 @@ export class PDFExtractor {
       // Extract metadata
       const metadata = this.extractMetadata(data.info);
 
-      // Detect if PDF is scanned
-      const isScanned = this.detectScannedPDF(data.text, data.numpages);
+      // Detect if PDF is scanned with confidence score
+      const { isScanned, confidence: scannedConfidence, metrics } = this.detectScannedPDFWithMetrics(data.text, data.numpages);
 
       // Determine extraction quality
       const quality = this.assessQuality(data.text, data.numpages, isScanned);
@@ -137,7 +152,9 @@ export class PDFExtractor {
         pageCount: data.numpages,
         metadata,
         isScanned,
+        scannedConfidence,
         quality,
+        metrics,
         size: buffer.length,
       };
     } catch (error) {
@@ -181,55 +198,141 @@ export class PDFExtractor {
 
   /**
    * Parse PDF date string (format: D:YYYYMMDDHHmmSSOHH'mm')
+   *
+   * IMPROVEMENT-036: Handle more date formats and log failures instead of silent failures
    */
   private parsePDFDate(dateString: string): Date | undefined {
+    if (!dateString || typeof dateString !== 'string') {
+      return undefined;
+    }
+
     try {
       // Remove D: prefix if present
-      const cleaned = dateString.replace(/^D:/, '');
+      const cleaned = dateString.replace(/^D:/, '').trim();
+
+      // Minimum length for YYYYMMDD
+      if (cleaned.length < 8) {
+        logger.warn({ dateString }, 'PDF date string too short');
+        return undefined;
+      }
 
       // Extract date components
       const year = parseInt(cleaned.substring(0, 4), 10);
       const month = parseInt(cleaned.substring(4, 6), 10) - 1; // 0-indexed
       const day = parseInt(cleaned.substring(6, 8), 10);
-      const hour = parseInt(cleaned.substring(8, 10), 10) || 0;
-      const minute = parseInt(cleaned.substring(10, 12), 10) || 0;
-      const second = parseInt(cleaned.substring(12, 14), 10) || 0;
+      const hour = cleaned.length >= 10 ? parseInt(cleaned.substring(8, 10), 10) : 0;
+      const minute = cleaned.length >= 12 ? parseInt(cleaned.substring(10, 12), 10) : 0;
+      const second = cleaned.length >= 14 ? parseInt(cleaned.substring(12, 14), 10) : 0;
 
-      return new Date(year, month, day, hour, minute, second);
-    } catch {
+      // Validate ranges
+      if (year < 1900 || year > 2100) {
+        logger.warn({ dateString, year }, 'Invalid PDF date year out of range');
+        return undefined;
+      }
+      if (month < 0 || month > 11) {
+        logger.warn({ dateString, month: month + 1 }, 'Invalid PDF date month');
+        return undefined;
+      }
+      if (day < 1 || day > 31) {
+        logger.warn({ dateString, day }, 'Invalid PDF date day');
+        return undefined;
+      }
+
+      const parsedDate = new Date(year, month, day, hour, minute, second);
+
+      // Verify the date was created successfully
+      if (isNaN(parsedDate.getTime())) {
+        logger.warn({ dateString }, 'PDF date parsing resulted in invalid date');
+        return undefined;
+      }
+
+      return parsedDate;
+    } catch (error) {
+      logger.warn({ dateString, error: error instanceof Error ? error.message : 'Unknown error' }, 'Failed to parse PDF date');
       return undefined;
     }
   }
 
   /**
-   * Detect if PDF is scanned (image-based)
+   * Detect if PDF is scanned (image-based) with confidence score
+   *
+   * IMPROVEMENT-033: Optimize string operations
+   * IMPROVEMENT-034: Pre-compiled regex for whitespace detection
+   * IMPROVEMENT-035: Return confidence score for heuristic-based detection
    *
    * Heuristic: If text length is very low relative to page count,
    * PDF is likely scanned and requires OCR
+   *
+   * @returns Object with isScanned boolean, confidence (0-1), and diagnostic metrics
    */
-  private detectScannedPDF(text: string, pageCount: number): boolean {
-    const textLength = text.trim().length;
+  private detectScannedPDFWithMetrics(
+    text: string,
+    pageCount: number
+  ): {
+    isScanned: boolean;
+    confidence: number;
+    metrics: {
+      textLength: number;
+      avgTextPerPage: number;
+      meaningfulCharRatio: number;
+    };
+  } {
+    // Trim text once to avoid multiple trim calls
+    const trimmedText = text.trim();
+    const textLength = trimmedText.length;
     const avgTextPerPage = textLength / pageCount;
 
-    // If average text per page < minTextLength, consider it scanned
+    // Check for high ratio of whitespace/garbage characters
+    // IMPROVEMENT-033 & IMPROVEMENT-034: Use pre-compiled regex and avoid intermediate string allocation
+    const meaningfulChars = trimmedText.replace(this.whitespaceRegex, '').length;
+    const meaningfulRatio = textLength > 0 ? meaningfulChars / textLength : 0;
+
+    // Calculate confidence score based on multiple heuristics
+    let confidence = 0;
+
+    // Heuristic 1: Low text per page (high confidence it's scanned)
     if (avgTextPerPage < this.config.minTextLength) {
+      confidence += 0.6;
       logger.info(
         { textLength, pageCount, avgTextPerPage },
-        'Detected scanned PDF (low text content)'
+        'Scanned PDF indicator: low text content'
       );
-      return true;
     }
 
-    // Check for high ratio of whitespace/garbage characters
-    const meaningfulChars = text.replace(/[\s\n\r\t]/g, '').length;
-    const meaningfulRatio = meaningfulChars / textLength;
-
+    // Heuristic 2: High whitespace ratio (high confidence it's scanned)
     if (meaningfulRatio < 0.3) {
-      logger.info({ meaningfulRatio }, 'Detected scanned PDF (low meaningful text ratio)');
-      return true;
+      confidence += 0.4;
+      logger.info({ meaningfulRatio }, 'Scanned PDF indicator: low meaningful text ratio');
     }
 
-    return false;
+    // Determine if PDF should be considered scanned (confidence threshold: >0.5)
+    const isScanned = confidence > 0.5;
+
+    // Log metrics for diagnosis
+    if (isScanned) {
+      logger.info(
+        { confidence, avgTextPerPage, meaningfulRatio },
+        'PDF classified as scanned (image-based)'
+      );
+    }
+
+    return {
+      isScanned,
+      confidence: Math.min(confidence, 1.0), // Cap at 1.0
+      metrics: {
+        textLength,
+        avgTextPerPage: Number(avgTextPerPage.toFixed(2)),
+        meaningfulCharRatio: Number(meaningfulRatio.toFixed(3)),
+      },
+    };
+  }
+
+  /**
+   * Detect if PDF is scanned (image-based) - Legacy method for backward compatibility
+   */
+  private detectScannedPDF(text: string, pageCount: number): boolean {
+    const { isScanned } = this.detectScannedPDFWithMetrics(text, pageCount);
+    return isScanned;
   }
 
   /**

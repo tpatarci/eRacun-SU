@@ -345,10 +345,11 @@ class FINAConnectorApp {
         throw new Error('Invalid message format');
       }
 
+      // IMPROVEMENT-044: Use optional chaining for unchecked properties
       logger.info({
         messageId: message.messageId,
-        invoiceId: message.invoiceId,
-        invoiceNumber: message.invoice.brojRacuna,
+        invoiceId: message?.invoiceId,
+        invoiceNumber: message.invoice?.brojRacuna,
       }, 'Processing fiscalization message');
 
       // Process fiscalization
