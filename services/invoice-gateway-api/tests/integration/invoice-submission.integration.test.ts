@@ -6,6 +6,13 @@
 import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import { InvoiceGenerator, XMLGenerator } from '@eracun/test-fixtures';
 import { v4 as uuidv4 } from 'uuid';
+import { Client } from 'pg';
+import { InvoiceController } from '../../src/controllers/invoice.controller';
+import { PostgresInvoiceRepository } from '../../src/repositories/invoice.repository';
+import { ProcessInvoiceCommandPublisher } from '../../src/messaging/process-invoice.publisher';
+import { InvoiceSubmission } from '../../src/types/schemas';
+import { ProcessInvoiceCommand } from '@eracun/contracts';
+import { Request, Response } from 'express';
 
 describe('Invoice Submission Integration Tests', () => {
   let postgresContainer: StartedPostgreSqlContainer;
@@ -231,11 +238,65 @@ describe('Invoice Submission Integration Tests', () => {
       expect(duration).toBeLessThan(5000);
     });
   });
+
+  describe('Invoice submission pipeline', () => {
+    let repository: PostgresInvoiceRepository;
+    let publisher: TestPublisher;
+    let controller: InvoiceController;
+
+    beforeAll(() => {
+      repository = new PostgresInvoiceRepository({ connectionString });
+    });
+
+    beforeEach(async () => {
+      publisher = new TestPublisher();
+      controller = new InvoiceController(repository, publisher);
+      await truncateInvoices(connectionString);
+    });
+
+    afterAll(async () => {
+      await repository.close();
+    });
+
+    it('persists metadata and publishes command before responding', async () => {
+      const submission = buildInvoiceSubmission();
+      const req = {
+        body: submission,
+        protocol: 'https',
+        get: jest.fn().mockReturnValue('api.eracun.hr'),
+        requestId: uuidv4(),
+        idempotencyKey: uuidv4(),
+      } as unknown as Request;
+
+      const statusSpy = jest.fn().mockReturnThis();
+      const jsonSpy = jest.fn((body) => {
+        expect(publisher.publishCompleted).toBe(true);
+        return body;
+      });
+      const res = {
+        status: statusSpy,
+        json: jsonSpy,
+      } as unknown as Response;
+
+      await controller.submitInvoice(req, res);
+
+      expect(statusSpy).toHaveBeenCalledWith(202);
+      const payload = jsonSpy.mock.calls[0][0];
+      const persisted = await repository.findById(payload.invoiceId);
+      expect(persisted).toBeDefined();
+      expect(persisted?.invoiceNumber).toBe(submission.invoiceNumber);
+      expect(persisted?.status).toBe('QUEUED');
+      expect(publisher.commands).toHaveLength(1);
+      expect(publisher.commands[0].payload.sourceId).toBe(payload.invoiceId);
+      expect(publisher.commands[0].payload.metadata.idempotencyKey).toBe(
+        req.idempotencyKey
+      );
+    });
+  });
 });
 
 // Helper functions for database operations
 async function initializeSchema(connectionUri: string): Promise<void> {
-  const { Client } = require('pg');
   const client = new Client({ connectionString: connectionUri });
 
   try {
@@ -272,7 +333,6 @@ async function saveInvoiceMetadata(
   connectionUri: string,
   data: any
 ): Promise<void> {
-  const { Client } = require('pg');
   const client = new Client({ connectionString: connectionUri });
 
   try {
@@ -302,7 +362,6 @@ async function getInvoiceMetadata(
   connectionUri: string,
   id: string
 ): Promise<any> {
-  const { Client } = require('pg');
   const client = new Client({ connectionString: connectionUri });
 
   try {
@@ -322,7 +381,6 @@ async function getInvoicesByStatus(
   connectionUri: string,
   status: string
 ): Promise<any[]> {
-  const { Client } = require('pg');
   const client = new Client({ connectionString: connectionUri });
 
   try {
@@ -344,7 +402,6 @@ async function updateInvoiceStatus(
   id: string,
   status: string
 ): Promise<void> {
-  const { Client } = require('pg');
   const client = new Client({ connectionString: connectionUri });
 
   try {
@@ -363,7 +420,6 @@ async function executeInTransaction(
   connectionUri: string,
   callback: (client: any) => Promise<void>
 ): Promise<void> {
-  const { Client } = require('pg');
   const client = new Client({ connectionString: connectionUri });
 
   try {
@@ -379,5 +435,87 @@ async function executeInTransaction(
     }
   } finally {
     await client.end();
+  }
+}
+
+async function truncateInvoices(connectionUri: string): Promise<void> {
+  const client = new Client({ connectionString: connectionUri });
+  try {
+    await client.connect();
+    await client.query('TRUNCATE TABLE invoices');
+  } finally {
+    await client.end();
+  }
+}
+
+function buildInvoiceSubmission(): InvoiceSubmission {
+  return {
+    invoiceNumber: `INV-${Math.floor(Math.random() * 100000)}`,
+    issueDate: '2025-01-10',
+    dueDate: '2025-01-20',
+    supplier: {
+      name: 'Supplier d.o.o.',
+      address: {
+        street: 'Ilica 1',
+        city: 'Zagreb',
+        postalCode: '10000',
+        country: 'HR',
+      },
+      vatNumber: 'HR12345678901',
+      email: 'supplier@example.com',
+      phone: '+385123456',
+      registrationNumber: '12345678',
+    },
+    buyer: {
+      name: 'Buyer d.o.o.',
+      address: {
+        street: 'Trg 2',
+        city: 'Split',
+        postalCode: '21000',
+        country: 'HR',
+      },
+      vatNumber: 'HR10987654321',
+      email: 'buyer@example.com',
+      phone: '+385987654',
+      registrationNumber: '87654321',
+    },
+    lineItems: [
+      {
+        id: 'line-1',
+        description: 'Consulting services',
+        quantity: 1,
+        unit: 'EA',
+        unitPrice: 1000,
+        kpdCode: '123456',
+        vatRate: 25,
+        vatAmount: 250,
+        netAmount: 1000,
+        grossAmount: 1250,
+      },
+    ],
+    amounts: {
+      net: 1000,
+      vat: [
+        {
+          rate: 25,
+          base: 1000,
+          amount: 250,
+          category: 'STANDARD',
+        },
+      ],
+      gross: 1250,
+      currency: 'EUR',
+    },
+  };
+}
+
+class TestPublisher implements ProcessInvoiceCommandPublisher {
+  public commands: ProcessInvoiceCommand[] = [];
+  public publishCompleted = false;
+
+  async publish(command: ProcessInvoiceCommand): Promise<void> {
+    this.commands.push(command);
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    this.publishCompleted = true;
   }
 }

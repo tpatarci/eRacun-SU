@@ -9,6 +9,7 @@ import { startTracing, stopTracing } from './tracing';
 import { createApp } from './app';
 import { createContainer } from '@eracun/di-container';
 import pino from 'pino';
+import { registerInvoiceGatewayDependencies } from './container';
 
 const logger = pino({
   name: 'invoice-gateway-api',
@@ -21,6 +22,7 @@ async function start() {
   try {
     // Create DI container
     const container = createContainer();
+    registerInvoiceGatewayDependencies(container);
 
     // Create Express app
     const app = createApp(container);

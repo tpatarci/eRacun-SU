@@ -8,10 +8,19 @@ import { Container } from 'inversify';
 import { InvoiceController } from '../controllers/invoice.controller';
 import { validateBody, validateParams } from '../middleware/validation';
 import { InvoiceSubmissionSchema, InvoiceIdParamSchema } from '../types/schemas';
+import { SERVICE_TYPES } from '../types/di';
+import { InvoiceRepository } from '../repositories/invoice.repository';
+import { ProcessInvoiceCommandPublisher } from '../messaging/process-invoice.publisher';
 
 export function invoiceRoutes(container: Container): Router {
   const router = Router();
-  const controller = new InvoiceController(container);
+  const repository = container.get<InvoiceRepository>(
+    SERVICE_TYPES.InvoiceRepository
+  );
+  const publisher = container.get<ProcessInvoiceCommandPublisher>(
+    SERVICE_TYPES.ProcessInvoicePublisher
+  );
+  const controller = new InvoiceController(repository, publisher);
 
   /**
    * POST /api/v1/invoices
