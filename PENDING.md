@@ -19,6 +19,79 @@
 
 ## Active Items
 
+### 🔴 [PENDING-007](docs/pending/007-critical-test-coverage-gaps.md) - Critical Test Coverage Gaps
+
+**Priority:** 🔴 P0 (Critical)
+**Created:** 2025-11-14
+**Estimated Effort:** 12 engineering days (2 engineers × 1 week)
+**Deadline:** 2025-11-21 (7 days)
+
+**Problem:** 8 core business logic services (oib-validator, kpd-validator, xsd-validator, schematron-validator, xml-parser, digital-signature-service, fina-connector, pdf-parser) have ZERO test coverage, violating mandatory 100% coverage requirement for legally compliant invoice processing.
+
+**Blocks:**
+- ⛔ ALL production deployments (DEPLOYMENT FREEZE in effect)
+- ⛔ Staging deployments
+- ⛔ January 1, 2026 compliance deadline (47 days remaining)
+- ⛔ Legal compliance (€66,360 penalty risk + criminal liability)
+- ⛔ FINA integration certification
+
+**Does NOT Block:**
+- Development of other services (can proceed in parallel)
+- Infrastructure work (monitoring, logging, etc.)
+
+**Deliverables Required:**
+- [ ] Test infrastructure setup (Jest + TypeScript) for all 8 services
+- [ ] Unit tests achieving 100% coverage for core business logic
+- [ ] Integration tests for external dependencies
+- [ ] Coverage reports and CI/CD integration
+- [ ] Documentation of infrastructure exemptions
+- [ ] Lift deployment freeze after verification
+
+**Next Action:** Assign 2 Senior Backend Engineers, begin Phase 1 (test infrastructure setup)
+
+**Deferred Because:** Discovered during TASK 1 coverage audit on 2025-11-14. Test infrastructure not installed during initial service development.
+
+**Related:** TASK 1 Coverage Audit Report (`docs/reports/2025-11-14-TASK-1-coverage-audit.md`)
+
+---
+
+### 🔴 [PENDING-008](docs/pending/008-fina-integration-testing.md) - FINA Integration Testing & Certificates
+
+**Priority:** 🔴 P0 (Critical)
+**Created:** 2025-11-14
+**Estimated Effort:** 10 engineering days (2 weeks)
+**Deadline:** 2025-12-05 (21 days)
+**Prerequisite:** PENDING-007 must be resolved first
+
+**Problem:** No FINA (Croatian Tax Authority) integration testing performed, and no certificates (demo or production) acquired. Without FINA connectivity, invoices cannot be fiscalized, making the system non-compliant with January 1, 2026 requirements.
+
+**Blocks:**
+- ⛔ Invoice fiscalization (cannot submit to Tax Authority)
+- ⛔ JIR receipts (B2C) / UUID confirmations (B2B)
+- ⛔ January 1, 2026 compliance deadline (47 days remaining)
+- ⛔ Legal compliance (€66,360 penalty risk + criminal liability)
+
+**Does NOT Block:**
+- Internal testing (after PENDING-007 resolved)
+- Other service development
+
+**Deliverables Required:**
+- [ ] Acquire FINA demo certificates (free, 1-year validity)
+- [ ] Apply for FINA production certificates (€39.82 + VAT, 5-10 days processing)
+- [ ] Test connectivity to cistest.apis-it.hr:8449
+- [ ] 10+ successful B2C fiscalization tests (verify JIR receipts)
+- [ ] 5+ successful B2B exchange tests (verify UUID confirmations)
+- [ ] Error handling and circuit breaker verification
+- [ ] Integration test report + Certificate status report
+
+**Next Action:** Acquire demo certificates from FINA (cms.fina.hr), test connectivity to test environment
+
+**Deferred Because:** Discovered during TASK 2 compliance assessment on 2025-11-14. Blocked by PENDING-007 (must have passing tests before integration testing).
+
+**Related:** TASK 2 Compliance Assessment (`docs/reports/2025-11-14-TASK-2-compliance-assessment.md`)
+
+---
+
 ### 🔴 [PENDING-006](docs/pending/006-architecture-compliance-remediation.md) - Architecture Compliance Remediation
 
 **Priority:** 🔴 P0 (Critical)
