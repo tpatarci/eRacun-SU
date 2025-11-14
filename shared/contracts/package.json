@@ -1,0 +1,27 @@
+{
+  "name": "@eracun/contracts",
+  "version": "1.0.0",
+  "description": "Shared contracts and interfaces for eRačun services",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "clean": "rm -rf dist",
+    "test": "jest",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "eracun",
+    "contracts",
+    "typescript"
+  ],
+  "author": "eRačun Team",
+  "license": "UNLICENSED",
+  "dependencies": {},
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0"
+  }
+}

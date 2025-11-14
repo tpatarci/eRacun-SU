@@ -1,0 +1,31 @@
+{
+  "name": "@eracun/test-fixtures",
+  "version": "1.0.0",
+  "description": "Test data generators for eRačun services",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "clean": "rm -rf dist",
+    "test": "jest",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "eracun",
+    "testing",
+    "fixtures",
+    "typescript"
+  ],
+  "author": "eRačun Team",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@eracun/contracts": "file:../contracts",
+    "@faker-js/faker": "^8.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0"
+  }
+}
