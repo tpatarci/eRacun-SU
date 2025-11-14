@@ -32,7 +32,7 @@ export class InvoiceSaga {
     this.interpreter = interpret(invoiceWorkflowMachine);
 
     // Subscribe to state transitions
-    this.interpreter.onTransition((state) => {
+    this.interpreter.subscribe((state) => {
       logger.debug({
         invoiceId: invoice.id,
         state: state.value,
@@ -41,7 +41,7 @@ export class InvoiceSaga {
     });
 
     // Handle state-specific logic
-    this.interpreter.onTransition(async (state) => {
+    this.interpreter.subscribe(async (state) => {
       const context = state.context as InvoiceWorkflowContext;
 
       if (state.matches('validating')) {

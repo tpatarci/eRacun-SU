@@ -23,7 +23,7 @@
   "dependencies": {
     "@eracun/contracts": "file:../contracts",
     "@eracun/adapters": "file:../adapters",
-    "injectable": "^1.0.0",
+    "inversify": "^6.0.2",
     "reflect-metadata": "^0.2.0"
   },
   "devDependencies": {

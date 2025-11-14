@@ -3,7 +3,7 @@
  * Simulates text extraction from PDFs
  */
 
-import { injectable } from 'injectable';
+import { injectable } from 'inversify';
 import {
   IOCRService,
   TextExtractionResult,
