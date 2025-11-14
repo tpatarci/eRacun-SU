@@ -1,0 +1,8 @@
+# Exclude all test results from git
+*
+
+# Allow .gitignore itself
+!.gitignore
+
+# Allow README if present
+!README.md

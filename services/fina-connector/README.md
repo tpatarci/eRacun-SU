@@ -130,6 +130,14 @@ OFFLINE_QUEUE_ENABLED=true           # Enable offline queue
 OFFLINE_QUEUE_MAX_AGE_HOURS=48       # Grace period (hours)
 ```
 
+### Circuit Breakers
+```bash
+CIRCUIT_BREAKER_ENABLED=true           # Enable/disable circuit breakers (default: true)
+CIRCUIT_BREAKER_ERROR_THRESHOLD=50     # Error percentage to open circuit (default: 50%)
+CIRCUIT_BREAKER_VOLUME_THRESHOLD=10    # Minimum requests before circuit opens (default: 10)
+CIRCUIT_BREAKER_RESET_TIMEOUT_MS=30000 # Time circuit stays open (default: 30 seconds)
+```
+
 ## API Endpoints
 
 ### Health & Monitoring
@@ -327,6 +335,68 @@ sudo systemctl start eracun-fina-connector
 sudo systemctl status eracun-fina-connector
 ```
 
+## Circuit Breakers
+
+### Overview
+
+Circuit breakers protect against cascading failures when external services (FINA API, digital-signature-service) are unavailable. When a service experiences high failure rates, the circuit breaker opens and fails fast instead of waiting for timeouts.
+
+**Circuit Breaker States:**
+- **CLOSED:** Normal operation, all requests pass through
+- **OPEN:** Service unavailable, requests fail fast (no external calls)
+- **HALF_OPEN:** Testing recovery, limited requests allowed
+
+### Protected Operations
+
+All external service calls are protected by circuit breakers:
+
+**FINA SOAP API:**
+- `fina-fiscalize-invoice` - B2C invoice submission (racuni)
+- `fina-echo` - Health check
+- `fina-validate-invoice` - Invoice validation (test only)
+
+**Digital Signature Service:**
+- `signature-service-generate-zki` - ZKI code generation
+- `signature-service-sign-ubl` - XMLDSig signing
+- `signature-service-verify-signature` - Signature verification
+
+### Configuration
+
+Default circuit breaker settings:
+
+- **Error Threshold:** 50% failure rate triggers circuit open
+- **Volume Threshold:** 10 requests minimum before circuit can open
+- **Timeout:** 10 seconds per request (configurable per operation)
+- **Reset Timeout:** 30 seconds in OPEN state before attempting recovery
+
+### Behavior
+
+**When Circuit Opens:**
+1. Service logs warning: "Circuit breaker opened due to high failure rate"
+2. All subsequent requests fail immediately with `CircuitBreakerError`
+3. No external API calls are made (prevents cascading failures)
+4. After reset timeout (30s), circuit enters HALF_OPEN state
+
+**When Circuit is HALF_OPEN:**
+1. Limited requests are allowed to test service recovery
+2. If requests succeed, circuit closes (normal operation resumes)
+3. If requests fail, circuit reopens (continues failing fast)
+
+**When Circuit Closes:**
+1. Service logs info: "Circuit breaker closed, service recovered"
+2. Normal operation resumes
+3. Failure counters reset
+
+### Disabling Circuit Breakers
+
+For testing or manual intervention, circuit breakers can be disabled:
+
+```bash
+CIRCUIT_BREAKER_ENABLED=false
+```
+
+⚠️ **WARNING:** Disabling circuit breakers in production removes cascading failure protection.
+
 ## Monitoring
 
 ### Key Metrics
@@ -338,6 +408,19 @@ Monitor these Prometheus metrics:
 - `fina_errors_total` - FINA API errors
 - `fina_offline_queue_depth` - Offline queue size
 - `fina_offline_queue_max_age_seconds` - Oldest queued entry
+
+### Circuit Breaker Metrics
+
+Monitor circuit breaker health:
+
+- `circuit_breaker_open{circuit="fina-fiscalize-invoice"}` - Circuit is OPEN (1) or not (0)
+- `circuit_breaker_half_open{circuit="fina-fiscalize-invoice"}` - Circuit is HALF_OPEN (1) or not (0)
+- `circuit_breaker_closed{circuit="fina-fiscalize-invoice"}` - Circuit is CLOSED (1) or not (0)
+- `circuit_breaker_state_changes_total{circuit, from, to}` - State transitions
+- `circuit_breaker_success_total{circuit}` - Successful requests
+- `circuit_breaker_failure_total{circuit}` - Failed requests
+- `circuit_breaker_timeout_total{circuit}` - Timeout events
+- `circuit_breaker_fallback_total{circuit}` - Fallback executions
 
 ### Alerts
 
@@ -363,6 +446,20 @@ groups:
         expr: fina_offline_queue_max_age_seconds > 172800  # 48 hours
         annotations:
           summary: "FINA offline queue entries expiring soon"
+
+      - alert: CircuitBreakerOpen
+        expr: circuit_breaker_open{circuit=~"fina-.*|signature-service-.*"} == 1
+        for: 1m
+        annotations:
+          summary: "Circuit breaker {{ $labels.circuit }} is OPEN"
+          description: "Service {{ $labels.circuit }} has high failure rate and circuit breaker opened"
+
+      - alert: CircuitBreakerHalfOpen
+        expr: circuit_breaker_half_open{circuit=~"fina-.*|signature-service-.*"} == 1
+        for: 5m
+        annotations:
+          summary: "Circuit breaker {{ $labels.circuit }} stuck in HALF_OPEN"
+          description: "Service {{ $labels.circuit }} attempting recovery but not succeeding"
 ```
 
 ## Error Handling

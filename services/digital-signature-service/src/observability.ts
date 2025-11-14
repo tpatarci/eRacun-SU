@@ -77,6 +77,42 @@ export const xmldsigValidations = new Counter({
 });
 
 /**
+ * Batch Signing Metrics
+ */
+
+// Batch signature operations counter
+export const batchSignatureTotal = new Counter({
+  name: 'batch_signature_total',
+  help: 'Total batch signature operations',
+  labelNames: ['status'], // success, failure
+  registers: [register],
+});
+
+// Batch signature duration histogram
+export const batchSignatureDuration = new Histogram({
+  name: 'batch_signature_duration_seconds',
+  help: 'Batch signature operation duration in seconds',
+  buckets: [1, 5, 10, 30, 60, 120, 300], // 1s to 5min
+  registers: [register],
+});
+
+// Batch size histogram
+export const batchSignatureSize = new Histogram({
+  name: 'batch_signature_size',
+  help: 'Number of invoices in batch signature operation',
+  buckets: [1, 10, 50, 100, 250, 500, 1000],
+  registers: [register],
+});
+
+// Batch signature errors counter
+export const batchSignatureErrors = new Counter({
+  name: 'batch_signature_errors_total',
+  help: 'Total batch signature errors',
+  labelNames: ['error_type'], // individual_signature_failed, batch_operation_failed
+  registers: [register],
+});
+
+/**
  * Structured JSON Logging (TODO-008 Compliance)
  *
  * Mandatory fields:
@@ -210,6 +246,10 @@ export function initObservability(): void {
       'certificate_expiration_days_remaining', // IMPROVEMENT-004
       'certificate_load_time_seconds', // IMPROVEMENT-004
       'xmldsig_validations_total',
+      'batch_signature_total', // Batch signing
+      'batch_signature_duration_seconds', // Batch signing
+      'batch_signature_size', // Batch signing
+      'batch_signature_errors_total', // Batch signing
     ],
   }, 'Prometheus metrics registered');
 }

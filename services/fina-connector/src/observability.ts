@@ -93,6 +93,72 @@ export const wsdlCacheHealth = new Gauge({
   registers: [register],
 });
 
+// Circuit Breaker Metrics
+
+// Circuit breaker state changes counter
+export const circuitBreakerStateChanges = new Counter({
+  name: 'circuit_breaker_state_changes_total',
+  help: 'Total circuit breaker state transitions',
+  labelNames: ['circuit', 'from', 'to'], // from/to: open, half_open, closed
+  registers: [register],
+});
+
+// Circuit breaker OPEN state gauge
+export const circuitBreakerOpen = new Gauge({
+  name: 'circuit_breaker_open',
+  help: 'Circuit breaker is in OPEN state (1=open, 0=not open)',
+  labelNames: ['circuit'],
+  registers: [register],
+});
+
+// Circuit breaker HALF_OPEN state gauge
+export const circuitBreakerHalfOpen = new Gauge({
+  name: 'circuit_breaker_half_open',
+  help: 'Circuit breaker is in HALF_OPEN state (1=half open, 0=not half open)',
+  labelNames: ['circuit'],
+  registers: [register],
+});
+
+// Circuit breaker CLOSED state gauge
+export const circuitBreakerClosed = new Gauge({
+  name: 'circuit_breaker_closed',
+  help: 'Circuit breaker is in CLOSED state (1=closed, 0=not closed)',
+  labelNames: ['circuit'],
+  registers: [register],
+});
+
+// Circuit breaker success counter
+export const circuitBreakerSuccess = new Counter({
+  name: 'circuit_breaker_success_total',
+  help: 'Total successful circuit breaker calls',
+  labelNames: ['circuit'],
+  registers: [register],
+});
+
+// Circuit breaker failure counter
+export const circuitBreakerFailure = new Counter({
+  name: 'circuit_breaker_failure_total',
+  help: 'Total failed circuit breaker calls',
+  labelNames: ['circuit'],
+  registers: [register],
+});
+
+// Circuit breaker timeout counter
+export const circuitBreakerTimeout = new Counter({
+  name: 'circuit_breaker_timeout_total',
+  help: 'Total circuit breaker timeout events',
+  labelNames: ['circuit'],
+  registers: [register],
+});
+
+// Circuit breaker fallback counter
+export const circuitBreakerFallback = new Counter({
+  name: 'circuit_breaker_fallback_total',
+  help: 'Total circuit breaker fallback executions',
+  labelNames: ['circuit'],
+  registers: [register],
+});
+
 /**
  * Structured JSON Logging (TODO-008 Compliance)
  *

@@ -1,6 +1,7 @@
 import { CertificateRepository } from './repository';
 import { ApiServer } from './api';
 import { ExpirationMonitor } from './expiration-monitor';
+import { RenewalWorkflow, createRenewalWorkflow, createCertificateAuthority } from './renewal-workflow.js';
 import { createAlertHandler } from './alerting';
 import {
   logger,
@@ -8,6 +9,7 @@ import {
   shutdownObservability,
   databaseConnected,
 } from './observability';
+import cron from 'node-cron';
 
 /**
  * Certificate Lifecycle Manager Service
@@ -29,6 +31,8 @@ class CertificateLifecycleManagerService {
   private repository!: CertificateRepository;
   private apiServer!: ApiServer;
   private expirationMonitor!: ExpirationMonitor;
+  private renewalWorkflow!: RenewalWorkflow;
+  private renewalCronJob?: cron.ScheduledTask;
 
   /**
    * Initialize and start the service
@@ -65,6 +69,33 @@ class CertificateLifecycleManagerService {
       if (process.env.RUN_INITIAL_CHECK !== 'false') {
         logger.info('Running initial expiration check...');
         await this.expirationMonitor.checkCertificateExpiration();
+      }
+
+      // Initialize renewal workflow
+      const caType = (process.env.CA_TYPE as 'mock' | 'fina') || 'mock';
+      const ca = createCertificateAuthority(caType);
+      this.renewalWorkflow = createRenewalWorkflow(this.repository, ca);
+
+      // Start renewal workflow (weekly on Monday at 2 AM)
+      const renewalSchedule = process.env.RENEWAL_CRON || '0 2 * * 1';
+      this.renewalCronJob = cron.schedule(renewalSchedule, async () => {
+        try {
+          logger.info('Starting scheduled certificate renewal workflow');
+          await this.renewalWorkflow.processRenewals();
+        } catch (error) {
+          logger.error({ error }, 'Renewal workflow failed');
+        }
+      });
+
+      logger.info(
+        { renewalSchedule, caType },
+        'Renewal workflow scheduled'
+      );
+
+      // Run initial renewal check (optional, can be disabled)
+      if (process.env.RUN_INITIAL_RENEWAL !== 'false') {
+        logger.info('Running initial renewal check...');
+        await this.renewalWorkflow.processRenewals();
       }
 
       // Initialize and start HTTP API server
@@ -142,6 +173,12 @@ class CertificateLifecycleManagerService {
       if (this.expirationMonitor) {
         this.expirationMonitor.stop();
         logger.info('Expiration monitor stopped');
+      }
+
+      // Stop renewal workflow
+      if (this.renewalCronJob) {
+        this.renewalCronJob.stop();
+        logger.info('Renewal workflow stopped');
       }
 
       // Close database connection

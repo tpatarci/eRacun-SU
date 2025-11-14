@@ -140,37 +140,296 @@ services:
       - eracun
 
   # ============================================================================
-  # Services (commented out - run locally during development)
+  # Redis Cache
   # ============================================================================
 
-  # Uncomment to run services in Docker (not recommended for active development)
+  redis:
+    image: redis:7-alpine
+    container_name: eracun-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - eracun
 
-  # xsd-validator:
-  #   build:
-  #     context: ./services/xsd-validator
-  #     dockerfile: Dockerfile
-  #   container_name: eracun-xsd-validator
-  #   ports:
-  #     - "8080:8080"  # Health endpoint
-  #     - "9100:9100"  # Prometheus metrics
-  #   environment:
-  #     NODE_ENV: development
-  #     LOG_LEVEL: debug
-  #     RABBITMQ_URL: amqp://eracun:dev_password_change_in_production@rabbitmq:5672
-  #     RABBITMQ_QUEUE: eracun.xsd-validator.xml
-  #     SCHEMA_PATH: /app/schemas/ubl-2.1
-  #     PROMETHEUS_PORT: 9100
-  #     HEALTH_PORT: 8080
-  #     JAEGER_ENDPOINT: http://jaeger:14268/api/traces
-  #   volumes:
-  #     - ./services/xsd-validator/schemas:/app/schemas
-  #   depends_on:
-  #     rabbitmq:
-  #       condition: service_healthy
-  #     jaeger:
-  #       condition: service_healthy
-  #   networks:
-  #     - eracun
+  # ============================================================================
+  # Team 3 Services - External Integration & Compliance
+  # ============================================================================
+
+  cert-lifecycle-manager:
+    build:
+      context: ./services/cert-lifecycle-manager
+      dockerfile: Dockerfile
+    container_name: eracun-cert-lifecycle-manager
+    ports:
+      - "3001:8080"  # HTTP API
+      - "9101:9100"  # Prometheus metrics
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: debug
+      PORT: 8080
+      HEALTH_PORT: 8080
+      PROMETHEUS_PORT: 9100
+      # PostgreSQL
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: eracun
+      POSTGRES_PASSWORD: dev_password_change_in_production
+      POSTGRES_DB: eracun
+      # HSM Configuration
+      HSM_TYPE: mock
+      # Revocation Checking
+      REVOCATION_CHECK_TYPE: mock
+      # Renewal Configuration
+      RENEWAL_THRESHOLD_DAYS: 60
+      RENEWAL_CRON: "0 2 * * 1"
+      # Certificate Authority
+      CA_TYPE: mock
+      # Distribution
+      ENCRYPTION_TYPE: mock
+      # Observability
+      JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+    volumes:
+      - cert_data:/app/certs
+      - ./services/cert-lifecycle-manager/certs:/app/certs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+    networks:
+      - eracun
+
+  fina-connector:
+    build:
+      context: ./services/fina-connector
+      dockerfile: Dockerfile
+    container_name: eracun-fina-connector
+    ports:
+      - "3002:8080"  # HTTP API
+      - "9102:9100"  # Prometheus metrics
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: debug
+      PORT: 8080
+      HEALTH_PORT: 8080
+      PROMETHEUS_PORT: 9100
+      # FINA Configuration
+      FINA_CLIENT_TYPE: mock
+      FINA_ENDPOINT: https://cistest.apis-it.hr:8449/FiskalizacijaServiceTest
+      FINA_TIMEOUT: 5000
+      # RabbitMQ
+      RABBITMQ_URL: amqp://eracun:dev_password_change_in_production@rabbitmq:5672
+      RABBITMQ_QUEUE: eracun.fina.submit
+      # Circuit Breaker
+      CIRCUIT_BREAKER_THRESHOLD: 50
+      CIRCUIT_BREAKER_TIMEOUT: 30000
+      # Observability
+      JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+    volumes:
+      - cert_data:/app/certs
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      cert-lifecycle-manager:
+        condition: service_started
+      jaeger:
+        condition: service_healthy
+    networks:
+      - eracun
+
+  porezna-connector:
+    build:
+      context: ./services/porezna-connector
+      dockerfile: Dockerfile
+    container_name: eracun-porezna-connector
+    ports:
+      - "3003:8080"  # HTTP API
+      - "9103:9100"  # Prometheus metrics
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: debug
+      PORT: 8080
+      HEALTH_PORT: 8080
+      PROMETHEUS_PORT: 9100
+      # Porezna Configuration
+      POREZNA_CLIENT_TYPE: mock
+      POREZNA_API_URL: https://api.porezna-uprava.hr/v1
+      POREZNA_TIMEOUT: 5000
+      # RabbitMQ
+      RABBITMQ_URL: amqp://eracun:dev_password_change_in_production@rabbitmq:5672
+      RABBITMQ_QUEUE: eracun.porezna.submit
+      # Observability
+      JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+    networks:
+      - eracun
+
+  digital-signature-service:
+    build:
+      context: ./services/digital-signature-service
+      dockerfile: Dockerfile
+    container_name: eracun-digital-signature-service
+    ports:
+      - "3004:8080"  # HTTP API
+      - "9104:9100"  # Prometheus metrics
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: debug
+      PORT: 8080
+      HEALTH_PORT: 8080
+      PROMETHEUS_PORT: 9100
+      # XMLDSig Configuration
+      XML_SIGNER_TYPE: mock
+      SIGNATURE_ALGORITHM: RSA-SHA256
+      # RabbitMQ
+      RABBITMQ_URL: amqp://eracun:dev_password_change_in_production@rabbitmq:5672
+      RABBITMQ_QUEUE: eracun.signature.sign
+      # Performance
+      BATCH_SIZE: 100
+      # Observability
+      JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+    volumes:
+      - cert_data:/app/certs
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      cert-lifecycle-manager:
+        condition: service_started
+      jaeger:
+        condition: service_healthy
+    networks:
+      - eracun
+
+  archive-service:
+    build:
+      context: ./services/archive-service
+      dockerfile: Dockerfile
+    container_name: eracun-archive-service
+    ports:
+      - "3005:8080"  # HTTP API
+      - "9105:9100"  # Prometheus metrics
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: debug
+      PORT: 8080
+      HEALTH_PORT: 8080
+      PROMETHEUS_PORT: 9100
+      # PostgreSQL
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: eracun
+      POSTGRES_PASSWORD: dev_password_change_in_production
+      POSTGRES_DB: eracun
+      # Archive Configuration
+      RETENTION_YEARS: 11
+      COMPRESSION_ENABLED: true
+      ENCRYPTION_ENABLED: true
+      # RabbitMQ
+      RABBITMQ_URL: amqp://eracun:dev_password_change_in_production@rabbitmq:5672
+      RABBITMQ_QUEUE: eracun.archive.store
+      # Observability
+      JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+    volumes:
+      - archive_data:/app/archive
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+    networks:
+      - eracun
+
+  reporting-service:
+    build:
+      context: ./services/reporting-service
+      dockerfile: Dockerfile
+    container_name: eracun-reporting-service
+    ports:
+      - "3006:8080"  # HTTP API
+      - "9106:9100"  # Prometheus metrics
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: debug
+      PORT: 8080
+      HEALTH_PORT: 8080
+      PROMETHEUS_PORT: 9100
+      # PostgreSQL
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: eracun
+      POSTGRES_PASSWORD: dev_password_change_in_production
+      POSTGRES_DB: eracun
+      # Report Configuration
+      OUTPUT_DIR: /app/reports
+      SUPPORTED_FORMATS: csv,json,xlsx
+      # RabbitMQ
+      RABBITMQ_URL: amqp://eracun:dev_password_change_in_production@rabbitmq:5672
+      # Observability
+      JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+    volumes:
+      - report_data:/app/reports
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+    networks:
+      - eracun
+
+  dead-letter-handler:
+    build:
+      context: ./services/dead-letter-handler
+      dockerfile: Dockerfile
+    container_name: eracun-dead-letter-handler
+    ports:
+      - "3007:8080"  # HTTP API
+      - "9107:9100"  # Prometheus metrics
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: debug
+      PORT: 8080
+      HEALTH_PORT: 8080
+      PROMETHEUS_PORT: 9100
+      # RabbitMQ
+      RABBITMQ_URL: amqp://eracun:dev_password_change_in_production@rabbitmq:5672
+      RABBITMQ_DLQ: eracun.dead-letter-queue
+      # PostgreSQL (for DLQ persistence)
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: eracun
+      POSTGRES_PASSWORD: dev_password_change_in_production
+      POSTGRES_DB: eracun
+      # Retry Configuration
+      MAX_RETRIES: 3
+      RETRY_DELAY_MS: 1000
+      EXPONENTIAL_BACKOFF: true
+      # Observability
+      JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+    networks:
+      - eracun
 
 # ============================================================================
 # Networks
@@ -194,3 +453,11 @@ volumes:
     name: eracun-prometheus-data
   grafana_data:
     name: eracun-grafana-data
+  redis_data:
+    name: eracun-redis-data
+  cert_data:
+    name: eracun-cert-data
+  archive_data:
+    name: eracun-archive-data
+  report_data:
+    name: eracun-report-data

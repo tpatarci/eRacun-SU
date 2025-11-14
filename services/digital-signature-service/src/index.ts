@@ -18,6 +18,11 @@ import {
 import { signUBLInvoice, signXMLDocument } from './xmldsig-signer.js';
 import { generateZKI, verifyZKI, formatZKI, type ZKIParams } from './zki-generator.js';
 import { verifyXMLSignature, verifyUBLInvoiceSignature } from './xmldsig-verifier.js';
+import {
+  signUBLBatch,
+  validateBatchRequest,
+  type BatchSigningRequest,
+} from './batch-signer.js';
 
 // Load environment variables
 dotenv.config();
@@ -231,6 +236,66 @@ app.post('/api/v1/sign/ubl', async (req: Request, res: Response): Promise<void> 
     logger.info({ request_id: requestId }, 'UBL invoice signed successfully');
   } catch (error) {
     logger.error({ request_id: requestId, error }, 'Failed to sign UBL invoice');
+    res.status(500).json({
+      error: 'Internal server error',
+      message: (error as Error).message,
+    });
+  }
+});
+
+/**
+ * Sign multiple UBL Invoices in batch (high-throughput operation)
+ *
+ * POST /api/v1/sign/ubl/batch
+ * Content-Type: application/json
+ * Body: { invoices: string[], concurrency?: number }
+ *
+ * Response: { total, successful, failed, duration_ms, throughput, results }
+ */
+app.post('/api/v1/sign/ubl/batch', async (req: Request, res: Response): Promise<void> => {
+  const requestId = req.headers['x-request-id'] as string;
+
+  try {
+    if (!defaultCertificate) {
+      logger.error({ request_id: requestId }, 'No certificate available for batch signing');
+      res.status(503).json({
+        error: 'Service not ready',
+        message: 'No certificate loaded',
+      });
+      return;
+    }
+
+    // IMPROVEMENT-045: Validate certificate before use
+    validateCachedCertificate();
+
+    // Validate batch request
+    validateBatchRequest(req.body);
+
+    const batchRequest: BatchSigningRequest = {
+      invoices: req.body.invoices,
+      options: req.body.options,
+      concurrency: req.body.concurrency || 10,
+    };
+
+    logger.info({
+      request_id: requestId,
+      batch_size: batchRequest.invoices.length,
+      concurrency: batchRequest.concurrency,
+    }, 'Starting batch UBL signing operation');
+
+    const result = await signUBLBatch(batchRequest, defaultCertificate);
+
+    res.json(result);
+
+    logger.info({
+      request_id: requestId,
+      total: result.total,
+      successful: result.successful,
+      failed: result.failed,
+      throughput: result.throughput,
+    }, 'Batch UBL signing completed');
+  } catch (error) {
+    logger.error({ request_id: requestId, error }, 'Failed to sign UBL batch');
     res.status(500).json({
       error: 'Internal server error',
       message: (error as Error).message,

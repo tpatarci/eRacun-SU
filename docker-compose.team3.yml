@@ -1,0 +1,378 @@
+version: '3.8'
+
+# Team 3 Services - External Integration & Compliance
+# Complete infrastructure stack for local development and testing
+
+networks:
+  eracun-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  rabbitmq-data:
+  prometheus-data:
+  grafana-data:
+
+services:
+  # ============================================================================
+  # Infrastructure Services
+  # ============================================================================
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: eracun-postgres
+    environment:
+      POSTGRES_DB: eracun
+      POSTGRES_USER: eracun_user
+      POSTGRES_PASSWORD: eracun_password
+      POSTGRES_MULTIPLE_DATABASES: eracun_fina,eracun_archive,eracun_dead_letter
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./deployment/postgres/init-multiple-databases.sh:/docker-entrypoint-initdb.d/init-multiple-databases.sh
+    ports:
+      - "5432:5432"
+    networks:
+      - eracun-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U eracun_user -d eracun"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: eracun-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: eracun
+      RABBITMQ_DEFAULT_PASS: eracun_password
+      RABBITMQ_DEFAULT_VHOST: /
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+      - ./deployment/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
+      - ./deployment/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json
+    ports:
+      - "5672:5672"   # AMQP
+      - "15672:15672" # Management UI
+    networks:
+      - eracun-network
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: eracun-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    volumes:
+      - ./deployment/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./deployment/prometheus/alerts.yml:/etc/prometheus/alerts.yml
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - eracun-network
+    depends_on:
+      - fina-connector
+      - digital-signature-service
+      - archive-service
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: eracun-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_INSTALL_PLUGINS: grafana-piechart-panel
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./deployment/grafana/provisioning:/etc/grafana/provisioning
+      - ./deployment/grafana/dashboards:/var/lib/grafana/dashboards
+    ports:
+      - "3000:3000"
+    networks:
+      - eracun-network
+    depends_on:
+      - prometheus
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    container_name: eracun-jaeger
+    environment:
+      COLLECTOR_ZIPKIN_HOST_PORT: :9411
+      COLLECTOR_OTLP_ENABLED: true
+    ports:
+      - "5775:5775/udp"   # Zipkin compact
+      - "6831:6831/udp"   # Jaeger compact
+      - "6832:6832/udp"   # Jaeger binary
+      - "5778:5778"       # Config
+      - "16686:16686"     # UI
+      - "14250:14250"     # Model proto
+      - "14268:14268"     # Jaeger collector
+      - "14269:14269"     # Admin
+      - "9411:9411"       # Zipkin
+    networks:
+      - eracun-network
+
+  # ============================================================================
+  # Team 3 Services
+  # ============================================================================
+
+  digital-signature-service:
+    build:
+      context: ./services/digital-signature-service
+      dockerfile: Dockerfile
+    container_name: eracun-digital-signature-service
+    environment:
+      SERVICE_NAME: digital-signature-service
+      NODE_ENV: development
+      HTTP_PORT: 8088
+      METRICS_PORT: 9096
+      LOG_LEVEL: info
+      CERT_DIRECTORY: /etc/eracun/secrets/certs
+      DEFAULT_CERT_PATH: /etc/eracun/secrets/certs/fina-demo.p12
+      DEFAULT_CERT_PASSWORD: ${FINA_CERT_PASSWORD:-test123}
+      JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+      OTEL_SERVICE_NAME: digital-signature-service
+    volumes:
+      - ./secrets/certs:/etc/eracun/secrets/certs:ro
+    ports:
+      - "8088:8088"
+      - "9096:9096"
+    networks:
+      - eracun-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8088/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  fina-connector:
+    build:
+      context: ./services/fina-connector
+      dockerfile: Dockerfile
+    container_name: eracun-fina-connector
+    environment:
+      SERVICE_NAME: fina-connector
+      NODE_ENV: development
+      PORT: 3003
+      METRICS_PORT: 9097
+      LOG_LEVEL: info
+      # FINA API
+      FINA_WSDL_URL: https://cistest.apis-it.hr:8449/FiskalizacijaServiceTest?wsdl
+      FINA_ENDPOINT_URL: https://cistest.apis-it.hr:8449/FiskalizacijaServiceTest
+      FINA_TIMEOUT_MS: 5000
+      # Digital Signature Service
+      SIGNATURE_SERVICE_URL: http://digital-signature-service:8088
+      # PostgreSQL
+      DATABASE_URL: postgresql://eracun_user:eracun_password@postgres:5432/eracun_fina
+      # RabbitMQ
+      RABBITMQ_URL: amqp://eracun:eracun_password@rabbitmq:5672
+      RABBITMQ_QUEUE_FISCALIZATION_REQUESTS: fiscalization.requests
+      RABBITMQ_QUEUE_FISCALIZATION_RESPONSES: fiscalization.responses
+      RABBITMQ_QUEUE_DEAD_LETTER: dead-letter
+      # Observability
+      JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+      OTEL_SERVICE_NAME: fina-connector
+      # Retry & Circuit Breaker
+      MAX_RETRIES: 3
+      RETRY_DELAY_BASE_MS: 2000
+      CIRCUIT_BREAKER_ENABLED: true
+      CIRCUIT_BREAKER_ERROR_THRESHOLD: 50
+      CIRCUIT_BREAKER_VOLUME_THRESHOLD: 10
+      CIRCUIT_BREAKER_RESET_TIMEOUT_MS: 30000
+    ports:
+      - "3003:3003"
+      - "9097:9097"
+    networks:
+      - eracun-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      digital-signature-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3003/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  archive-service:
+    build:
+      context: ./services/archive-service
+      dockerfile: Dockerfile
+    container_name: eracun-archive-service
+    environment:
+      SERVICE_NAME: archive-service
+      NODE_ENV: development
+      HTTP_PORT: 3004
+      METRICS_PORT: 9098
+      LOG_LEVEL: info
+      # PostgreSQL
+      DATABASE_URL: postgresql://eracun_user:eracun_password@postgres:5432/eracun_archive
+      # Digital Signature Service (for validation)
+      SIGNATURE_SERVICE_URL: http://digital-signature-service:8088
+      # WORM Storage
+      STORAGE_MODE: mock
+      WORM_RETENTION_YEARS: 11
+      # Observability
+      JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+      OTEL_SERVICE_NAME: archive-service
+    ports:
+      - "3004:3004"
+      - "9098:9098"
+    networks:
+      - eracun-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      digital-signature-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3004/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  dead-letter-handler:
+    build:
+      context: ./services/dead-letter-handler
+      dockerfile: Dockerfile
+    container_name: eracun-dead-letter-handler
+    environment:
+      SERVICE_NAME: dead-letter-handler
+      NODE_ENV: development
+      HTTP_PORT: 3005
+      METRICS_PORT: 9099
+      LOG_LEVEL: info
+      # PostgreSQL
+      DATABASE_URL: postgresql://eracun_user:eracun_password@postgres:5432/eracun_dead_letter
+      # RabbitMQ
+      RABBITMQ_URL: amqp://eracun:eracun_password@rabbitmq:5672
+      RABBITMQ_QUEUE_DEAD_LETTER: dead-letter
+      # Observability
+      JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+      OTEL_SERVICE_NAME: dead-letter-handler
+      # Recovery Configuration
+      MAX_RETRY_ATTEMPTS: 3
+      RETRY_DELAY_MINUTES: 5
+      ARCHIVE_AFTER_HOURS: 72
+    ports:
+      - "3005:3005"
+      - "9099:9099"
+    networks:
+      - eracun-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3005/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  cert-lifecycle-manager:
+    build:
+      context: ./services/cert-lifecycle-manager
+      dockerfile: Dockerfile
+    container_name: eracun-cert-lifecycle-manager
+    environment:
+      SERVICE_NAME: cert-lifecycle-manager
+      NODE_ENV: development
+      HTTP_PORT: 3006
+      METRICS_PORT: 9100
+      LOG_LEVEL: info
+      # Certificate Storage
+      CERT_DIRECTORY: /etc/eracun/secrets/certs
+      # HSM Configuration (mock mode)
+      HSM_ENABLED: false
+      HSM_MODULE_PATH: /usr/lib/softhsm/libsofthsm2.so
+      HSM_SLOT: 0
+      HSM_PIN: ${HSM_PIN:-1234}
+      # Renewal Configuration
+      RENEWAL_THRESHOLD_DAYS: 30
+      RENEWAL_CHECK_INTERVAL_HOURS: 24
+      # Observability
+      JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+      OTEL_SERVICE_NAME: cert-lifecycle-manager
+    volumes:
+      - ./secrets/certs:/etc/eracun/secrets/certs
+    ports:
+      - "3006:3006"
+      - "9100:9100"
+    networks:
+      - eracun-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3006/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  porezna-connector:
+    build:
+      context: ./services/porezna-connector
+      dockerfile: Dockerfile
+    container_name: eracun-porezna-connector
+    environment:
+      SERVICE_NAME: porezna-connector
+      NODE_ENV: development
+      HTTP_PORT: 3007
+      METRICS_PORT: 9101
+      LOG_LEVEL: info
+      # Porezna API (mock mode)
+      POREZNA_API_URL: https://api.porezna-uprava.hr
+      POREZNA_API_KEY: ${POREZNA_API_KEY:-mock-key}
+      POREZNA_TIMEOUT_MS: 5000
+      # Observability
+      JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+      OTEL_SERVICE_NAME: porezna-connector
+    ports:
+      - "3007:3007"
+      - "9101:9101"
+    networks:
+      - eracun-network
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3007/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  reporting-service:
+    build:
+      context: ./services/reporting-service
+      dockerfile: Dockerfile
+    container_name: eracun-reporting-service
+    environment:
+      SERVICE_NAME: reporting-service
+      NODE_ENV: development
+      HTTP_PORT: 3008
+      METRICS_PORT: 9102
+      LOG_LEVEL: info
+      # PostgreSQL
+      DATABASE_URL: postgresql://eracun_user:eracun_password@postgres:5432/eracun
+      # Observability
+      JAEGER_ENDPOINT: http://jaeger:14268/api/traces
+      OTEL_SERVICE_NAME: reporting-service
+    ports:
+      - "3008:3008"
+      - "9102:9102"
+    networks:
+      - eracun-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3008/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3

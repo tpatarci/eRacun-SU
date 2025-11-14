@@ -1,5 +1,6 @@
 import * as soap from 'soap';
 import axios, { AxiosInstance } from 'axios';
+import CircuitBreaker from 'opossum';
 import {
   logger,
   fiscalizationTotal,
@@ -12,6 +13,7 @@ import {
   wsdlRefreshDuration,
   wsdlCacheHealth,
 } from './observability.js';
+import { createFINACircuitBreaker } from './circuit-breaker.js';
 import type {
   FINAInvoice,
   FINAFiscalizationResponse,
@@ -85,6 +87,7 @@ export class FINASOAPError extends Error {
  *
  * Handles all SOAP communication with FINA Fiscalization Service
  * IMPROVEMENT-006: Includes WSDL cache expiration and refresh
+ * Circuit Breaker Integration: Protects against cascading failures when FINA is unavailable
  */
 export class FINASOAPClient {
   private client: soap.Client | null = null;
@@ -92,6 +95,9 @@ export class FINASOAPClient {
   private wsdlCacheExpireAt: Date | null = null; // IMPROVEMENT-006
   private wsdlLastFetchedAt: Date | null = null; // IMPROVEMENT-006
   private wsdlVersion: string | null = null; // IMPROVEMENT-006
+  private fiscalizeCircuitBreaker: CircuitBreaker<[FINAInvoice, string], FINAFiscalizationResponse>;
+  private echoCircuitBreaker: CircuitBreaker<[FINAEchoRequest], FINAEchoResponse>;
+  private validateCircuitBreaker: CircuitBreaker<[FINAValidationRequest], FINAValidationResponse>;
 
   constructor(config: SOAPClientConfig) {
     this.config = {
@@ -99,6 +105,25 @@ export class FINASOAPClient {
       wsdlRefreshIntervalHours: config.wsdlRefreshIntervalHours || 24, // Default: 24 hours
       wsdlRequestTimeoutMs: config.wsdlRequestTimeoutMs || 10000, // Default: 10 seconds
     };
+
+    // Create circuit breakers for each SOAP operation
+    this.fiscalizeCircuitBreaker = createFINACircuitBreaker(
+      this.fiscalizeInvoiceInternal.bind(this),
+      'fiscalize-invoice',
+      this.config.timeout
+    );
+
+    this.echoCircuitBreaker = createFINACircuitBreaker(
+      this.echoInternal.bind(this),
+      'echo',
+      this.config.timeout
+    );
+
+    this.validateCircuitBreaker = createFINACircuitBreaker(
+      this.validateInvoiceInternal.bind(this),
+      'validate-invoice',
+      this.config.timeout
+    );
   }
 
   /**
@@ -177,12 +202,27 @@ export class FINASOAPClient {
 
   /**
    * Submit invoice for fiscalization (racuni operation)
+   * Circuit breaker protected - fails fast if FINA is unavailable
    *
    * @param invoice - Invoice data
    * @param signedXml - XMLDSig signed SOAP envelope
    * @returns Fiscalization response with JIR
    */
   async fiscalizeInvoice(
+    invoice: FINAInvoice,
+    signedXml: string
+  ): Promise<FINAFiscalizationResponse> {
+    return await this.fiscalizeCircuitBreaker.fire(invoice, signedXml);
+  }
+
+  /**
+   * Submit invoice for fiscalization (internal implementation)
+   *
+   * @param invoice - Invoice data
+   * @param signedXml - XMLDSig signed SOAP envelope
+   * @returns Fiscalization response with JIR
+   */
+  private async fiscalizeInvoiceInternal(
     invoice: FINAInvoice,
     signedXml: string
   ): Promise<FINAFiscalizationResponse> {
@@ -266,11 +306,22 @@ export class FINASOAPClient {
 
   /**
    * Echo operation (health check)
+   * Circuit breaker protected - fails fast if FINA is unavailable
    *
    * @param request - Echo request
    * @returns Echo response
    */
   async echo(request: FINAEchoRequest): Promise<FINAEchoResponse> {
+    return await this.echoCircuitBreaker.fire(request);
+  }
+
+  /**
+   * Echo operation (internal implementation)
+   *
+   * @param request - Echo request
+   * @returns Echo response
+   */
+  private async echoInternal(request: FINAEchoRequest): Promise<FINAEchoResponse> {
     this.ensureInitialized();
 
     const span = createSpan('fina_echo');
@@ -317,11 +368,24 @@ export class FINASOAPClient {
 
   /**
    * Provjera operation (validation - TEST ONLY)
+   * Circuit breaker protected - fails fast if FINA is unavailable
    *
    * @param request - Validation request
    * @returns Validation response
    */
   async validateInvoice(
+    request: FINAValidationRequest
+  ): Promise<FINAValidationResponse> {
+    return await this.validateCircuitBreaker.fire(request);
+  }
+
+  /**
+   * Provjera operation (internal implementation)
+   *
+   * @param request - Validation request
+   * @returns Validation response
+   */
+  private async validateInvoiceInternal(
     request: FINAValidationRequest
   ): Promise<FINAValidationResponse> {
     this.ensureInitialized();

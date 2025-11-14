@@ -1,0 +1,87 @@
+[Unit]
+Description=eRacun Digital Signature Service
+Documentation=https://github.com/tpatarci/eRacun-development
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=eracun
+Group=eracun
+WorkingDirectory=/opt/eracun/services/digital-signature-service
+
+# Environment
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/eracun/digital-signature-service.env
+
+# Execution
+ExecStartPre=/usr/local/bin/sops-decrypt.sh digital-signature-service
+ExecStart=/usr/bin/node dist/index.js
+ExecStop=/bin/kill -SIGTERM $MAINPID
+
+# Restart policy
+Restart=on-failure
+RestartSec=10s
+StartLimitInterval=300s
+StartLimitBurst=5
+
+# Resource limits
+MemoryMax=1G
+MemoryHigh=768M
+CPUQuota=200%
+TasksMax=512
+
+# Security Hardening (systemd security features)
+# Filesystem protection
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/eracun/digital-signature-service /var/log/eracun
+ReadOnlyPaths=/etc/eracun/secrets/certs
+
+# Privilege restrictions
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SecureBits=keep-caps-locked noroot noroot-locked no-setuid-fixup no-setuid-fixup-locked
+
+# System call filtering
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @debug @mount @swap @reboot @module @raw-io
+SystemCallErrorNumber=EPERM
+SystemCallArchitectures=native
+
+# Network restrictions
+RestrictAddressFamilies=AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+IPAddressAllow=10.0.0.0/8
+IPAddressAllow=172.16.0.0/12
+IPAddressAllow=192.168.0.0/16
+
+# Kernel protection
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+
+# Process restrictions
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RestrictNamespaces=true
+RemoveIPC=true
+PrivateMounts=true
+
+# Secrets protection
+InaccessiblePaths=/etc/eracun/.age-key
+UMask=0077
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=eracun-digital-signature-service
+
+[Install]
+WantedBy=multi-user.target
