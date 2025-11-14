@@ -28,6 +28,8 @@ import type {
   FiscalizationMessage,
   FiscalizationResultMessage,
 } from './types.js';
+import type { AppConfig } from './config.js';
+import { loadConfig } from './config.js';
 
 /**
  * IMPROVEMENT-028: Safe JSON stringify with circular reference protection
@@ -44,72 +46,6 @@ function safeStringify(obj: any): string {
     }
     return value;
   });
-}
-
-/**
- * Application Configuration
- */
-interface AppConfig {
-  /** Service port */
-  port: number;
-  /** FINA WSDL URL */
-  finaWsdlUrl: string;
-  /** FINA endpoint URL */
-  finaEndpointUrl: string;
-  /** FINA request timeout */
-  finaTimeout: number;
-  /** Digital Signature Service URL */
-  signatureServiceUrl: string;
-  /** Signature service timeout */
-  signatureTimeout: number;
-  /** PostgreSQL connection string */
-  databaseUrl: string;
-  /** RabbitMQ connection string */
-  rabbitMqUrl: string;
-  /** RabbitMQ fiscalization queue name */
-  fiscalizationQueueName: string;
-  /** RabbitMQ result queue name */
-  resultQueueName: string;
-  /** Max retry attempts */
-  maxRetries: number;
-  /** Enable offline queue */
-  offlineQueueEnabled: boolean;
-  /** Offline queue max age (hours) */
-  offlineQueueMaxAgeHours: number;
-  /** Retry delay base (seconds) */
-  retryDelaySeconds: number;
-}
-
-/**
- * Load configuration from environment variables
- */
-function loadConfig(): AppConfig {
-  return {
-    port: parseInt(process.env.PORT || '3003'),
-    finaWsdlUrl:
-      process.env.FINA_WSDL_URL ||
-      'https://cistest.apis-it.hr:8449/FiskalizacijaServiceTest?wsdl',
-    finaEndpointUrl:
-      process.env.FINA_ENDPOINT_URL ||
-      'https://cistest.apis-it.hr:8449/FiskalizacijaServiceTest',
-    finaTimeout: parseInt(process.env.FINA_TIMEOUT || '10000'),
-    signatureServiceUrl:
-      process.env.SIGNATURE_SERVICE_URL || 'http://localhost:3002',
-    signatureTimeout: parseInt(process.env.SIGNATURE_TIMEOUT || '5000'),
-    databaseUrl:
-      process.env.DATABASE_URL || 'postgresql://localhost/eracun_fina',
-    rabbitMqUrl: process.env.RABBITMQ_URL || 'amqp://localhost',
-    fiscalizationQueueName:
-      process.env.FISCALIZATION_QUEUE || 'fina.fiscalization.requests',
-    resultQueueName:
-      process.env.RESULT_QUEUE || 'fina.fiscalization.results',
-    maxRetries: parseInt(process.env.MAX_RETRIES || '3'),
-    offlineQueueEnabled: process.env.OFFLINE_QUEUE_ENABLED !== 'false',
-    offlineQueueMaxAgeHours: parseInt(
-      process.env.OFFLINE_QUEUE_MAX_AGE_HOURS || '48'
-    ),
-    retryDelaySeconds: parseInt(process.env.RETRY_DELAY_SECONDS || '2'),
-  };
 }
 
 /**
@@ -156,6 +92,7 @@ class FINAConnectorApp {
       // IMPROVEMENT-006: WSDL refresh configuration
       wsdlRefreshIntervalHours: parseInt(process.env.WSDL_REFRESH_INTERVAL_HOURS || '24'),
       wsdlRequestTimeoutMs: parseInt(process.env.WSDL_REQUEST_TIMEOUT_MS || '10000'),
+      tls: this.config.tls,
     };
 
     this.soapClient = createFINAClient(soapClientConfig);

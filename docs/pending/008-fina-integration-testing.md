@@ -379,6 +379,24 @@
 
 ---
 
+## Status Updates
+
+### 2025-11-15
+
+- Added TLS client certificate loading + centralized config module in
+  `services/fina-connector` to consume decrypted assets under
+  `/etc/eracun/secrets/certificates/`.
+- Documented the SOPS storage workflow in `secrets/certificates/README.md` and
+  captured the current blocker state in
+  `docs/reports/2025-11-15-PENDING-008-fina-certificate-status.md`.
+- Added Jest coverage for `cert-lifecycle-manager` expiration monitoring to prove
+  alerting works once real certificates are imported.
+- Demo/prod certificate acquisition, PostgreSQL imports, and SOAP/AS4 smoke tests
+  remain blocked because this environment lacks NIAS credentials, SOPS age keys,
+  and connectivity to `cms.fina.hr` / `cistest.apis-it.hr`.
+
+---
+
 **Priority:** 🔴 P0 (Critical)
 **Status:** ⏳ Active (blocked on PENDING-007)
 **Assigned:** TBD (1 Senior Backend Engineer)
