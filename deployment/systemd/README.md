@@ -1,377 +1,232 @@
-# systemd Service Deployment
+# systemd Service Units - Team 3
 
-This directory contains systemd service units for the eRacun platform.
+Production-ready systemd service units with comprehensive security hardening for all Team 3 services.
 
----
+## Services Included
 
-## Files
+1. **eracun-digital-signature-service.service** - XMLDSig signing and ZKI generation
+2. **eracun-fina-connector.service** - FINA Tax Authority integration
+3. **eracun-archive-service.service** - 11-year invoice archival (WORM storage)
+4. **eracun-dead-letter-handler.service** - Failed message recovery
+5. **eracun-cert-lifecycle-manager.service** - X.509 certificate management
+6. **eracun-porezna-connector.service** - Porezna Uprava integration
+7. **eracun-reporting-service.service** - Compliance reporting
 
-| File | Purpose |
-|------|---------|
-| `eracun-service.template` | Template for creating new service units |
-| `eracun-email-worker.service` | Example service (email ingestion worker) |
-| `decrypt-secrets.sh` | Script to decrypt SOPS secrets before service start |
+## Security Hardening Features
 
----
+All service units include comprehensive systemd security directives per @docs/SECURITY.md:
 
-## Initial Droplet Setup (One-Time)
+### Filesystem Protection
+- `ProtectSystem=strict` - Read-only /usr, /boot, /efi
+- `ProtectHome=true` - No access to /home, /root
+- `PrivateTmp=true` - Isolated /tmp directory
+- `ReadWritePaths` - Explicit write permissions only
+- `InaccessiblePaths` - Hide encryption keys from service
 
-### 1. Install Required Tools
+### Privilege Restrictions
+- `NoNewPrivileges=true` - Can't gain new privileges
+- `CapabilityBoundingSet=` - Drop ALL Linux capabilities
+- `User=eracun` / `Group=eracun` - Run as dedicated user
 
+### System Call Filtering
+- `SystemCallFilter=@system-service` - Whitelist system service calls
+- `SystemCallFilter=~@privileged @resources @obsolete @debug @mount @swap @reboot @module @raw-io` - Block dangerous syscalls
+- `SystemCallErrorNumber=EPERM` - Return permission denied on blocked calls
+
+### Network Restrictions
+- `RestrictAddressFamilies=AF_INET AF_INET6` - Only IPv4/IPv6
+- `IPAddressDeny=any` - Default deny all
+- `IPAddressAllow` - Whitelist localhost and RFC1918 ranges
+
+### Kernel Protection
+- `ProtectKernelTunables=true` - Can't modify /proc/sys
+- `ProtectKernelModules=true` - Can't load kernel modules
+- `ProtectKernelLogs=true` - Can't read kernel logs
+- `ProtectControlGroups=true` - Can't modify cgroups
+
+### Process Restrictions
+- `LockPersonality=true` - Can't change execution domain
+- `RestrictRealtime=true` - No real-time scheduling
+- `RestrictSUIDSGID=true` - Can't change SUID/SGID bits
+- `RestrictNamespaces=true` - Can't create namespaces
+
+### Resource Limits
+- `MemoryMax` - Hard memory limit (service killed if exceeded)
+- `MemoryHigh` - Soft memory limit (throttled if exceeded)
+- `CPUQuota` - CPU usage percentage limit
+- `TasksMax` - Max number of processes/threads
+
+## Installation
+
+### Prerequisites
 ```bash
-# Update package list
-sudo apt-get update
-
-# Install age (encryption tool)
-sudo apt-get install -y age
-
-# Install SOPS (secrets management)
-wget https://github.com/mozilla/sops/releases/download/v3.8.1/sops_3.8.1_amd64.deb
-sudo dpkg -i sops_3.8.1_amd64.deb
-
-# Install Node.js (if not already installed)
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt-get install -y nodejs
-
-# Install PostgreSQL client (for database access)
-sudo apt-get install -y postgresql-client
-
-# Install RabbitMQ (message bus)
-sudo apt-get install -y rabbitmq-server
-sudo systemctl enable rabbitmq-server
-sudo systemctl start rabbitmq-server
-```
-
-### 2. Create Service User
-
-```bash
-# Create eracun system user (no login shell)
+# Create eracun user and group
 sudo useradd -r -s /bin/false eracun
 
-# Create required directories
-sudo mkdir -p /etc/eracun/{services,secrets}
+# Create directories
 sudo mkdir -p /opt/eracun/services
-sudo mkdir -p /var/log/eracun
+sudo mkdir -p /etc/eracun
 sudo mkdir -p /var/lib/eracun
-
-# Set ownership
-sudo chown -R eracun:eracun /etc/eracun /opt/eracun /var/log/eracun /var/lib/eracun
-
-# Secure secrets directory
-sudo chmod 700 /etc/eracun/secrets
-```
-
-### 3. Generate age Key Pair
-
-```bash
-# Generate production age key
-sudo age-keygen -o /etc/eracun/.age-key
-
-# Secure the private key
-sudo chmod 600 /etc/eracun/.age-key
-sudo chown root:root /etc/eracun/.age-key
-
-# Get public key (add to repository secrets/.sops.yaml)
-sudo age-keygen -y /etc/eracun/.age-key
-# Output: age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p
-
-# IMPORTANT: Backup the private key to secure location
-# (encrypted USB drive + password manager)
-```
-
-### 4. Install decrypt-secrets.sh Script
-
-```bash
-# Copy script from repository
-sudo cp deployment/systemd/decrypt-secrets.sh /usr/local/bin/
-
-# Make executable
-sudo chmod 755 /usr/local/bin/decrypt-secrets.sh
-
-# Test (should show usage)
-/usr/local/bin/decrypt-secrets.sh
-```
-
----
-
-## Deploying a Service
-
-### 1. Build Service Locally
-
-```bash
-# In service directory (e.g., services/email-worker/)
-npm install
-npm run build
-
-# Test locally
-npm run test
-```
-
-### 2. Deploy to Droplet
-
-```bash
-# Copy built service to droplet
-rsync -avz --exclude node_modules \
-  services/email-worker/ \
-  deploy@droplet:/opt/eracun/services/email-worker/
-
-# SSH to droplet
-ssh deploy@droplet
-
-# Install dependencies (production only)
-cd /opt/eracun/services/email-worker
-sudo npm install --omit=dev
-```
-
-### 3. Deploy Configuration
-
-```bash
-# Copy configuration from repository
-sudo cp config/platform.conf.example /etc/eracun/platform.conf
-sudo cp config/environment-production.conf /etc/eracun/environment.conf
-sudo cp config/services/email-worker.conf.example /etc/eracun/services/email-worker.conf
-
-# Edit with environment-specific values
-sudo vim /etc/eracun/environment.conf
-sudo vim /etc/eracun/services/email-worker.conf
+sudo mkdir -p /var/log/eracun
 
 # Set permissions
-sudo chmod 644 /etc/eracun/*.conf
-sudo chmod 644 /etc/eracun/services/*.conf
+sudo chown -R eracun:eracun /opt/eracun
+sudo chown -R eracun:eracun /var/lib/eracun
+sudo chown -R eracun:eracun /var/log/eracun
+sudo chmod 700 /etc/eracun
 ```
 
-### 4. Deploy Secrets
+### Deploy Service
 
 ```bash
-# Copy encrypted secrets from repository
-sudo cp secrets/email-worker-production.env.enc /etc/eracun/secrets/
+# 1. Copy service code
+sudo cp -r services/digital-signature-service/dist /opt/eracun/services/digital-signature-service/
+sudo cp services/digital-signature-service/package.json /opt/eracun/services/digital-signature-service/
+sudo chown -R eracun:eracun /opt/eracun/services/digital-signature-service
 
-# Set permissions
-sudo chmod 600 /etc/eracun/secrets/*.enc
+# 2. Install dependencies
+cd /opt/eracun/services/digital-signature-service
+sudo -u eracun npm ci --production
 
-# Test decryption (should create /run/eracun/secrets.env)
-sudo /usr/local/bin/decrypt-secrets.sh email-worker
+# 3. Copy systemd unit
+sudo cp deployment/systemd/eracun-digital-signature-service.service /etc/systemd/system/
 
-# Verify decrypted secrets exist
-sudo ls -la /run/eracun/
-sudo cat /run/eracun/secrets.env  # Check (then delete from terminal history)
-```
+# 4. Create environment file
+sudo cp services/digital-signature-service/.env.example /etc/eracun/digital-signature-service.env
+sudo vim /etc/eracun/digital-signature-service.env  # Edit configuration
+sudo chmod 600 /etc/eracun/digital-signature-service.env
 
-### 5. Install systemd Service
-
-```bash
-# Copy service unit
-sudo cp deployment/systemd/eracun-email-worker.service /etc/systemd/system/
-
-# Reload systemd
+# 5. Reload systemd
 sudo systemctl daemon-reload
 
-# Enable service (start on boot)
-sudo systemctl enable eracun-email-worker
+# 6. Enable and start service
+sudo systemctl enable eracun-digital-signature-service
+sudo systemctl start eracun-digital-signature-service
 
-# Start service
-sudo systemctl start eracun-email-worker
-
-# Check status
-sudo systemctl status eracun-email-worker
+# 7. Verify
+sudo systemctl status eracun-digital-signature-service
+sudo journalctl -u eracun-digital-signature-service -f
 ```
 
-### 6. Monitor Service
+## Service Management
 
+### Start/Stop/Restart
 ```bash
-# View logs
-sudo journalctl -u eracun-email-worker -f
-
-# Check for errors
-sudo journalctl -u eracun-email-worker -p err
-
-# View last 100 lines
-sudo journalctl -u eracun-email-worker -n 100
+sudo systemctl start eracun-digital-signature-service
+sudo systemctl stop eracun-digital-signature-service
+sudo systemctl restart eracun-digital-signature-service
+sudo systemctl reload eracun-digital-signature-service  # If supported
 ```
 
----
-
-## Creating a New Service
-
-### 1. Copy Template
-
+### Enable/Disable
 ```bash
-cd deployment/systemd/
-cp eracun-service.template eracun-my-service.service
+# Start on boot
+sudo systemctl enable eracun-digital-signature-service
+
+# Don't start on boot
+sudo systemctl disable eracun-digital-signature-service
 ```
 
-### 2. Customize Service File
-
-Replace placeholders:
-- `{{SERVICE_NAME}}` → `my-service`
-- `{{SERVICE_PORT}}` → `3002` (or actual port)
-- `{{SERVICE_DESCRIPTION}}` → "eRacun My Service Description"
-
-Adjust dependencies:
-```ini
-After=network-online.target postgresql.service
-Wants=postgresql.service
-```
-
-Adjust resource limits:
-```ini
-MemoryMax=2G
-CPUQuota=400%
-```
-
-### 3. Test Service
-
+### Status and Logs
 ```bash
-# Check syntax
-systemd-analyze verify eracun-my-service.service
+# Service status
+sudo systemctl status eracun-digital-signature-service
 
-# Install
-sudo cp eracun-my-service.service /etc/systemd/system/
-sudo systemctl daemon-reload
+# View logs (last 100 lines)
+sudo journalctl -u eracun-digital-signature-service -n 100
 
-# Start (without enabling)
-sudo systemctl start eracun-my-service
+# Follow logs (real-time)
+sudo journalctl -u eracun-digital-signature-service -f
 
-# Check for errors
-sudo systemctl status eracun-my-service
-sudo journalctl -u eracun-my-service
+# Logs since boot
+sudo journalctl -u eracun-digital-signature-service -b
 
-# If working, enable for auto-start
-sudo systemctl enable eracun-my-service
+# Logs for specific time range
+sudo journalctl -u eracun-digital-signature-service --since "2025-11-14 10:00" --until "2025-11-14 11:00"
 ```
 
----
+## Security Analysis
 
-## Common Operations
-
-### Restart Service
-
+### Verify Hardening
 ```bash
-sudo systemctl restart eracun-email-worker
+# Analyze service security score (0-10, higher is better)
+sudo systemd-analyze security eracun-digital-signature-service
+
+# Target score: 8.0+/10
 ```
 
-### Stop Service
-
+### Test Restrictions
 ```bash
-sudo systemctl stop eracun-email-worker
+# Try to write to /usr (should fail)
+sudo systemctl start eracun-digital-signature-service
+# Service should log permission denied
+
+# Check which system calls are blocked
+sudo systemctl show eracun-digital-signature-service | grep SystemCallFilter
 ```
-
-### Disable Service (prevent auto-start on boot)
-
-```bash
-sudo systemctl disable eracun-email-worker
-```
-
-### View Service Status
-
-```bash
-sudo systemctl status eracun-email-worker
-```
-
-### Reload Configuration (without restarting)
-
-**NOTE:** Services must implement SIGHUP handling for this to work.
-
-```bash
-sudo systemctl reload eracun-email-worker
-```
-
-### View Environment Variables
-
-```bash
-sudo systemctl show eracun-email-worker --property=Environment
-```
-
----
 
 ## Troubleshooting
 
 ### Service Won't Start
-
-**Check logs:**
 ```bash
-sudo journalctl -u eracun-email-worker -n 50
+# Check systemd status
+sudo systemctl status eracun-digital-signature-service
+
+# Check logs
+sudo journalctl -u eracun-digital-signature-service -n 100
+
+# Validate unit file syntax
+sudo systemd-analyze verify eracun-digital-signature-service.service
+
+# Check file permissions
+ls -la /opt/eracun/services/digital-signature-service
+ls -la /etc/eracun/digital-signature-service.env
 ```
 
-**Common issues:**
-- Missing configuration file → Check `/etc/eracun/*.conf` exist
-- Secrets decryption failed → Verify age key at `/etc/eracun/.age-key`
-- Permission denied → Check `/opt/eracun/services/email-worker` owned by `eracun:eracun`
-- Port already in use → Check if another service using same port
-
-### Secrets Decryption Fails
-
-**Test manually:**
+### Permission Denied Errors
 ```bash
-sudo /usr/local/bin/decrypt-secrets.sh email-worker
-```
+# Check if path is in ReadWritePaths
+sudo systemctl show eracun-digital-signature-service | grep ReadWritePaths
 
-**Check age public key:**
-```bash
-sudo age-keygen -y /etc/eracun/.age-key
-```
-
-**Verify `.sops.yaml` includes this public key** (in repository `secrets/.sops.yaml`)
-
-### Service Crashes Immediately
-
-**Check for missing dependencies:**
-```bash
-cd /opt/eracun/services/email-worker
-npm install --omit=dev
-```
-
-**Check Node.js version:**
-```bash
-node --version  # Should be 20.x or higher
+# Add path to unit file if needed
+ReadWritePaths=/var/lib/eracun/digital-signature-service /var/log/eracun
 ```
 
 ### High Memory Usage
-
-**Check current usage:**
 ```bash
-systemctl status eracun-email-worker
+# Check memory limit
+sudo systemctl show eracun-digital-signature-service | grep Memory
+
+# Adjust in unit file
+MemoryMax=2G  # Increase limit
+MemoryHigh=1536M
 ```
 
-**Adjust `MemoryMax` in service file:**
-```ini
-MemoryMax=2G
-```
+## Deployment Checklist
 
-**Reload and restart:**
-```bash
-sudo systemctl daemon-reload
-sudo systemctl restart eracun-email-worker
-```
+- [ ] Service code deployed to /opt/eracun/services/<service>/
+- [ ] Dependencies installed (npm ci --production)
+- [ ] Environment file created in /etc/eracun/<service>.env
+- [ ] Environment file permissions set to 600
+- [ ] systemd unit copied to /etc/systemd/system/
+- [ ] systemctl daemon-reload executed
+- [ ] Service enabled with systemctl enable
+- [ ] Service started with systemctl start
+- [ ] Service status verified (systemctl status)
+- [ ] Logs checked (journalctl -u <service> -f)
+- [ ] Health endpoint responding (curl http://localhost:<port>/health)
+- [ ] Metrics endpoint responding (curl http://localhost:<metrics-port>/metrics)
+- [ ] Prometheus scraping service metrics
+- [ ] Security score verified (systemd-analyze security)
+
+## Related Documentation
+
+- **Security Standards:** @docs/SECURITY.md
+- **Deployment Guide:** @docs/DEPLOYMENT_GUIDE.md
+- **SOPS Secrets:** @docs/adr/ADR-002-secrets-management.md
+- **systemd Reference:** https://www.freedesktop.org/software/systemd/man/systemd.exec.html
 
 ---
 
-## Security Best Practices
-
-✅ **DO:**
-- Run services as `eracun` user (not root)
-- Use `ProtectSystem=strict` in service units
-- Restrict file access with `ReadOnlyPaths` and `InaccessiblePaths`
-- Enable `NoNewPrivileges=true`
-- Use `PrivateTmp=true` for process isolation
-- Monitor logs for suspicious activity
-
-❌ **DON'T:**
-- Run services as root
-- Give services write access to `/etc/eracun/`
-- Store plaintext secrets in `/etc/eracun/` (use SOPS encryption)
-- Commit `.age-key` to git
-- Share production age key with developers
-
----
-
-## References
-
-- **ADR-001:** Configuration Management Strategy
-- **ADR-002:** Secrets Management with SOPS + age
-- **systemd Documentation:** https://www.freedesktop.org/software/systemd/man/
-- **systemd Security:** https://www.freedesktop.org/software/systemd/man/systemd.exec.html#Sandboxing
-
----
-
-**Questions?** See `docs/operations/` for detailed guides or open GitHub issue.
+**Last Updated:** 2025-11-14
+**Maintainer:** DevOps Team

@@ -1,153 +1,74 @@
-# Prometheus Configuration for eRacun Platform
-#
-# This configuration scrapes metrics from all eRacun microservices.
-# Each service exposes Prometheus metrics on its dedicated metrics port.
-#
-# Usage:
-#   docker-compose up -d prometheus
-#   Open http://localhost:9090 to access Prometheus UI
-
 global:
-  scrape_interval: 15s      # Scrape targets every 15 seconds
-  evaluation_interval: 15s  # Evaluate rules every 15 seconds
+  scrape_interval: 15s
+  evaluation_interval: 15s
   external_labels:
-    cluster: 'eracun-dev'
-    environment: 'development'
-
-# Alertmanager configuration (optional - uncomment when setting up alerts)
-# alerting:
-#   alertmanagers:
-#     - static_configs:
-#         - targets:
-#           - alertmanager:9093
+    cluster: 'eracun-development'
+    environment: 'local'
 
 # Load rules once and periodically evaluate them
-# rule_files:
-#   - "alerts/*.yml"
+rule_files:
+  - "/etc/prometheus/alerts.yml"
 
-# Scrape configuration
+# Scrape configurations
 scrape_configs:
-  # ============================================================================
-  # Infrastructure Monitoring
-  # ============================================================================
-
-  # Prometheus self-monitoring
+  # Prometheus itself
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
-        labels:
-          service: 'prometheus'
-          layer: 'infrastructure'
 
-  # RabbitMQ metrics
-  - job_name: 'rabbitmq'
+  # Team 3 Services
+  - job_name: 'digital-signature-service'
     static_configs:
-      - targets: ['rabbitmq:15692']  # RabbitMQ Prometheus plugin
+      - targets: ['digital-signature-service:9096']
         labels:
-          service: 'rabbitmq'
-          layer: 'infrastructure'
+          service: 'digital-signature-service'
+          team: 'team-3'
+          priority: 'P0'
 
-  # PostgreSQL metrics (requires postgres_exporter)
-  # - job_name: 'postgres'
-  #   static_configs:
-  #     - targets: ['postgres-exporter:9187']
-  #       labels:
-  #         service: 'postgres'
-  #         layer: 'infrastructure'
-
-  # ============================================================================
-  # eRacun Microservices (Layer 1: Validation)
-  # ============================================================================
-
-  # XSD Validator Service
-  - job_name: 'xsd-validator'
+  - job_name: 'fina-connector'
     static_configs:
-      - targets: ['host.docker.internal:9100']  # When running locally
+      - targets: ['fina-connector:9097']
         labels:
-          service: 'xsd-validator'
-          layer: 'validation'
-          bounded_context: 'validation'
+          service: 'fina-connector'
+          team: 'team-3'
+          priority: 'P0'
 
-  # Schematron Validator Service (future)
-  # - job_name: 'schematron-validator'
-  #   static_configs:
-  #     - targets: ['host.docker.internal:9101']
-  #       labels:
-  #         service: 'schematron-validator'
-  #         layer: 'validation'
+  - job_name: 'archive-service'
+    static_configs:
+      - targets: ['archive-service:9098']
+        labels:
+          service: 'archive-service'
+          team: 'team-3'
+          priority: 'P1'
 
-  # KPD Validator Service (future)
-  # - job_name: 'kpd-validator'
-  #   static_configs:
-  #     - targets: ['host.docker.internal:9102']
-  #       labels:
-  #         service: 'kpd-validator'
-  #         layer: 'validation'
+  - job_name: 'dead-letter-handler'
+    static_configs:
+      - targets: ['dead-letter-handler:9099']
+        labels:
+          service: 'dead-letter-handler'
+          team: 'team-3'
+          priority: 'P1'
 
-  # ============================================================================
-  # eRacun Microservices (Layer 2: Transformation)
-  # ============================================================================
+  - job_name: 'cert-lifecycle-manager'
+    static_configs:
+      - targets: ['cert-lifecycle-manager:9100']
+        labels:
+          service: 'cert-lifecycle-manager'
+          team: 'team-3'
+          priority: 'P0'
 
-  # UBL Transformer Service (future)
-  # - job_name: 'ubl-transformer'
-  #   static_configs:
-  #     - targets: ['host.docker.internal:9200']
-  #       labels:
-  #         service: 'ubl-transformer'
-  #         layer: 'transformation'
+  - job_name: 'porezna-connector'
+    static_configs:
+      - targets: ['porezna-connector:9101']
+        labels:
+          service: 'porezna-connector'
+          team: 'team-3'
+          priority: 'P0'
 
-  # ============================================================================
-  # eRacun Microservices (Layer 3: Integration)
-  # ============================================================================
-
-  # FINA Connector Service (future)
-  # - job_name: 'fina-connector'
-  #   static_configs:
-  #     - targets: ['host.docker.internal:9300']
-  #       labels:
-  #         service: 'fina-connector'
-  #         layer: 'integration'
-
-  # ============================================================================
-  # Health Checks (additional monitoring)
-  # ============================================================================
-
-  # Blackbox exporter for HTTP health endpoints (future)
-  # - job_name: 'blackbox'
-  #   metrics_path: /probe
-  #   params:
-  #     module: [http_2xx]
-  #   static_configs:
-  #     - targets:
-  #       - http://host.docker.internal:8080/health  # xsd-validator
-  #   relabel_configs:
-  #     - source_labels: [__address__]
-  #       target_label: __param_target
-  #     - source_labels: [__param_target]
-  #       target_label: instance
-  #     - target_label: __address__
-  #       replacement: blackbox:9115
-
-# ============================================================================
-# Notes
-# ============================================================================
-#
-# Port Allocation Strategy:
-# - Infrastructure: 9090-9099 (Prometheus, Grafana, Jaeger)
-# - Layer 1 (Validation): 9100-9199
-# - Layer 2 (Transformation): 9200-9299
-# - Layer 3 (Integration): 9300-9399
-# - Layer 4 (Ingestion): 9400-9499
-# - Layer 5 (Application): 9500-9599
-#
-# Health Endpoints:
-# - All services expose /health on port 8080 + service_offset
-# - All services expose /metrics on dedicated Prometheus port
-#
-# Target Discovery:
-# - Development: host.docker.internal (services run locally)
-# - Staging/Production: Kubernetes service discovery or Consul
-#
-# Retention:
-# - Default: 15 days (configurable via --storage.tsdb.retention.time)
-# - Production: 90 days for regulatory compliance
+  - job_name: 'reporting-service'
+    static_configs:
+      - targets: ['reporting-service:9102']
+        labels:
+          service: 'reporting-service'
+          team: 'team-3'
+          priority: 'P1'

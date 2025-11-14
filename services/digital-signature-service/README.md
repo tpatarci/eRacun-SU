@@ -38,6 +38,7 @@ This service implements:
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
 | `/api/v1/sign/ubl` | POST | Sign UBL 2.1 invoice with XMLDSig |
+| `/api/v1/sign/ubl/batch` | POST | **Sign multiple UBL invoices in batch** (high-throughput) |
 | `/api/v1/sign/xml` | POST | Sign generic XML document |
 | `/api/v1/sign/zki` | POST | Generate ZKI code for B2C fiscalization |
 | `/api/v1/verify/ubl` | POST | Verify UBL invoice signature |
@@ -189,9 +190,140 @@ curl -X POST http://localhost:8088/api/v1/verify/ubl \
 
 ---
 
-## 6. FINA Certificate Requirements
+## 6. Batch Signing (High-Throughput Operation)
 
-### 6.1 Certificate Acquisition
+### 6.1 Purpose
+
+**Batch signing** enables high-throughput signature operations required for **1M invoices/hour** workload (278 signatures/second target).
+
+**Benefits:**
+- Parallel processing with concurrency control
+- Automatic error handling (individual failures don't abort entire batch)
+- Throughput metrics for performance monitoring
+- Memory-efficient (prevents exhaustion via p-limit)
+
+### 6.2 API Usage
+
+**Endpoint:** `POST /api/v1/sign/ubl/batch`
+
+**Request:**
+```json
+{
+  "invoices": [
+    "<Invoice>...</Invoice>",
+    "<Invoice>...</Invoice>",
+    ...
+  ],
+  "concurrency": 10,
+  "options": {
+    "signatureAlgorithm": "http://www.w3.org/2001/04/xmldsig-more#rsa-sha256"
+  }
+}
+```
+
+**Parameters:**
+- `invoices` (required): Array of UBL 2.1 invoice XML strings (max 1000)
+- `concurrency` (optional): Max parallel signatures (default: 10, max: 100)
+- `options` (optional): XMLDSig signature options
+
+**Response:**
+```json
+{
+  "total": 100,
+  "successful": 98,
+  "failed": 2,
+  "duration_ms": 3521,
+  "throughput": 27.82,
+  "results": [
+    {
+      "index": 0,
+      "success": true,
+      "signedXml": "<Invoice>...</Invoice>"
+    },
+    {
+      "index": 1,
+      "success": false,
+      "error": "Invalid UBL structure"
+    },
+    ...
+  ]
+}
+```
+
+**Response Fields:**
+- `total`: Total invoices in batch
+- `successful`: Successfully signed invoices
+- `failed`: Failed signature operations
+- `duration_ms`: Total operation duration (milliseconds)
+- `throughput`: Signatures per second
+- `results`: Array of individual results (indexed by original position)
+
+### 6.3 Example
+
+```bash
+curl -X POST http://localhost:8088/api/v1/sign/ubl/batch \
+  -H "Content-Type: application/json" \
+  -d '{
+    "invoices": [
+      "<Invoice xmlns=\"urn:oasis:names:specification:ubl:schema:xsd:Invoice-2\">...</Invoice>",
+      "<Invoice xmlns=\"urn:oasis:names:specification:ubl:schema:xsd:Invoice-2\">...</Invoice>"
+    ],
+    "concurrency": 10
+  }'
+```
+
+### 6.4 Performance Characteristics
+
+**Throughput:**
+- **Target:** 278 signatures/second (1M invoices/hour)
+- **Typical:** 25-50 signatures/second (depends on invoice size, concurrency, CPU)
+- **Max batch size:** 1,000 invoices
+
+**Latency:**
+- Small batch (10 invoices): ~500ms
+- Medium batch (100 invoices): ~3-5 seconds
+- Large batch (1000 invoices): ~30-60 seconds
+
+**Resource Usage:**
+- Memory: Scales linearly with batch size (concurrency controls peak)
+- CPU: Near 100% utilization during batch processing
+- Network: Minimal (local certificate operations)
+
+**Tuning Concurrency:**
+- **CPU-bound:** Increase concurrency up to CPU core count
+- **Memory-bound:** Reduce concurrency to prevent OOM
+- **Recommended:** 10-20 for 8-core CPU, 512MB-1GB RAM
+
+### 6.5 Batch Metrics
+
+**Prometheus Metrics:**
+- `batch_signature_total{status}` - Total batch operations (success/failure)
+- `batch_signature_duration_seconds` - Batch operation duration
+- `batch_signature_size` - Number of invoices per batch
+- `batch_signature_errors_total{error_type}` - Batch errors
+
+**Alerts:**
+```yaml
+# Low throughput alert
+- alert: BatchSigningLowThroughput
+  expr: rate(batch_signature_total{status="success"}[5m]) * avg(batch_signature_size) < 100
+  for: 10m
+  annotations:
+    summary: "Batch signing throughput below 100 signatures/second"
+
+# High failure rate alert
+- alert: BatchSigningHighFailureRate
+  expr: rate(batch_signature_errors_total{error_type="individual_signature_failed"}[5m]) > 0.1
+  for: 5m
+  annotations:
+    summary: "Batch signing failure rate above 10%"
+```
+
+---
+
+## 7. FINA Certificate Requirements
+
+### 7.1 Certificate Acquisition
 
 **Demo Certificate (FREE, 1-year validity):**
 - Portal: https://cms.fina.hr/
@@ -203,7 +335,7 @@ curl -X POST http://localhost:8088/api/v1/verify/ubl \
 - Processing time: 5-10 business days
 - Requires company registration documents
 
-### 6.2 Certificate Storage
+### 7.2 Certificate Storage
 
 **Location:** `/etc/eracun/secrets/certs/`
 
@@ -300,9 +432,13 @@ ZKI Output: a1b2c3d4e5f6789012345678901234ab
 - `certificate_operations_total{operation, status}` - Certificate operations
 - `digital_signature_errors_total{error_type}` - Signature errors
 - `xmldsig_validations_total{result}` - XMLDSig validations
+- `batch_signature_total{status}` - **Batch signature operations**
+- `batch_signature_errors_total{error_type}` - **Batch signature errors**
 
 **Histograms:**
 - `digital_signature_duration_seconds{operation}` - Operation duration
+- `batch_signature_duration_seconds` - **Batch operation duration**
+- `batch_signature_size` - **Invoices per batch**
 
 **Gauges:**
 - `active_certificates_count` - Number of loaded certificates
@@ -342,8 +478,9 @@ ZKI Output: a1b2c3d4e5f6789012345678901234ab
 - Signature verification: <500ms (p95)
 
 **Throughput:**
-- 100+ signatures/second (sustained)
-- 1,000+ ZKI codes/second (sustained)
+- **Single signing:** 100+ signatures/second (sustained)
+- **Batch signing:** 278+ signatures/second (target for 1M invoices/hour)
+- **ZKI generation:** 1,000+ ZKI codes/second (sustained)
 
 **Resource Limits:**
 - Memory: 512MB (burst to 1GB)

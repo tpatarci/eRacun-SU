@@ -1,108 +1,41 @@
-# eRacun Dead Letter Handler Service
-#
-# Processes failed messages from RabbitMQ dead letter queues with retry logic.
-# Provides manual retry interface and poison message detection.
-#
-# INSTALLATION:
-# sudo cp eracun-dead-letter-handler.service /etc/systemd/system/
-# sudo systemctl daemon-reload
-# sudo systemctl enable eracun-dead-letter-handler
-# sudo systemctl start eracun-dead-letter-handler
-
 [Unit]
-Description=eRacun Dead Letter Queue Handler
-Documentation=https://github.com/eracun/eRacun-development
+Description=eRacun Dead Letter Handler
+Documentation=https://github.com/tpatarci/eRacun-development
 After=network-online.target postgresql.service rabbitmq-server.service
-Wants=network-online.target postgresql.service rabbitmq-server.service
+Wants=network-online.target
+Requires=postgresql.service rabbitmq-server.service
 
 [Service]
 Type=simple
 User=eracun
 Group=eracun
 WorkingDirectory=/opt/eracun/services/dead-letter-handler
-
-# Environment configuration
-EnvironmentFile=/etc/eracun/platform.conf
-EnvironmentFile=/etc/eracun/environment.conf
-EnvironmentFile=/etc/eracun/services/dead-letter-handler.conf
-EnvironmentFile=/run/eracun/secrets.env
-
-# Decrypt secrets before starting
-ExecStartPre=/usr/local/bin/decrypt-secrets.sh dead-letter-handler
-
-# Start service
-ExecStart=/usr/local/bin/node dist/index.js
-
-# Restart policy (critical for reliability)
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/eracun/dead-letter-handler.env
+ExecStartPre=/usr/local/bin/sops-decrypt.sh dead-letter-handler
+ExecStart=/usr/bin/node dist/index.js
+ExecStop=/bin/kill -SIGTERM $MAINPID
 Restart=on-failure
 RestartSec=10s
-StartLimitBurst=10
-StartLimitIntervalSec=300s
-
-# Resource limits
 MemoryMax=512M
-MemoryHigh=400M
 CPUQuota=100%
-TasksMax=256
-
-# ============================================================================
-# Systemd Hardening
-# ============================================================================
-
-# Filesystem Protection
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/var/log/eracun/dead-letter-handler
-ReadOnlyPaths=/etc/eracun/secrets
-
-# Prevent Privilege Escalation
+ReadWritePaths=/var/lib/eracun/dead-letter-handler /var/log/eracun
 NoNewPrivileges=true
-
-# Prevent Access to Sensitive Files
-InaccessiblePaths=/etc/eracun/.age-key /root /home
-
-# Namespace Isolation
-PrivateDevices=true
+CapabilityBoundingSet=
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @debug @mount @swap @reboot @module @raw-io
+RestrictAddressFamilies=AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
 ProtectKernelTunables=true
 ProtectKernelModules=true
-ProtectKernelLogs=true
-ProtectControlGroups=true
-ProtectClock=true
-ProtectHostname=true
-
-# Capability Restrictions
-CapabilityBoundingSet=
-AmbientCapabilities=
-
-# System Call Filtering
-SystemCallFilter=@system-service
-SystemCallFilter=~@privileged @resources @obsolete @debug
-SystemCallErrorNumber=EPERM
-
-# Restrict Address Families
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
-
-# Restrict Namespaces
-RestrictNamespaces=true
-
-# Lock Personality
 LockPersonality=true
-
-# Memory Deny Write Execute
-MemoryDenyWriteExecute=true
-
-# Restrict Realtime
 RestrictRealtime=true
-
-# Remove IPC
-RemoveIPC=true
-
-# Network Access (internal only)
-# IPAddressDeny=any
-# IPAddressAllow=localhost 10.0.0.0/8
-
-# Logging
+InaccessiblePaths=/etc/eracun/.age-key
+UMask=0077
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=eracun-dead-letter-handler

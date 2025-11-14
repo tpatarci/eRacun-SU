@@ -1,0 +1,115 @@
+# eRacun Pre-Commit Hooks Configuration
+# Ensures code quality and prevents common mistakes
+
+repos:
+  # General file checks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: trailing-whitespace
+        args: [--markdown-linebreak-ext=md]
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--unsafe]  # Allow custom YAML tags
+      - id: check-json
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: detect-private-key
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+      - id: no-commit-to-branch
+        args: ['--branch', 'main', '--branch', 'master']
+
+  # Secrets detection
+  - repo: https://github.com/Yelp/detect-secrets
+    rev: v1.4.0
+    hooks:
+      - id: detect-secrets
+        args: ['--baseline', '.secrets.baseline']
+        exclude: package-lock.json
+
+  # TypeScript/JavaScript linting
+  - repo: https://github.com/pre-commit/mirrors-eslint
+    rev: v8.56.0
+    hooks:
+      - id: eslint
+        files: \.(ts|tsx|js|jsx)$
+        types: [file]
+        args: ['--fix', '--max-warnings=0']
+        additional_dependencies:
+          - eslint@8.54.0
+          - '@typescript-eslint/eslint-plugin@6.13.0'
+          - '@typescript-eslint/parser@6.13.0'
+
+  # Shell script linting
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.9.0.6
+    hooks:
+      - id: shellcheck
+        args: ['-x', '--severity=warning']
+
+  # Dockerfile linting
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.0
+    hooks:
+      - id: hadolint-docker
+        args: ['--ignore', 'DL3008', '--ignore', 'DL3009']
+
+  # YAML linting
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.33.0
+    hooks:
+      - id: yamllint
+        args: ['-d', '{extends: default, rules: {line-length: {max: 120}, document-start: disable}}']
+
+  # Markdown linting
+  - repo: https://github.com/igorshubovych/markdownlint-cli
+    rev: v0.38.0
+    hooks:
+      - id: markdownlint
+        args: ['--fix']
+
+  # Environment file validation
+  - repo: local
+    hooks:
+      - id: check-env-example
+        name: Check .env.example files exist
+        entry: bash -c 'for f in services/*/; do if [ ! -f "$f/.env.example" ]; then echo "Missing .env.example in $f"; exit 1; fi; done'
+        language: system
+        pass_filenames: false
+
+      - id: check-secrets-not-committed
+        name: Check no .env or secrets committed
+        entry: bash -c 'if git diff --cached --name-only | grep -E "\\.env$|\\.(p12|key|pem)$" ; then echo "ERROR: Attempting to commit secrets!"; exit 1; fi'
+        language: system
+        pass_filenames: false
+
+      - id: check-architecture-compliance
+        name: Check architecture compliance
+        entry: bash scripts/check-architecture-compliance.sh
+        language: system
+        pass_filenames: false
+        files: services/.*\.ts$
+
+      - id: check-service-size
+        name: Check service size (<2500 LOC)
+        entry: bash -c 'for f in services/*/src; do loc=$(find "$f" -name "*.ts" -not -path "*/node_modules/*" | xargs wc -l 2>/dev/null | tail -1 | awk "{print \$1}"); if [ "$loc" -gt 2500 ]; then echo "Service $(dirname $f) exceeds 2500 LOC: $loc"; exit 1; fi; done'
+        language: system
+        pass_filenames: false
+
+  # TypeScript type checking (only on changed files)
+  - repo: local
+    hooks:
+      - id: typescript-check
+        name: TypeScript type check
+        entry: bash -c 'cd services && for service in */; do if [ -f "$service/tsconfig.json" ]; then cd "$service" && npm run type-check && cd ..; fi; done'
+        language: system
+        files: \.ts$
+        pass_filenames: false
+
+# Global settings
+default_language_version:
+  node: system
+fail_fast: false  # Run all hooks even if one fails

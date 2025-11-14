@@ -1,19 +1,8 @@
-# eRacun Digital Signature Service
-#
-# XMLDSig enveloped signature generation and verification for invoices.
-# High-throughput batch signing with RSA-SHA256 algorithm.
-#
-# INSTALLATION:
-# sudo cp eracun-digital-signature-service.service /etc/systemd/system/
-# sudo systemctl daemon-reload
-# sudo systemctl enable eracun-digital-signature-service
-# sudo systemctl start eracun-digital-signature-service
-
 [Unit]
-Description=eRacun Digital Signature Service (XMLDSig)
-Documentation=https://github.com/eracun/eRacun-development
-After=network-online.target rabbitmq-server.service eracun-cert-lifecycle-manager.service
-Wants=network-online.target rabbitmq-server.service
+Description=eRacun Digital Signature Service
+Documentation=https://github.com/tpatarci/eRacun-development
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
@@ -21,86 +10,73 @@ User=eracun
 Group=eracun
 WorkingDirectory=/opt/eracun/services/digital-signature-service
 
-# Environment configuration
-EnvironmentFile=/etc/eracun/platform.conf
-EnvironmentFile=/etc/eracun/environment.conf
-EnvironmentFile=/etc/eracun/services/digital-signature-service.conf
-EnvironmentFile=/run/eracun/secrets.env
+# Environment
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/eracun/digital-signature-service.env
 
-# Decrypt secrets before starting
-ExecStartPre=/usr/local/bin/decrypt-secrets.sh digital-signature-service
+# Execution
+ExecStartPre=/usr/local/bin/sops-decrypt.sh digital-signature-service
+ExecStart=/usr/bin/node dist/index.js
+ExecStop=/bin/kill -SIGTERM $MAINPID
 
-# Start service
-ExecStart=/usr/local/bin/node dist/index.js
-
-# Restart policy (critical service)
+# Restart policy
 Restart=on-failure
-RestartSec=5s
-StartLimitBurst=10
-StartLimitIntervalSec=300s
+RestartSec=10s
+StartLimitInterval=300s
+StartLimitBurst=5
 
-# Resource limits (higher CPU for crypto operations)
-MemoryMax=2G
-MemoryHigh=1600M
-CPUQuota=400%
-TasksMax=1024
+# Resource limits
+MemoryMax=1G
+MemoryHigh=768M
+CPUQuota=200%
+TasksMax=512
 
-# ============================================================================
-# Systemd Hardening
-# ============================================================================
-
-# Filesystem Protection
+# Security Hardening (systemd security features)
+# Filesystem protection
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/var/log/eracun/digital-signature-service /var/lib/eracun/certs
-ReadOnlyPaths=/etc/eracun/secrets
+ReadWritePaths=/var/lib/eracun/digital-signature-service /var/log/eracun
+ReadOnlyPaths=/etc/eracun/secrets/certs
 
-# Prevent Privilege Escalation
+# Privilege restrictions
 NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+SecureBits=keep-caps-locked noroot noroot-locked no-setuid-fixup no-setuid-fixup-locked
 
-# Prevent Access to Sensitive Files
-InaccessiblePaths=/etc/eracun/.age-key /root /home
+# System call filtering
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources @obsolete @debug @mount @swap @reboot @module @raw-io
+SystemCallErrorNumber=EPERM
+SystemCallArchitectures=native
 
-# Namespace Isolation
-PrivateDevices=true
+# Network restrictions
+RestrictAddressFamilies=AF_INET AF_INET6
+IPAddressDeny=any
+IPAddressAllow=localhost
+IPAddressAllow=10.0.0.0/8
+IPAddressAllow=172.16.0.0/12
+IPAddressAllow=192.168.0.0/16
+
+# Kernel protection
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectKernelLogs=true
 ProtectControlGroups=true
 ProtectClock=true
-ProtectHostname=true
 
-# Capability Restrictions
-CapabilityBoundingSet=
-AmbientCapabilities=
-
-# System Call Filtering
-SystemCallFilter=@system-service
-SystemCallFilter=~@privileged @resources @obsolete @debug
-SystemCallErrorNumber=EPERM
-
-# Restrict Address Families
-RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
-
-# Restrict Namespaces
-RestrictNamespaces=true
-
-# Lock Personality
+# Process restrictions
 LockPersonality=true
-
-# Memory Deny Write Execute (disable for crypto operations if needed)
-# MemoryDenyWriteExecute=true
-
-# Restrict Realtime
 RestrictRealtime=true
-
-# Remove IPC
+RestrictSUIDSGID=true
+RestrictNamespaces=true
 RemoveIPC=true
+PrivateMounts=true
 
-# Network Access (internal only)
-# IPAddressDeny=any
-# IPAddressAllow=localhost 10.0.0.0/8
+# Secrets protection
+InaccessiblePaths=/etc/eracun/.age-key
+UMask=0077
 
 # Logging
 StandardOutput=journal
