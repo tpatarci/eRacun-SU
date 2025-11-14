@@ -1,0 +1,35 @@
+{
+  "name": "@eracun/team2-mocks",
+  "version": "1.0.0",
+  "description": "Mock implementations for Team 2 services (OCR, AI, Email, SFTP)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "jest",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "mocks",
+    "testing",
+    "ocr",
+    "ai",
+    "email",
+    "sftp"
+  ],
+  "author": "eRacun Team 2",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "jest": "^29.0.0",
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "@faker-js/faker": "^8.0.0",
+    "pino": "^8.0.0"
+  }
+}
