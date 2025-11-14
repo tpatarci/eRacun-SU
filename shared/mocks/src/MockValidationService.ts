@@ -3,7 +3,7 @@
  * Simulates XSD, Schematron, KPD validation with realistic behavior
  */
 
-import { injectable } from 'injectable';
+import { injectable } from 'inversify';
 import {
   IValidationService,
   IXSDValidatorService,

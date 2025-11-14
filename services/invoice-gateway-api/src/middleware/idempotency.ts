@@ -44,7 +44,7 @@ export function idempotencyMiddleware(container: Container) {
 
     // Idempotency key is required for POST requests
     if (!idempotencyKey) {
-      return res.status(400).json({
+      res.status(400).json({
         error: {
           code: 'MISSING_IDEMPOTENCY_KEY',
           message: 'X-Idempotency-Key header is required for POST requests',
@@ -52,12 +52,13 @@ export function idempotencyMiddleware(container: Container) {
           correlationId: req.requestId,
         },
       });
+      return;
     }
 
     // Validate idempotency key format (should be UUID)
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(idempotencyKey)) {
-      return res.status(400).json({
+      res.status(400).json({
         error: {
           code: 'INVALID_IDEMPOTENCY_KEY',
           message: 'X-Idempotency-Key must be a valid UUID',
@@ -65,13 +66,15 @@ export function idempotencyMiddleware(container: Container) {
           correlationId: req.requestId,
         },
       });
+      return;
     }
 
     // Check if we've seen this idempotency key before
     const cached = idempotencyStore.get(idempotencyKey);
     if (cached) {
       // Return cached response
-      return res.status(cached.statusCode).json(cached.response);
+      res.status(cached.statusCode).json(cached.response);
+      return;
     }
 
     // Attach idempotency key to request

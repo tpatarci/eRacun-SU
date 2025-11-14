@@ -86,13 +86,10 @@ export class UBLTransformer {
   private async transformUBL21(xml: string): Promise<string> {
     logger.debug('Processing UBL 2.1 XML');
 
-    // Check if Croatian CIUS extensions are present
-    if (!this.hasCroatianCIUS(xml)) {
-      logger.debug('Adding Croatian CIUS extensions');
-      return this.addCroatianCIUS(xml);
-    }
-
-    return xml;
+    // Always run addCroatianCIUS to ensure both CustomizationID and ProfileID are present
+    // The method has internal checks to only add missing elements
+    logger.debug('Ensuring Croatian CIUS extensions');
+    return this.addCroatianCIUS(xml);
   }
 
   /**
@@ -163,9 +160,9 @@ export class UBLTransformer {
     if (!xml.includes('ProfileID')) {
       const profileId = '<cbc:ProfileID>urn:fina.hr:profile:01</cbc:ProfileID>';
 
-      // Insert after CustomizationID
+      // Insert after CustomizationID (use [\s\S] to match across lines)
       xml = xml.replace(
-        /<cbc:CustomizationID>.*?<\/cbc:CustomizationID>/,
+        /<cbc:CustomizationID>[\s\S]*?<\/cbc:CustomizationID>/,
         (match) => `${match}\n  ${profileId}`
       );
     }
@@ -182,12 +179,15 @@ export class UBLTransformer {
       throw new Error('Transformation produced empty XML');
     }
 
-    // Check for required UBL elements
-    const requiredElements = ['Invoice', 'cbc:ID', 'cbc:IssueDate'];
-    for (const element of requiredElements) {
-      if (!xml.includes(element)) {
-        throw new Error(`Missing required element: ${element}`);
-      }
+    // Check for required UBL elements with proper tag matching
+    if (!xml.match(/<Invoice[\s>]/)) {
+      throw new Error('Missing required element: Invoice');
+    }
+    if (!xml.includes('<cbc:ID>')) {
+      throw new Error('Missing required element: cbc:ID');
+    }
+    if (!xml.includes('<cbc:IssueDate>')) {
+      throw new Error('Missing required element: cbc:IssueDate');
     }
 
     // Check for Croatian CIUS

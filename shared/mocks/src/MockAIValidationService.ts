@@ -3,7 +3,7 @@
  * Simulates anomaly detection and cross-validation
  */
 
-import { injectable } from 'injectable';
+import { injectable } from 'inversify';
 import {
   IAIValidationService,
   AnomalyDetectionResult,

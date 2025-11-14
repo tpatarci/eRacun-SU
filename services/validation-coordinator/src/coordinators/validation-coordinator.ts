@@ -78,42 +78,44 @@ export class ValidationCoordinator {
       }
 
       // Layer 5: AI validation (optional, runs after core validation)
-      let aiResult: LayerResult = {
-        passed: true,
-        executionTime: 0,
-        details: { skipped: true },
-      };
+      let aiResult: LayerResult | null = null;
 
       if (enableAIValidation) {
         aiResult = await this.runAIValidation(xml, invoiceId);
       }
 
       // Layer 6: Consensus mechanism (majority voting)
-      const consensusResult = this.runConsensus(
-        [xsdResult, schematronResult, kpdResult, semanticResult, aiResult],
-        consensusThreshold
-      );
+      // Only include AI result if it was actually run
+      const consensusLayers = [xsdResult, schematronResult, kpdResult, semanticResult];
+      if (aiResult !== null) {
+        consensusLayers.push(aiResult);
+      }
+      const consensusResult = this.runConsensus(consensusLayers, consensusThreshold);
 
       // Aggregate errors, warnings, and suggestions
+      // Use a skipped placeholder for AI if not run
+      const aiResultForAggregation = aiResult || {
+        passed: true,
+        executionTime: 0,
+        details: { skipped: true },
+      };
       const { errors, warnings, suggestions } = this.errorAggregator.aggregate({
         xsd: xsdResult,
         schematron: schematronResult,
         kpd: kpdResult,
         semantic: semanticResult,
-        ai: aiResult,
+        ai: aiResultForAggregation,
       });
 
       // Determine overall validity
       const valid = xsdResult.passed && schematronResult.passed && consensusResult.passed;
 
-      // Calculate confidence score
-      const confidence = this.calculateConfidence([
-        xsdResult,
-        schematronResult,
-        kpdResult,
-        semanticResult,
-        aiResult,
-      ]);
+      // Calculate confidence score - only include actually run layers
+      const confidenceLayers = [xsdResult, schematronResult, kpdResult, semanticResult];
+      if (aiResult !== null) {
+        confidenceLayers.push(aiResult);
+      }
+      const confidence = this.calculateConfidence(confidenceLayers);
 
       const totalTime = Date.now() - startTime;
 
@@ -128,7 +130,7 @@ export class ValidationCoordinator {
             schematron: schematronResult.passed,
             kpd: kpdResult.passed,
             semantic: semanticResult.passed,
-            ai: aiResult.passed,
+            ai: aiResultForAggregation.passed,
             consensus: consensusResult.passed,
           },
         },
@@ -145,7 +147,7 @@ export class ValidationCoordinator {
           schematron: schematronResult,
           kpd: kpdResult,
           semantic: semanticResult,
-          ai: aiResult,
+          ai: aiResultForAggregation,
           consensus: consensusResult,
         },
         errors,

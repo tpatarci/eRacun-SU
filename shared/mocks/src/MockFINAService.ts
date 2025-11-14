@@ -3,7 +3,7 @@
  * Simulates Croatian Tax Authority submission
  */
 
-import { injectable } from 'injectable';
+import { injectable } from 'inversify';
 import {
   IFINAService,
   IPoreznaService,
