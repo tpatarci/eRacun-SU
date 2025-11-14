@@ -35,6 +35,32 @@ Build robust document ingestion capabilities supporting multiple input channels 
 **Purpose:** Extract and process email/archive attachments
 **Priority:** P1 - Required for complete processing
 
+## Blockers & Independent Execution Plan
+
+The platform currently has several open PENDING items. None of them should pause Team 2. Use the following guidance to keep delivering while the owning teams resolve their action items.
+
+1. **PENDING-006 – Architecture Compliance Remediation (Team Platform)**
+   - **Impact on Team 2:** We must not add new direct HTTP calls between services while Platform replaces them with message bus patterns.
+   - **Workaround:** Continue building ingestion pipelines against the existing RabbitMQ/Kafka interfaces. For any place where a synchronous call feels required, define an explicit request/response contract under `shared/messaging/ingestion` and rely on the mock bus adapter until ADR-005 lands.
+   - **Action:** Document all produced/consumed events in each service README so the Platform team can migrate them without code archaeology.
+
+2. **PENDING-003 – Service Documentation Gap (file-classifier, pdf-parser)**
+   - **Impact on Team 2:** We own file-classifier. Lack of README blocks onboarding but not coding.
+   - **Workaround:** Proceed with implementation but immediately add `services/file-classifier/README.md` using `TEMPLATE_CLAUDE.md §2.2`. Include API samples for both REST ingestion and message-driven usage so other teams can start stubbing against us even before integration.
+   - **Action:** QA engineer to pair with backend engineer on README + runbook by end of Week 1 to close the pending item without waiting for cross-team help.
+
+3. **PENDING-002 – Test Execution Verification (xsd-validator)**
+   - **Impact on Team 2:** Not blocking, but it delays staging deployments that we depend on for end-to-end verification.
+   - **Workaround:** Maintain our own nightly pipelines (GitHub Actions workflow `team2-ingestion-nightly.yml`) executing unit + integration + load tests using mocks so progress is measurable without staging.
+   - **Action:** QA to publish the latest coverage + performance numbers in `docs/status/team2-ingestion.md` after every nightly run.
+
+4. **PENDING-005 – Property-Based Testing Coverage**
+   - **Impact on Team 2:** Applies to every validator we own.
+   - **Workaround:** Adopt `fast-check` suites immediately; do not wait for central guidance. Reuse the `InvoiceBuilder` helper shown below and add generators for MIME detection, OCR confidence, and risk scoring. This keeps us compliant even before the shared testing utilities are finalized.
+   - **Action:** Block merges that do not include property-based tests for new validation rules.
+
+> **Reminder:** If new blockers arise, log them in `docs/pending/` but still ship mocks/stubs wherever possible. Production integrations should be the *last* step, not a prerequisite.
+
 ---
 
 ## External Dependencies & Mocking Strategy
@@ -774,7 +800,7 @@ function generateMockEmail() {
 
 ---
 
-**Document Version:** 1.0.0
+**Document Version:** 1.1.0
 **Created:** 2025-11-14
 **Owner:** Team 2 Lead
 **Review:** Daily standup, weekly retrospective
