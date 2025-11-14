@@ -5,6 +5,11 @@
     "lib": ["ES2022"],
     "outDir": "./dist",
     "rootDir": "./src",
+    "baseUrl": "./",
+    "paths": {
+      "@eracun/test-fixtures": ["../../shared/test-fixtures/src"],
+      "@eracun/test-fixtures/*": ["../../shared/test-fixtures/src/*"]
+    },
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
