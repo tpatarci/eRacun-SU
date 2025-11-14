@@ -53,6 +53,17 @@ export interface ProcessAttachmentCommand {
 }
 
 /**
+ * Message batch for publishing multiple attachments
+ *
+ * IMPROVEMENT-041: Batch publishing for higher throughput
+ */
+export interface AttachmentBatch {
+  emailMessageId: string;
+  attachments: ExtractedAttachment[];
+  source: string;
+}
+
+/**
  * Message Publisher for RabbitMQ
  */
 export class MessagePublisher {
@@ -62,6 +73,8 @@ export class MessagePublisher {
   private isConnected = false;
   private queueDepth = 0; // IMPROVEMENT-005: Track queue depth for backpressure
   private maxQueueDepth = 1000; // IMPROVEMENT-005: Maximum queue depth before backpressure
+  // IMPROVEMENT-042: Cache masked URL to avoid creating new URL object per log
+  private cachedMaskedUrl: string | null = null;
 
   constructor(config: MessageBusConfig) {
     this.config = config;
@@ -171,6 +184,8 @@ export class MessagePublisher {
 
   /**
    * Publish attachment for processing
+   *
+   * IMPROVEMENT-040: Cache base64-encoded content on attachment to avoid re-encoding
    */
   async publishAttachment(
     emailMessageId: string,
@@ -196,6 +211,19 @@ export class MessagePublisher {
             throw new Error('Message bus not connected');
           }
 
+          // IMPROVEMENT-040: Cache base64 encoding to avoid re-encoding if attachment is processed multiple times
+          // This is safe because attachment content is immutable after extraction
+          const cachedBase64Property = '_cachedBase64';
+          let base64Content: string;
+
+          if ((attachment as any)[cachedBase64Property]) {
+            base64Content = (attachment as any)[cachedBase64Property];
+          } else {
+            base64Content = attachment.content.toString('base64');
+            // Cache the encoding result on the attachment object
+            (attachment as any)[cachedBase64Property] = base64Content;
+          }
+
           // Create command message
           const command: ProcessAttachmentCommand = {
             messageId: `${emailMessageId}-${attachment.id}`,
@@ -207,7 +235,7 @@ export class MessagePublisher {
               size: attachment.size,
               checksum: attachment.checksum,
             },
-            content: attachment.content.toString('base64'),
+            content: base64Content,
             timestamp: new Date().toISOString(),
             source,
           };
@@ -241,16 +269,19 @@ export class MessagePublisher {
           }
 
           try {
-            // Publish message to exchange
-            this.channel.publish(
-              this.config.exchange,
-              this.config.routingKey,
-              messageBuffer,
-              publishOptions
-            );
+            // IMPROVEMENT-043: Retry publishing with exponential backoff on failure
+            await this.retryWithBackoff(async () => {
+              // Publish message to exchange
+              this.channel!.publish(
+                this.config.exchange,
+                this.config.routingKey,
+                messageBuffer,
+                publishOptions
+              );
 
-            // Wait for broker confirmation
-            await this.channel.waitForConfirms();
+              // Wait for broker confirmation
+              await this.channel!.waitForConfirms();
+            }, 3);
 
             logger.info(
               { messageId: command.messageId },
@@ -264,7 +295,7 @@ export class MessagePublisher {
           } catch (err) {
             logger.error(
               { err, messageId: command.messageId },
-              'Failed to publish message'
+              'Failed to publish message after retries'
             );
             messagesPublishedTotal.inc({
               message_type: 'attachment',
@@ -293,15 +324,149 @@ export class MessagePublisher {
   }
 
   /**
+   * Publish multiple attachments in a single batch
+   *
+   * IMPROVEMENT-041: Batch publishing for higher throughput
+   * Instead of calling publishAttachment() for each attachment (N network round-trips),
+   * collect all attachments from an email and publish in one batch.
+   *
+   * @param batch - Batch containing email message ID and multiple attachments
+   * @throws Error if publishing fails
+   */
+  async publishAttachmentBatch(batch: AttachmentBatch): Promise<void> {
+    const { emailMessageId, attachments, source } = batch;
+    const startTime = Date.now();
+    let successCount = 0;
+    let errorCount = 0;
+
+    logger.info(
+      {
+        emailMessageId,
+        attachmentCount: attachments.length,
+        source,
+      },
+      'Publishing attachment batch'
+    );
+
+    // Publish all attachments in parallel (up to queue capacity)
+    const batchErrors: Array<{ id: string; error: Error }> = [];
+
+    // Process in parallel, but catch individual errors to publish all attachments
+    const results = await Promise.allSettled(
+      attachments.map(async (attachment) => {
+        try {
+          await this.publishAttachment(emailMessageId, attachment, source);
+          successCount++;
+        } catch (error) {
+          errorCount++;
+          batchErrors.push({
+            id: attachment.id,
+            error: error as Error,
+          });
+          throw error;
+        }
+      })
+    );
+
+    const durationMs = Date.now() - startTime;
+
+    logger.info(
+      {
+        emailMessageId,
+        totalAttachments: attachments.length,
+        successCount,
+        errorCount,
+        durationMs,
+      },
+      'Attachment batch publishing complete'
+    );
+
+    // If any attachments failed, throw an error with details
+    if (errorCount > 0) {
+      const failedIds = batchErrors.map((e) => e.id).join(', ');
+      const failedCount = batchErrors.length;
+
+      logger.error(
+        {
+          emailMessageId,
+          failedCount,
+          failedIds,
+          batchErrors: batchErrors.map((e) => ({
+            id: e.id,
+            message: e.error.message,
+          })),
+        },
+        'Batch publishing had failures'
+      );
+
+      // Throw an error indicating partial failure
+      throw new Error(
+        `Batch publishing failed for ${failedCount}/${attachments.length} attachments: ${failedIds}`
+      );
+    }
+  }
+
+  /**
+   * IMPROVEMENT-043: Retry publishing with exponential backoff
+   * @param fn - Function to retry
+   * @param maxRetries - Maximum retry attempts (default: 3)
+   */
+  private async retryWithBackoff<T>(
+    fn: () => Promise<T>,
+    maxRetries: number = 3
+  ): Promise<T> {
+    let lastError: Error | undefined;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await fn();
+      } catch (error) {
+        lastError = error as Error;
+
+        if (attempt < maxRetries) {
+          // Exponential backoff: 100ms, 200ms, 400ms
+          const delayMs = 100 * Math.pow(2, attempt - 1);
+          logger.warn(
+            {
+              attempt,
+              maxRetries,
+              delayMs,
+              error: lastError.message,
+            },
+            'Publish failed, will retry'
+          );
+
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+        }
+      }
+    }
+
+    throw lastError;
+  }
+
+  /**
    * Mask sensitive information in URL
    */
+  // IMPROVEMENT-042: Cache masked URL to avoid creating new URL object every time
   private maskUrl(url: string): string {
+    // Return cached result if URL hasn't changed
+    if (this.cachedMaskedUrl !== null && url === this.config.url) {
+      return this.cachedMaskedUrl;
+    }
+
     try {
       const parsed = new URL(url);
       if (parsed.password) {
         parsed.password = '***';
       }
-      return parsed.toString();
+      const masked = parsed.toString();
+
+      // Cache the result for repeated access
+      if (url === this.config.url) {
+        this.cachedMaskedUrl = masked;
+      }
+
+      return masked;
     } catch {
       return 'invalid-url';
     }

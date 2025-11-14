@@ -243,6 +243,34 @@ export class OfflineQueueManager {
   }
 
   /**
+   * IMPROVEMENT-026: Mark multiple entries as processing in a single query
+   * Prevents N+1 query problem when processing batches
+   *
+   * @param ids - Array of queue entry IDs
+   */
+  async batchMarkProcessing(ids: string[]): Promise<void> {
+    if (ids.length === 0) {
+      return;
+    }
+
+    try {
+      // Use ANY for array matching in WHERE clause
+      await this.config.pool.query(
+        `UPDATE offline_queue
+         SET status = 'processing',
+             last_retry_at = NOW()
+         WHERE id = ANY($1)`,
+        [ids]
+      );
+
+      logger.debug({ count: ids.length }, 'Marked offline queue entries as processing');
+    } catch (error) {
+      logger.error({ count: ids.length, error }, 'Failed to mark entries as processing');
+      throw error;
+    }
+  }
+
+  /**
    * Remove successfully processed entry
    *
    * @param id - Queue entry ID
@@ -267,6 +295,47 @@ export class OfflineQueueManager {
       span.end();
 
       logger.error({ id, error }, 'Failed to remove entry from offline queue');
+      throw error;
+    }
+  }
+
+  /**
+   * IMPROVEMENT-026: Remove multiple successfully processed entries in a single query
+   * Prevents N+1 query problem when cleaning up processed batches
+   *
+   * @param ids - Array of queue entry IDs
+   */
+  async batchRemove(ids: string[]): Promise<void> {
+    const span = createSpan('batch_remove_offline_entries', {
+      count: ids.length,
+    });
+
+    if (ids.length === 0) {
+      endSpanSuccess(span);
+      return;
+    }
+
+    try {
+      // Use ANY for array matching in WHERE clause
+      const result = await this.config.pool.query(
+        `DELETE FROM offline_queue WHERE id = ANY($1)`,
+        [ids]
+      );
+
+      logger.info({
+        count: ids.length,
+        deleted: result.rowCount,
+      }, 'Removed entries from offline queue');
+
+      // Update queue depth metric
+      await this.updateMetrics();
+
+      endSpanSuccess(span);
+    } catch (error) {
+      setSpanError(span, error as Error);
+      span.end();
+
+      logger.error({ count: ids.length, error }, 'Failed to remove entries from offline queue');
       throw error;
     }
   }
@@ -309,6 +378,7 @@ export class OfflineQueueManager {
   /**
    * Get queue statistics
    *
+   * IMPROVEMENT-044: Safe array access with bounds checking
    * @returns Queue stats
    */
   async getStats(): Promise<{
@@ -327,12 +397,22 @@ export class OfflineQueueManager {
         FROM offline_queue
       `);
 
-      const row = result.rows[0];
+      // IMPROVEMENT-044: Check array has elements before accessing
+      const row = result.rows?.[0];
+      if (!row) {
+        logger.warn('No rows returned from offline queue stats query');
+        return {
+          pending: 0,
+          processing: 0,
+          failed: 0,
+          oldestEntryAge: null,
+        };
+      }
 
       return {
-        pending: parseInt(row.pending) || 0,
-        processing: parseInt(row.processing) || 0,
-        failed: parseInt(row.failed) || 0,
+        pending: parseInt(row.pending || 0) || 0,
+        processing: parseInt(row.processing || 0) || 0,
+        failed: parseInt(row.failed || 0) || 0,
         oldestEntryAge: row.oldest_age ? parseFloat(row.oldest_age) : null,
       };
     } catch (error) {
