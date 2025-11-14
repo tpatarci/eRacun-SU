@@ -1,5 +1,6 @@
 import { CertificateInfo } from './cert-parser';
 import { logger, createSpan, setSpanError, certificateParseDuration } from './observability';
+import { getRevocationChecker, RevocationCheckResult } from './revocation-check.js';
 
 /**
  * Validation result with errors and warnings
@@ -8,6 +9,7 @@ export interface ValidationResult {
   valid: boolean;
   errors: string[];
   warnings: string[];
+  revocationStatus?: RevocationCheckResult;
 }
 
 /**
@@ -136,6 +138,46 @@ export async function validateCertificate(
       );
     }
 
+    // 10. Check certificate revocation status (CRL/OCSP)
+    let revocationStatus: RevocationCheckResult | undefined;
+    try {
+      const revocationChecker = getRevocationChecker();
+      revocationStatus = await revocationChecker.checkRevocation(
+        cert.serialNumber,
+        cert.issuer
+      );
+
+      if (revocationStatus.revoked) {
+        errors.push(
+          `Certificate has been revoked (reason: ${revocationStatus.reason || 'unspecified'}, ` +
+            `revoked at: ${revocationStatus.revokedAt?.toISOString() || 'unknown'})`
+        );
+      }
+
+      if (revocationStatus.error) {
+        warnings.push(
+          `Could not verify revocation status: ${revocationStatus.error} (method: ${revocationStatus.method})`
+        );
+      }
+
+      logger.debug(
+        {
+          serialNumber: cert.serialNumber,
+          revoked: revocationStatus.revoked,
+          method: revocationStatus.method,
+        },
+        'Certificate revocation check completed'
+      );
+    } catch (error) {
+      logger.warn(
+        { error, serialNumber: cert.serialNumber },
+        'Certificate revocation check failed'
+      );
+      warnings.push(
+        `Revocation check failed: ${error instanceof Error ? error.message : 'unknown error'}`
+      );
+    }
+
     // Record validation duration
     const durationSeconds = (Date.now() - startTime) / 1000;
     certificateParseDuration.labels('validate').observe(durationSeconds);
@@ -144,6 +186,7 @@ export async function validateCertificate(
       valid: errors.length === 0,
       errors,
       warnings,
+      revocationStatus,
     };
 
     if (result.valid) {
@@ -232,6 +275,46 @@ export function isTrustedIssuer(cert: CertificateInfo): boolean {
 export function getCertificateStatus(
   cert: CertificateInfo
 ): 'active' | 'expiring_soon' | 'expired' | 'revoked' {
+  if (isExpired(cert)) {
+    return 'expired';
+  }
+
+  if (isExpiringSoon(cert, 30)) {
+    return 'expiring_soon';
+  }
+
+  return 'active';
+}
+
+/**
+ * Get certificate status including revocation check
+ *
+ * @param cert - Certificate information
+ * @returns Certificate status ('active', 'expiring_soon', 'expired', 'revoked')
+ */
+export async function getCertificateStatusWithRevocation(
+  cert: CertificateInfo
+): Promise<'active' | 'expiring_soon' | 'expired' | 'revoked'> {
+  // Check revocation first (most critical)
+  try {
+    const revocationChecker = getRevocationChecker();
+    const revocationStatus = await revocationChecker.checkRevocation(
+      cert.serialNumber,
+      cert.issuer
+    );
+
+    if (revocationStatus.revoked) {
+      return 'revoked';
+    }
+  } catch (error) {
+    logger.warn(
+      { error, serialNumber: cert.serialNumber },
+      'Revocation check failed in getCertificateStatusWithRevocation'
+    );
+    // Continue to expiration checks even if revocation check fails
+  }
+
+  // Then check expiration
   if (isExpired(cert)) {
     return 'expired';
   }
