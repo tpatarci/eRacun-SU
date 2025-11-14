@@ -178,7 +178,7 @@ No workstream should wait for unblock; if a dependency cannot be mocked, escalat
 - [x] Integration tests with mock services
 - [x] Property-based tests for validators
 - [x] Load testing setup (k6/Artillery)
-- [~] Chaos testing scenarios (2/7 implemented, full documentation complete)
+- [x] Chaos testing scenarios (all 7 implemented + test runners)
 
 ### Week 2: Core Services Implementation
 **Owner:** Backend Engineer 1 & 2
@@ -247,8 +247,8 @@ No workstream should wait for unblock; if a dependency cannot be mocked, escalat
 - ✅ Integration tests with Testcontainers (PostgreSQL)
 - ✅ Comprehensive test coverage for all business logic
 - ✅ k6 load testing suite with progressive load profile (0→50→100→200 VUs)
-- ⚠️ Chaos testing scenarios (2 implemented: database, RabbitMQ; 5 documented but not yet scripted: network, CPU, memory, cascade, partition)
-- ✅ Smoke test runner (run-smoke.sh)
+- ✅ Chaos testing scenarios (7/7 implemented: database, RabbitMQ, network, CPU, memory, cascade, partition)
+- ✅ Smoke test runner (run-smoke.sh) and full test runner (run-full.sh)
 - ✅ Test fixtures with valid UBL 2.1 XML invoices
 
 **Observability:**
@@ -284,7 +284,7 @@ No workstream should wait for unblock; if a dependency cannot be mocked, escalat
 - ✅ Service README.md files (all 4 core services)
 - ✅ OpenAPI 3.1 specification (invoice-gateway-api)
 - ✅ Load testing README with usage guide
-- ✅ Chaos testing README with 7 scenario guides (2 scenarios implemented as scripts)
+- ✅ Chaos testing README with 7 scenario guides (all 7 scenarios implemented as scripts)
 - ✅ 415-line deployment runbook (DEPLOYMENT_RUNBOOK.md)
 
 **Git Commits:**
@@ -300,7 +300,6 @@ No workstream should wait for unblock; if a dependency cannot be mocked, escalat
 - 932f3d5 - Add RabbitMQ and Kafka integration
 
 **Pending Work:**
-- Chaos testing implementation: 5 remaining scenarios (network, CPU, memory, cascade, partition) - documentation complete, scripts needed
 - Docker images for containerized deployment (optional)
 - Additional service implementations (Team 2-3 dependencies)
 - Execute load tests and establish baseline metrics (requires running infrastructure)
@@ -437,7 +436,7 @@ k6 run --vus 100 --duration 30m tests/load/invoice-submission.js
 - [x] Mock adapter implementations for all external dependencies
 - [x] Shared test fixture library
 - [x] Performance benchmark suite (k6 load tests)
-- [~] Chaos testing scenarios (2/7 implemented: database, RabbitMQ; documentation complete for all 7)
+- [x] Chaos testing scenarios (7/7 implemented: database, RabbitMQ, network, CPU, memory, cascade, partition + smoke & full runners)
 
 ### Documentation Deliverables
 - [x] OpenAPI specifications for all REST endpoints
