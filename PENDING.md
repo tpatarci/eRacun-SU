@@ -55,6 +55,43 @@
 
 ---
 
+### 🔴 [PENDING-008](docs/pending/008-fina-integration-testing.md) - FINA Integration Testing & Certificates
+
+**Priority:** 🔴 P0 (Critical)
+**Created:** 2025-11-14
+**Estimated Effort:** 10 engineering days (2 weeks)
+**Deadline:** 2025-12-05 (21 days)
+**Prerequisite:** PENDING-007 must be resolved first
+
+**Problem:** No FINA (Croatian Tax Authority) integration testing performed, and no certificates (demo or production) acquired. Without FINA connectivity, invoices cannot be fiscalized, making the system non-compliant with January 1, 2026 requirements.
+
+**Blocks:**
+- ⛔ Invoice fiscalization (cannot submit to Tax Authority)
+- ⛔ JIR receipts (B2C) / UUID confirmations (B2B)
+- ⛔ January 1, 2026 compliance deadline (47 days remaining)
+- ⛔ Legal compliance (€66,360 penalty risk + criminal liability)
+
+**Does NOT Block:**
+- Internal testing (after PENDING-007 resolved)
+- Other service development
+
+**Deliverables Required:**
+- [ ] Acquire FINA demo certificates (free, 1-year validity)
+- [ ] Apply for FINA production certificates (€39.82 + VAT, 5-10 days processing)
+- [ ] Test connectivity to cistest.apis-it.hr:8449
+- [ ] 10+ successful B2C fiscalization tests (verify JIR receipts)
+- [ ] 5+ successful B2B exchange tests (verify UUID confirmations)
+- [ ] Error handling and circuit breaker verification
+- [ ] Integration test report + Certificate status report
+
+**Next Action:** Acquire demo certificates from FINA (cms.fina.hr), test connectivity to test environment
+
+**Deferred Because:** Discovered during TASK 2 compliance assessment on 2025-11-14. Blocked by PENDING-007 (must have passing tests before integration testing).
+
+**Related:** TASK 2 Compliance Assessment (`docs/reports/2025-11-14-TASK-2-compliance-assessment.md`)
+
+---
+
 ### 🔴 [PENDING-006](docs/pending/006-architecture-compliance-remediation.md) - Architecture Compliance Remediation
 
 **Priority:** 🔴 P0 (Critical)
