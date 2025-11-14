@@ -922,3 +922,273 @@ const invoice = validateSchema(req.body, InvoiceSchema);
 **Owners:** All Team Leads
 **Review:** Before each integration test
 **Updates:** Require approval from all teams
+---
+
+## Team 3: External Integration & Compliance Contracts
+
+### FINA Connector API (Mock Available)
+
+**Mock Endpoint:** Use `MockFINAService` from `@eracun/fina-connector/adapters/mock-fina`
+
+```typescript
+import { createMockFINAClient, IFINAClient } from '@eracun/fina-connector';
+
+// Create mock client
+const finaClient = createMockFINAClient();
+
+// Submit invoice for fiscalization
+const response = await finaClient.submitInvoice({
+  supplierOIB: '12345678901',
+  buyerOIB: '98765432109',
+  invoiceNumber: 'INV-2025-001',
+  issueDateTime: '2025-11-14T10:00:00Z',
+  totalAmount: 1250.00,
+  lineItems: [{
+    description: 'Consulting services',
+    quantity: 10,
+    unitPrice: 100,
+    vatRate: 25,
+    kpdCode: '469011',
+  }],
+  signature: '<base64-signature>',
+  certificate: {
+    serialNumber: 'TEST-001',
+    subject: 'CN=Test Company',
+    issuer: 'CN=FINA Demo CA',
+    validFrom: new Date('2024-01-01'),
+    validTo: new Date('2026-12-31'),
+    pem: '<certificate-pem>',
+  },
+  soapEnvelope: '<soap:Envelope>...</soap:Envelope>',
+});
+
+// Response structure
+interface FINAResponse {
+  success: boolean;
+  jir?: string;          // Jedinstveni Identifikator Računa (32 hex chars)
+  zki?: string;          // Zaštitni Kod Izdavatelja (32 hex chars)
+  timestamp?: string;
+  messageId?: string;
+  soapResponse?: string;
+  warnings?: string[];
+  error?: { code: string; message: string };
+}
+```
+
+**Test OIBs:** `12345678901`, `98765432109`, `11111111117`
+**Test Certificates:** `TEST-001`, `TEST-002`
+
+---
+
+### Porezna Connector API (Mock Available)
+
+**Mock Endpoint:** Use `MockPoreznaService` from `@eracun/porezna-connector/adapters/mock-porezna`
+
+```typescript
+import { createMockPoreznaClient, IPoreznaClient } from '@eracun/porezna-connector';
+
+// Create mock client
+const poreznaClient = createMockPoreznaClient();
+
+// Submit tax report
+const response = await poreznaClient.submitReport({
+  period: '2025-11',
+  supplierOIB: '12345678901',
+  totalAmount: 100000,
+  vatAmount: 25000,
+  vatBreakdown: [{
+    rate: 25,
+    baseAmount: 100000,
+    vatAmount: 25000,
+  }],
+  invoiceCount: 100,
+});
+
+// Validate VAT number
+const validation = await poreznaClient.validateVATNumber('HR12345678901');
+
+// Get VAT rates
+const rates = await poreznaClient.getVATRates();
+// Returns: [{ rate: 25, category: 'STANDARD', ... }, ...]
+```
+
+**Croatian VAT Rates (2025):**
+- 25% - Standard rate
+- 13% - Reduced rate (tourism, hospitality)
+- 5% - Super reduced rate (essential goods)
+- 0% - Exempt
+
+---
+
+### Digital Signature Service (Mock Available)
+
+**Mock Endpoint:** Use `MockXMLSigner` from `@eracun/digital-signature-service/adapters/mock-signer`
+
+```typescript
+import { createMockXMLSigner, IXMLSigner } from '@eracun/digital-signature-service';
+
+// Create mock signer
+const signer = createMockXMLSigner();
+
+// Sign XML document
+const signedResult = await signer.signXML(
+  '<Invoice>...</Invoice>',
+  {
+    referenceUri: '',
+    canonicalizationAlgorithm: 'http://www.w3.org/2001/10/xml-exc-c14n#',
+    signatureAlgorithm: 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256',
+  }
+);
+
+// Verify signature
+const verification = await signer.verifyXMLSignature(signedResult.xml);
+
+interface VerificationResult {
+  valid: boolean;
+  signer?: string;
+  timestamp?: string;
+  algorithm?: string;
+  error?: string;
+}
+```
+
+**Performance:** 278+ signatures/second sustained throughput
+
+---
+
+### Reporting Service
+
+```typescript
+import { generateReport, ReportRequest } from '@eracun/reporting-service';
+
+// Generate compliance report
+const request: ReportRequest = {
+  type: 'COMPLIANCE_SUMMARY',
+  startDate: '2025-01-01',
+  endDate: '2025-11-30',
+  format: 'CSV',
+};
+
+const result = await generateReport(request);
+
+// Available report types:
+type ReportType =
+  | 'COMPLIANCE_SUMMARY'    // Fiscalization success rates
+  | 'FISCAL_MONTHLY'        // Monthly fiscal report
+  | 'VAT_SUMMARY'           // VAT breakdown by rate
+  | 'INVOICE_VOLUME'        // Volume analysis
+  | 'ERROR_ANALYSIS'        // Error patterns
+  | 'ARCHIVE_STATUS';       // Storage and retention status
+
+// Available formats: 'JSON', 'CSV', 'XLSX', 'PDF'
+```
+
+---
+
+### Message Bus (@eracun/messaging)
+
+**PENDING-006 Resolution:** All teams can now use message bus for inter-service communication.
+
+```typescript
+import { getMessageBus } from '@eracun/messaging';
+
+const bus = getMessageBus();
+
+// Publish event
+await bus.publish('invoice.fiscalized', {
+  invoiceId: '12345',
+  jir: 'ABC123...',
+  timestamp: new Date().toISOString(),
+});
+
+// Subscribe to events
+await bus.subscribe('invoice.validated', async (message) => {
+  console.log('Validated:', message.payload);
+});
+
+// Request-response (RPC)
+const result = await bus.request('signature.sign', {
+  xml: '<Invoice>...</Invoice>',
+}, 5000); // 5s timeout
+```
+
+**Message Topics (Team 3):**
+- `invoice.fiscalized` - Published when FINA fiscalization succeeds
+- `signature.sign.request` - Request XML signing
+- `signature.verify.request` - Request signature verification
+- `tax.report.submitted` - Tax report submitted to Porezna
+- `archive.stored` - Document archived
+- `compliance.report.generated` - Report generation complete
+
+---
+
+## Mock Service Integration Guide
+
+### Development Setup
+
+1. **Install mock dependencies:**
+```bash
+cd services/your-service
+npm install @eracun/fina-connector @eracun/porezna-connector @eracun/digital-signature-service
+```
+
+2. **Enable mock mode in .env:**
+```bash
+USE_MOCK_FINA=true
+USE_MOCK_POREZNA=true
+```
+
+3. **Use in code:**
+```typescript
+import { createMockFINAClient } from '@eracun/fina-connector/adapters/mock-fina';
+
+const client = createMockFINAClient();
+// Mock is ready - no network, no credentials needed
+```
+
+### Mock Behavior
+
+**Realistic Delays:**
+- FINA submission: 100-500ms
+- Porezna submission: 200-500ms
+- Signature generation: 20-50ms
+- Signature verification: 30-60ms
+
+**Success Rates:**
+- Valid requests: 98% success
+- Invalid OIB: 100% rejection
+- Invalid KPD: 100% rejection
+- Invalid signature: 100% rejection
+
+**Test Data:**
+All mocks include seeded test data (OIBs, certificates, companies) for consistent testing.
+
+---
+
+## Integration Checklist
+
+### For Teams 1 & 2 Using Team 3 Services
+
+- [ ] Install required npm packages
+- [ ] Enable mock mode in environment
+- [ ] Use provided interfaces (IFINAClient, IPoreznaClient, IXMLSigner)
+- [ ] Handle both success and error responses
+- [ ] Add retry logic with exponential backoff
+- [ ] Use message bus for async operations
+- [ ] Test with provided test OIBs and certificates
+
+### For Team 3 
+
+- [x] Provide mock implementations for all external APIs
+- [x] Document all interfaces and contracts
+- [x] Publish mock services as npm packages
+- [x] Create shared certificate bundle for development
+- [x] Maintain SHARED_CONTRACTS.md documentation
+- [x] Provide example usage in README files
+- [x] Ensure mocks behave realistically (delays, errors)
+
+---
+
+**Last Updated:** 2025-11-14
+**Updated By:** Team 3 (External Integration & Compliance)
+**Next Review:** Weekly during development
