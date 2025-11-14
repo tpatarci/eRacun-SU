@@ -139,6 +139,19 @@ export class InvoiceGenerator {
 }
 ```
 
+### Blocker Bypass Playbook
+
+When an upstream contract, credential, or environment is unavailable, follow this playbook so progress never stalls:
+
+1. **Log the dependency in `PENDING.md` with an owner and ETA.** This keeps the blocker visible without halting delivery.
+2. **Freeze the API contract.** Capture the expected OpenAPI/proto and configuration knobs in the service's `CLAUDE.md`, then share the artifact with the owning team for async review.
+3. **Create executable mocks.** Extend the mock adapters above with fixture-backed responses that reflect the frozen contract, including success, transient failure, and validation-error paths.
+4. **Codify assumptions.** Write contract tests in `services/<service>/tests/contracts/` that both the mock and the eventual real integration must satisfy; link each to its `PENDING` entry.
+5. **Simulate environments.** Use docker-compose profiles (`docker-compose.yml#team1-mocks`) or testcontainers to spin up stand-ins for unavailable infra such as RabbitMQ clusters, Postgres replicas, or external signing services.
+6. **Continuously reconcile.** During weekly demos, review open blockers, capture deltas between mocks and real behavior, and update both the mock implementation and documentation before merging integration PRs.
+
+No workstream should wait for unblock; if a dependency cannot be mocked, escalate to the program manager within 4 business hours with a mitigation proposal.
+
 ---
 
 ## Implementation Roadmap
@@ -430,7 +443,7 @@ k6 run --vus 100 --duration 30m tests/load/invoice-submission.js
 
 ---
 
-**Document Version:** 1.0.0
+**Document Version:** 1.0.1
 **Created:** 2025-11-14
 **Owner:** Team 1 Lead
-**Review:** Weekly
+**Review Cadence:** Weekly
