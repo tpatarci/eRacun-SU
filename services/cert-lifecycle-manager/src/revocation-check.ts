@@ -15,7 +15,7 @@ export interface RevocationCheckResult {
   /** Is certificate revoked */
   revoked: boolean;
   /** Revocation method used */
-  method: 'CRL' | 'OCSP' | 'MOCK';
+  method: 'crl' | 'ocsp' | 'mock';
   /** Revocation reason (if revoked) */
   reason?: string;
   /** Revocation date (if revoked) */
@@ -58,8 +58,8 @@ export class MockRevocationChecker implements IRevocationChecker {
 
   constructor() {
     // Seed with some test revoked certificates
-    this.revokedCertificates.add('REVOKED-001');
-    this.revokedCertificates.add('REVOKED-TEST');
+    this.revokedCertificates.add('TEST-REVOKED-001');
+    this.revokedCertificates.add('TEST-SUPERSEDED-001');
   }
 
   /**
@@ -79,10 +79,20 @@ export class MockRevocationChecker implements IRevocationChecker {
 
     const revoked = this.revokedCertificates.has(serialNumber);
 
+    // Determine revocation reason based on serial pattern
+    let reason: string | undefined;
+    if (revoked) {
+      if (serialNumber.includes('SUPERSEDED')) {
+        reason = 'superseded';
+      } else {
+        reason = 'keyCompromise';
+      }
+    }
+
     return {
       revoked,
-      method: 'MOCK',
-      reason: revoked ? 'Certificate compromised' : undefined,
+      method: 'mock',
+      reason,
       revokedAt: revoked ? new Date('2025-01-01') : undefined,
       checkedAt: new Date(),
     };
@@ -141,7 +151,7 @@ export class CRLChecker implements IRevocationChecker {
       if (!crlUrl) {
         return {
           revoked: false,
-          method: 'CRL',
+          method: 'crl',
           checkedAt: new Date(),
           error: 'No CRL distribution point found',
         };
@@ -155,7 +165,7 @@ export class CRLChecker implements IRevocationChecker {
 
       return {
         revoked,
-        method: 'CRL',
+        method: 'crl',
         reason: revoked ? 'Found in CRL' : undefined,
         checkedAt: new Date(),
       };
@@ -163,7 +173,7 @@ export class CRLChecker implements IRevocationChecker {
       logger.error({ error, serialNumber }, 'CRL check failed');
       return {
         revoked: false,
-        method: 'CRL',
+        method: 'crl',
         checkedAt: new Date(),
         error: error instanceof Error ? error.message : 'Unknown error',
       };
@@ -262,7 +272,7 @@ export class OCSPChecker implements IRevocationChecker {
       if (!ocspUrl) {
         return {
           revoked: false,
-          method: 'OCSP',
+          method: 'ocsp',
           checkedAt: new Date(),
           error: 'No OCSP responder found',
         };
@@ -284,7 +294,7 @@ export class OCSPChecker implements IRevocationChecker {
 
       return {
         revoked,
-        method: 'OCSP',
+        method: 'ocsp',
         reason: revoked ? 'OCSP responder reports revoked' : undefined,
         checkedAt: new Date(),
       };
@@ -292,7 +302,7 @@ export class OCSPChecker implements IRevocationChecker {
       logger.error({ error, serialNumber }, 'OCSP check failed');
       return {
         revoked: false,
-        method: 'OCSP',
+        method: 'ocsp',
         checkedAt: new Date(),
         error: error instanceof Error ? error.message : 'Unknown error',
       };

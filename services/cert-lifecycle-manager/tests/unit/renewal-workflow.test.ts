@@ -232,7 +232,7 @@ describe('RenewalWorkflow', () => {
       const results = await workflow.processRenewals();
 
       expect(results).toHaveLength(0);
-      expect(mockCA.renewCertificate).not.toHaveCalled();
+      expect(mockCA.renewCertificate).not.toHaveBeenCalled();
     });
 
     it('should process renewal for expiring certificate', async () => {
