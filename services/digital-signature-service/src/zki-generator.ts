@@ -156,13 +156,11 @@ export async function generateZKI(
     // Compute MD5 hash
     const md5 = forge.md.md5.create();
     md5.update(concatenated, 'utf8');
-    const hashDigest = md5.digest();
-
-    logger.debug({ hash_bytes: hashDigest.length() }, 'MD5 hash computed');
+    logger.debug({ input_length: concatenated.length }, 'MD5 hash prepared');
 
     // Sign the hash with private key
     const privateKey = certificate.privateKey;
-    const signature = privateKey.sign(hashDigest as any);
+    const signature = privateKey.sign(md5);
 
     // Convert signature to hex string
     const zki = forge.util.bytesToHex(signature);
@@ -247,14 +245,13 @@ export async function verifyZKI(
     // Compute MD5 hash
     const md5 = forge.md.md5.create();
     md5.update(concatenated, 'utf8');
-    const hash = md5.digest();
 
     // Convert ZKI hex to bytes
     const signatureBytes = forge.util.hexToBytes(zki);
 
     // Verify signature using public key
     const publicKey = certificate.info.publicKey;
-    const isValid = publicKey.verify(hash.bytes(), signatureBytes);
+    const isValid = publicKey.verify(md5.digest().bytes(), signatureBytes);
 
     const duration = (Date.now() - startTime) / 1000;
     signatureDuration.observe({ operation: 'verify' }, duration);

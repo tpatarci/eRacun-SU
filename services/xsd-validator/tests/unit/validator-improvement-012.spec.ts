@@ -4,13 +4,18 @@
  * Tests for schema cache eviction policy to prevent memory leaks
  */
 
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { XSDValidator, SchemaType, ValidationStatus } from '../../src/validator';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 describe('XSD Validator - IMPROVEMENT-012 Schema Cache Eviction', () => {
   let validator: XSDValidator;
 
   beforeAll(async () => {
-    const schemaPath = require('path').join(__dirname, '../../schemas/ubl-2.1');
+    const schemaPath = path.join(__dirname, '../../schemas/ubl-2.1');
     validator = new XSDValidator(schemaPath);
 
     try {

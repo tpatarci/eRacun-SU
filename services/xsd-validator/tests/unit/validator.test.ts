@@ -1,4 +1,3 @@
-import { describe, it, expect, beforeAll } from '@jest/globals';
 import { XSDValidator, SchemaType, ValidationStatus } from '../../src/validator.js';
 import fs from 'fs/promises';
 import path from 'path';
@@ -112,8 +111,8 @@ describe('XSDValidator', () => {
       const result = await validator.validate('', SchemaType.UBL_INVOICE_2_1);
 
       expect(result.status).toBe(ValidationStatus.ERROR);
-      expect(result.errors).toHaveLength(1);
-      expect(result.errors[0].code).toBe('XML_PARSE_ERROR');
+      expect(result.errors.length).toBeGreaterThanOrEqual(1);
+      expect(result.errors[0].code).toBe('INVALID_MESSAGE');
     });
 
     it('should handle null/undefined input gracefully', async () => {

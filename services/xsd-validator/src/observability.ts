@@ -1,6 +1,15 @@
-import { Counter, Histogram, Gauge, Registry, register } from 'prom-client';
+import { Counter, Histogram, Gauge, register } from 'prom-client';
 import pino from 'pino';
-import { trace, context, SpanStatusCode } from '@opentelemetry/api';
+import {
+  trace,
+  SpanStatusCode,
+  Span,
+  SpanContext,
+  TraceFlags,
+  SpanAttributes,
+  SpanStatus,
+  TimeInput,
+} from '@opentelemetry/api';
 
 /**
  * Prometheus Metrics (TODO-008 Compliance)
@@ -128,20 +137,56 @@ function shouldSample(): boolean {
  * IMPROVEMENT-015: Only creates span if shouldSample() returns true
  * This reduces overhead from 100% sampling to configurable rate
  */
+class NoopSpan implements Span {
+  spanContext(): SpanContext {
+    return {
+      traceId: '00000000000000000000000000000000',
+      spanId: '0000000000000000',
+      traceFlags: TraceFlags.NONE,
+    };
+  }
+
+  setAttribute(_key: string, _value: unknown): this {
+    return this;
+  }
+
+  setAttributes(_attributes: SpanAttributes): this {
+    return this;
+  }
+
+  addEvent(
+    _name: string,
+    _attributesOrStartTime?: SpanAttributes | TimeInput,
+    _startTime?: TimeInput
+  ): this {
+    return this;
+  }
+
+  setStatus(_status: SpanStatus): this {
+    return this;
+  }
+
+  updateName(_name: string): this {
+    return this;
+  }
+
+  end(): void {}
+
+  isRecording(): boolean {
+    return false;
+  }
+
+  recordException(_exception: Error | string, _time?: TimeInput): this {
+    return this;
+  }
+}
+
 export function createSpan(
   spanName: string,
   attributes: Record<string, string | number | boolean> = {}
-) {
-  // IMPROVEMENT-015: Skip span creation if not sampled
+): Span {
   if (!shouldSample()) {
-    // Return a no-op span that doesn't record anything
-    return {
-      setStatus: () => {},
-      recordException: () => {},
-      end: () => {},
-      setAttributes: () => {},
-      addEvent: () => {},
-    };
+    return new NoopSpan();
   }
 
   return tracer.startSpan(spanName, {
@@ -156,7 +201,7 @@ export function createSpan(
 /**
  * Set span error and status
  */
-export function setSpanError(span: any, error: Error) {
+export function setSpanError(span: Span, error: Error) {
   span.setStatus({
     code: SpanStatusCode.ERROR,
     message: error.message,

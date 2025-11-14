@@ -85,11 +85,8 @@ export class XSDValidator {
   private maxParsedXmlCacheSize: number = 1000;
   /** IMPROVEMENT-012: Schema cache configuration */
   private schemaCacheTtl: number = 24 * 60 * 60 * 1000; // 24 hours default
-  private schemaRefreshIntervalMs: number = 24 * 60 * 60 * 1000; // Auto-refresh interval
   /** IMPROVEMENT-013: Maximum validation errors to collect (DoS prevention) */
   private maxValidationErrors: number = 100;
-  /** IMPROVEMENT-020: XXE protection - entity resolution limits */
-  private xxeProtectionEnabled: boolean = true;
 
   constructor(schemaPath?: string, maxCacheSize?: number, schemaCacheTtlHours?: number) {
     this.schemaPath = schemaPath || path.join(__dirname, '../schemas/ubl-2.1');
@@ -98,7 +95,6 @@ export class XSDValidator {
     }
     if (schemaCacheTtlHours) {
       this.schemaCacheTtl = schemaCacheTtlHours * 60 * 60 * 1000;
-      this.schemaRefreshIntervalMs = this.schemaCacheTtl;
     }
   }
 
@@ -621,7 +617,6 @@ export class XSDValidator {
 
     for (const [schemaType, cached] of this.schemaCache.entries()) {
       const expiresAt = new Date(cached.loadedAt + cached.ttl);
-      const isValid = expiresAt.getTime() > Date.now();
 
       schemas.push({
         type: schemaType,

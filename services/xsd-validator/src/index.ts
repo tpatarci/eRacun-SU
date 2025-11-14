@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import http from 'http';
-import amqp from 'amqplib';
-import { XSDValidator, SchemaType, ValidationStatus } from './validator.js';
+import amqp, { Channel, Connection, ConsumeMessage } from 'amqplib';
+import { XSDValidator, SchemaType } from './validator.js';
 import {
   logger,
   initObservability,
@@ -34,15 +34,14 @@ const CONFIG = {
  * Service state
  */
 let validator: XSDValidator;
-let rabbitmqConnection: amqp.Connection | null = null;
-let rabbitmqChannel: amqp.Channel | null = null;
+let rabbitmqConnection: Connection | null = null;
+let rabbitmqChannel: Channel | null = null;
 let isShuttingDown = false;
 
 /**
  * Process validation message from RabbitMQ
  */
-async function processValidationMessage(msg: amqp.Message): Promise<void> {
-  const startTime = Date.now();
+async function processValidationMessage(msg: ConsumeMessage): Promise<void> {
 
   // Extract message content
   const messageContent = msg.content.toString();

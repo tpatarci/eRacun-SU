@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": "../..",
+    "baseUrl": "../..",
+    "types": ["jest", "node"],
+    "paths": {
+      "@eracun/contracts": ["shared/contracts/src/index.ts"],
+      "libxmljs2": ["services/xsd-validator/tests/mocks/libxmljs2.ts"]
+    }
+  },
+  "include": [
+    "src/**/*",
+    "tests/**/*",
+    "../../shared/test-fixtures/src/**/*"
+  ]
+}
