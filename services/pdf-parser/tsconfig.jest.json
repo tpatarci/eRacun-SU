@@ -4,13 +4,15 @@
     "rootDir": "../..",
     "baseUrl": "../..",
     "paths": {
-      "@eracun/contracts": ["shared/contracts/src/index.ts"],
+      "amqplib-mocks": ["shared/test-doubles/amqplib-mocks.ts"],
       "memfs": ["shared/test-doubles/memfs.ts"]
-    }
+    },
+    "module": "ESNext",
+    "moduleResolution": "node16"
   },
   "include": [
     "src/**/*",
     "tests/**/*",
-    "../../shared/test-fixtures/src/**/*"
+    "../../shared/test-doubles/*.ts"
   ]
 }

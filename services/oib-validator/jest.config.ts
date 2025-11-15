@@ -1,0 +1,22 @@
+import type { Config } from 'jest';
+import baseConfig from '../../shared/jest-config/base.config.js';
+
+const config: Config = {
+  ...baseConfig,
+  displayName: 'oib-validator',
+  moduleNameMapper: {
+    ...(baseConfig.moduleNameMapper || {}),
+    '^(\\.{1,2}/.*)\\.js$': '$1',
+  },
+  collectCoverageFrom: Array.from(
+    new Set([
+      ...(baseConfig.collectCoverageFrom || []),
+      '!src/index.ts',
+      '!src/messaging/rabbitmq-consumer.ts',
+      '!src/observability/metrics.ts',
+    ])
+  ),
+  setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
+};
+
+export default config;

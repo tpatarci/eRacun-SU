@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, rmSync, mkdirSync, cpSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -8,11 +8,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const repoRoot = path.resolve(__dirname, '..');
 const servicesRoot = path.join(repoRoot, 'services');
+const coverageArtifactsDir = path.join(repoRoot, 'coverage-reports');
 
 if (!existsSync(servicesRoot)) {
   console.error('Services directory not found.');
   process.exit(1);
 }
+
+rmSync(coverageArtifactsDir, { recursive: true, force: true });
+mkdirSync(coverageArtifactsDir, { recursive: true });
 
 const serviceEntries = readdirSync(servicesRoot, { withFileTypes: true })
   .filter((entry) => entry.isDirectory())
@@ -83,7 +87,8 @@ for (const serviceName of servicesToTest) {
     console.log(`✅ ${serviceName} tests passed`);
   }
 
-  const coveragePath = path.join(servicePath, 'coverage', 'coverage-summary.json');
+  const serviceCoverageDir = path.join(servicePath, 'coverage');
+  const coveragePath = path.join(serviceCoverageDir, 'coverage-summary.json');
   if (existsSync(coveragePath)) {
     try {
       const coverageJson = JSON.parse(readFileSync(coveragePath, 'utf8'));
@@ -95,6 +100,12 @@ for (const serviceName of servicesToTest) {
         branches: formatPercent(total.branches?.pct),
         functions: formatPercent(total.functions?.pct)
       });
+      const targetDir = path.join(coverageArtifactsDir, serviceName);
+      rmSync(targetDir, { recursive: true, force: true });
+      if (existsSync(serviceCoverageDir)) {
+        cpSync(serviceCoverageDir, targetDir, { recursive: true });
+        console.log(`📦 Coverage artifacts saved to ${path.relative(repoRoot, targetDir)}`);
+      }
     } catch (error) {
       console.warn(`⚠️  Unable to parse coverage summary for ${serviceName}: ${error.message}`);
     }

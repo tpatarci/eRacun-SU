@@ -3,6 +3,11 @@
     "target": "ES2022",
     "module": "commonjs",
     "lib": ["ES2022"],
+    "baseUrl": ".",
+    "paths": {
+      "amqplib-mocks": ["../../shared/test-doubles/amqplib-mocks.ts"],
+      "memfs": ["../../shared/test-doubles/memfs.ts"]
+    },
     "outDir": "./dist",
     "rootDir": "./src",
     "strict": true,

@@ -82,6 +82,7 @@ temp/
 
 # Coverage reports
 coverage/
+coverage-reports/
 .nyc_output/
 *.lcov
 

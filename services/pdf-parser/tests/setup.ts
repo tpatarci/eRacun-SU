@@ -1,3 +1,6 @@
+import { beforeEach, jest } from '@jest/globals';
+import { resetMockBroker } from 'amqplib-mocks';
+
 /**
  * Jest Test Setup
  *
@@ -17,3 +20,7 @@ global.console = {
 // Set test environment variables
 process.env.NODE_ENV = 'test';
 process.env.LOG_LEVEL = 'silent';
+
+beforeEach(() => {
+  resetMockBroker();
+});
