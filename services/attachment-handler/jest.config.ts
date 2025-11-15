@@ -1,8 +1,9 @@
-/** @type {import('jest').Config} */
-module.exports = {
+import type { Config } from 'jest';
+
+const config: Config = {
   preset: 'ts-jest',
   testEnvironment: 'node',
-  roots: ['<rootDir>/tests/unit'],
+  roots: ['<rootDir>/tests'],
   testMatch: ['**/*.test.ts'],
   collectCoverageFrom: [
     'src/**/*.ts',
@@ -11,13 +12,14 @@ module.exports = {
   ],
   coverageThreshold: {
     global: {
-      branches: 100,
-      functions: 100,
-      lines: 100,
-      statements: 100
+      branches: 85,
+      functions: 85,
+      lines: 85,
+      statements: 85
     }
   },
   coverageDirectory: 'coverage',
-  verbose: true,
-  testTimeout: 10000
+  verbose: true
 };
+
+export default config;

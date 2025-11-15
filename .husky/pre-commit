@@ -4,7 +4,16 @@
 echo "🔍 Running pre-commit checks..."
 echo ""
 
+# Run TypeScript compliance check first
+echo "📘 Checking TypeScript compliance..."
+.husky/pre-commit-typescript-check
+if [ $? -ne 0 ]; then
+  echo "❌ TypeScript compliance check failed!"
+  exit 1
+fi
+
 # Run lint-staged for staged files
+echo ""
 echo "📝 Checking staged files with ESLint and Prettier..."
 npx lint-staged
 

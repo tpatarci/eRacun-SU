@@ -1,4 +1,6 @@
-module.exports = {
+import type { Config } from 'jest';
+
+const config: Config = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   roots: ['<rootDir>/tests'],
@@ -6,7 +8,9 @@ module.exports = {
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/**/*.d.ts',
-    '!src/index.ts'
+    '!src/index.ts',
+    // Exclude infrastructure modules (RabbitMQ consumer - requires running broker)
+    '!src/message-consumer.ts'
   ],
   coverageThreshold: {
     global: {
@@ -19,3 +23,5 @@ module.exports = {
   coverageDirectory: 'coverage',
   verbose: true
 };
+
+export default config;

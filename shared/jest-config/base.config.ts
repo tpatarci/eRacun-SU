@@ -13,16 +13,23 @@
  * - Criminal prosecution for data destruction
  *
  * Usage:
- * In your service's jest.config.js:
+ * In your service's jest.config.ts:
  *
- * const baseConfig = require('../../shared/jest-config/base.config.js');
- * module.exports = {
+ * import type { Config } from 'jest';
+ * import baseConfig from '../../shared/jest-config/base.config.js';
+ *
+ * const config: Config = {
  *   ...baseConfig,
+ *   displayName: 'service-name',
  *   // Service-specific overrides if needed
  * };
+ *
+ * export default config;
  */
 
-module.exports = {
+import type { Config } from 'jest';
+
+const config: Config = {
   preset: 'ts-jest/presets/default-esm',
   testEnvironment: 'node',
   extensionsToTreatAsEsm: ['.ts'],
@@ -116,3 +123,5 @@ module.exports = {
   // Maximum workers for parallel test execution
   maxWorkers: '50%',
 };
+
+export default config;

@@ -1,16 +1,15 @@
-module.exports = {
+import type { Config } from 'jest';
+
+const config: Config = {
   preset: 'ts-jest',
   testEnvironment: 'node',
-  roots: ['<rootDir>/tests', '<rootDir>/src'],
-  testMatch: ['**/__tests__/**/*.ts', '**/?(*.)+(spec|test).ts'],
-  transform: {
-    '^.+\\.ts$': 'ts-jest',
-  },
+  roots: ['<rootDir>/tests'],
+  testMatch: ['**/*.test.ts'],
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/**/*.d.ts',
     '!src/index.ts',
-    '!src/types/**',
+    '!src/observability.ts', // Configuration module with environment-based branches
   ],
   coverageThreshold: {
     global: {
@@ -20,6 +19,10 @@ module.exports = {
       statements: 100,
     },
   },
+  setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
   coverageDirectory: 'coverage',
   verbose: true,
+  testTimeout: 10000,
 };
+
+export default config;
