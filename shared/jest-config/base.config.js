@@ -23,25 +23,25 @@
  */
 
 module.exports = {
-  preset: 'ts-jest',
+  preset: 'ts-jest/presets/default-esm',
   testEnvironment: 'node',
+  extensionsToTreatAsEsm: ['.ts'],
 
   // Root directory for tests
   roots: ['<rootDir>/tests', '<rootDir>/src'],
 
   // Test file patterns
-  testMatch: [
-    '**/tests/**/*.test.ts',
-    '**/__tests__/**/*.test.ts'
-  ],
+  testMatch: ['**/tests/**/*.test.ts', '**/__tests__/**/*.test.ts', '**/?(*.)+(spec|test).ts'],
 
   // Coverage collection
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/**/*.d.ts',          // Exclude type definitions
-    '!src/**/index.ts',         // Entry points often just wire dependencies
-    '!src/**/*.interface.ts',   // Interface files (no logic)
-    '!src/**/*.type.ts',        // Type files (no logic)
+    '!src/**/index.ts',        // Entry points often just wire dependencies
+    '!src/**/*.interface.ts',  // Interface files (no logic)
+    '!src/**/*.type.ts',       // Type files (no logic)
+    '!src/**/*.spec.ts',
+    '!src/**/*.test.ts',
   ],
 
   // 100% COVERAGE REQUIRED - NON-NEGOTIABLE
@@ -68,19 +68,23 @@ module.exports = {
 
   // Module path aliases (adjust per service if needed)
   moduleNameMapper: {
-    '^@/(.*)$': '<rootDir>/src/$1'
+    '^@/(.*)$': '<rootDir>/src/$1',
+    '^(\\.{1,2}/.*)\\.js$': '$1',
   },
 
   // Transform settings
   transform: {
-    '^.+\\.ts$': ['ts-jest', {
-      tsconfig: {
-        // Ensure strict mode for tests
-        strict: true,
-        esModuleInterop: true,
-        skipLibCheck: true
-      }
-    }]
+    '^.+\\.tsx?$': [
+      'ts-jest',
+      {
+        useESM: true,
+        tsconfig: {
+          strict: true,
+          esModuleInterop: true,
+          skipLibCheck: true,
+        },
+      },
+    ],
   },
 
   // Setup files

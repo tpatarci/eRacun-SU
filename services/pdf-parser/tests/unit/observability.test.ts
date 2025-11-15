@@ -2,6 +2,9 @@
  * Observability Module Tests
  */
 
+import { describe, it, expect, jest } from '@jest/globals';
+import type { Span } from '@opentelemetry/api';
+
 import {
   logger,
   pdfsProcessedTotal,
@@ -87,7 +90,7 @@ describe('Observability Module', () => {
 
   describe('Distributed Tracing', () => {
     it('should execute function within span successfully', async () => {
-      const testFn = jest.fn().mockResolvedValue('success');
+      const testFn = jest.fn(async (_span: Span) => 'success');
 
       const result = await withSpan('test.operation', { test: 'attribute' }, testFn);
 
@@ -97,7 +100,9 @@ describe('Observability Module', () => {
 
     it('should handle errors in span', async () => {
       const testError = new Error('test error');
-      const testFn = jest.fn().mockRejectedValue(testError);
+      const testFn = jest.fn(async (_span: Span) => {
+        throw testError;
+      });
 
       await expect(withSpan('test.operation', { test: 'attribute' }, testFn)).rejects.toThrow(
         'test error'
@@ -107,10 +112,9 @@ describe('Observability Module', () => {
     });
 
     it('should pass span to callback function', async () => {
-      const testFn = jest.fn((span) => {
+      const testFn = jest.fn(async (span: Span) => {
         expect(span).toBeDefined();
         expect(span.setAttribute).toBeDefined();
-        return Promise.resolve();
       });
 
       await withSpan('test.operation', { test: 'attribute' }, testFn);

@@ -4,8 +4,12 @@
     "module": "ESNext",
     "moduleResolution": "node",
     "lib": ["ES2022"],
+    "baseUrl": ".",
+    "paths": {
+      "memfs": ["../../shared/test-doubles/memfs.ts"]
+    },
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": ".",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,

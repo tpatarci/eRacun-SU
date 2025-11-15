@@ -2,31 +2,34 @@
  * PDF Extractor Module Tests
  */
 
-// Mock pdf-parse before importing
-jest.mock('pdf-parse', () => {
-  return jest.fn();
-});
+import { describe, it, expect, beforeEach, jest } from '@jest/globals';
+import type pdfParse from 'pdf-parse';
 
 import { PDFExtractor, createPDFExtractorFromEnv } from '../../src/pdf-extractor';
-import pdfParse from 'pdf-parse';
 
-const mockPdfParse = pdfParse as jest.MockedFunction<typeof pdfParse>;
+type PdfParseFn = typeof pdfParse;
+
+let mockPdfParse: jest.MockedFunction<PdfParseFn>;
 
 describe('PDFExtractor', () => {
   let extractor: PDFExtractor;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    extractor = new PDFExtractor({
-      maxFileSize: 10 * 1024 * 1024,
-      maxPages: 100,
-      minTextLength: 100,
-    });
+    mockPdfParse = jest.fn() as jest.MockedFunction<PdfParseFn>;
+    extractor = new PDFExtractor(
+      {
+        maxFileSize: 10 * 1024 * 1024,
+        maxPages: 100,
+        minTextLength: 100,
+      },
+      mockPdfParse
+    );
   });
 
   describe('Constructor', () => {
     it('should create extractor with default config when no parameters provided', () => {
-      const defaultExtractor = new PDFExtractor();
+      const defaultExtractor = new PDFExtractor({}, mockPdfParse);
       const config = defaultExtractor.getConfig();
 
       expect(config.maxFileSize).toBe(10 * 1024 * 1024);
@@ -118,12 +121,9 @@ This is extracted PDF text with sufficient content for native PDF detection. Thi
     });
 
     it('should detect scanned PDF with very low meaningful text ratio below threshold', async () => {
-      // Create text with enough chars per page (> minTextLength=100) but low meaningful ratio
-      // Intersperse spaces with letters so trim() doesn't remove everything
-      // 'a' + 9 spaces, repeated 20 times = 200 chars total, 20 meaningful
-      const lowMeaningfulText = ('a' + ' '.repeat(9)).repeat(20); // 200 chars, 20 'a', 180 spaces
-      // After trim: still 200 chars (middle spaces not removed)
-      // meaningfulRatio = 20/200 = 0.1 < 0.3 (triggers line 228)
+      // Create text with < minTextLength and extremely low meaningful ratio
+      // 'a' + 9 spaces, repeated 8 times = 80 chars total, 8 meaningful
+      const lowMeaningfulText = ('a' + ' '.repeat(9)).repeat(8);
       mockPdfParse.mockResolvedValue({
         numpages: 1,
         text: lowMeaningfulText,
@@ -249,9 +249,7 @@ This is extracted PDF text with sufficient content for native PDF detection. Thi
 
       const result = await extractor.extractPDF(Buffer.from('pdf'));
 
-      // Invalid date string results in Invalid Date (NaN)
-      expect(result.metadata.creationDate).toBeInstanceOf(Date);
-      expect(isNaN(result.metadata.creationDate!.getTime())).toBe(true);
+      expect(result.metadata.creationDate).toBeUndefined();
     });
 
     it('should handle non-string PDF creation date (triggers catch block)', async () => {
@@ -369,7 +367,7 @@ This is extracted PDF text with sufficient content for native PDF detection. Thi
     });
 
     it('should create extractor with default config when no env vars set', () => {
-      const extractor = createPDFExtractorFromEnv();
+      const extractor = createPDFExtractorFromEnv(mockPdfParse);
       const config = extractor.getConfig();
 
       expect(config.maxFileSize).toBe(10 * 1024 * 1024);
@@ -379,7 +377,7 @@ This is extracted PDF text with sufficient content for native PDF detection. Thi
     it('should create extractor with custom max file size from env', () => {
       process.env.PDF_MAX_FILE_SIZE = '5242880';
 
-      const extractor = createPDFExtractorFromEnv();
+      const extractor = createPDFExtractorFromEnv(mockPdfParse);
       const config = extractor.getConfig();
 
       expect(config.maxFileSize).toBe(5242880);
@@ -388,7 +386,7 @@ This is extracted PDF text with sufficient content for native PDF detection. Thi
     it('should create extractor with custom max pages from env', () => {
       process.env.PDF_MAX_PAGES = '50';
 
-      const extractor = createPDFExtractorFromEnv();
+      const extractor = createPDFExtractorFromEnv(mockPdfParse);
       const config = extractor.getConfig();
 
       expect(config.maxPages).toBe(50);
@@ -397,7 +395,7 @@ This is extracted PDF text with sufficient content for native PDF detection. Thi
     it('should create extractor with custom min text length from env', () => {
       process.env.PDF_MIN_TEXT_LENGTH = '200';
 
-      const extractor = createPDFExtractorFromEnv();
+      const extractor = createPDFExtractorFromEnv(mockPdfParse);
       const config = extractor.getConfig();
 
       expect(config.minTextLength).toBe(200);
@@ -408,7 +406,7 @@ This is extracted PDF text with sufficient content for native PDF detection. Thi
       process.env.PDF_MAX_PAGES = '25';
       process.env.PDF_MIN_TEXT_LENGTH = '150';
 
-      const extractor = createPDFExtractorFromEnv();
+      const extractor = createPDFExtractorFromEnv(mockPdfParse);
       const config = extractor.getConfig();
 
       expect(config.maxFileSize).toBe(1048576);

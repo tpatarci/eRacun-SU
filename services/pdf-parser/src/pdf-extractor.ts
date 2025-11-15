@@ -82,11 +82,13 @@ const DEFAULT_CONFIG: ExtractionConfig = {
  */
 export class PDFExtractor {
   private config: ExtractionConfig;
+  private readonly parsePdf: typeof pdfParse;
   // IMPROVEMENT-034: Pre-compiled regex for whitespace/garbage detection
   private readonly whitespaceRegex = /[\s\n\r\t]/g;
 
-  constructor(config: Partial<ExtractionConfig> = {}) {
+  constructor(config: Partial<ExtractionConfig> = {}, parseFn: typeof pdfParse = pdfParse) {
     this.config = { ...DEFAULT_CONFIG, ...config };
+    this.parsePdf = parseFn;
   }
 
   /**
@@ -120,7 +122,7 @@ export class PDFExtractor {
       pdfFileSizeBytes.observe(buffer.length);
 
       // Parse PDF
-      const data = await pdfParse(buffer, {
+      const data = await this.parsePdf(buffer, {
         max: this.config.maxPages,
       });
 
@@ -330,7 +332,7 @@ export class PDFExtractor {
   /**
    * Detect if PDF is scanned (image-based) - Legacy method for backward compatibility
    */
-  private detectScannedPDF(text: string, pageCount: number): boolean {
+  public detectScannedPDF(text: string, pageCount: number): boolean {
     const { isScanned } = this.detectScannedPDFWithMetrics(text, pageCount);
     return isScanned;
   }
@@ -383,7 +385,7 @@ export class PDFExtractor {
 /**
  * Create PDF extractor from environment variables
  */
-export function createPDFExtractorFromEnv(): PDFExtractor {
+export function createPDFExtractorFromEnv(parseFn: typeof pdfParse = pdfParse): PDFExtractor {
   const config: Partial<ExtractionConfig> = {};
 
   if (process.env.PDF_MAX_FILE_SIZE) {
@@ -400,5 +402,5 @@ export function createPDFExtractorFromEnv(): PDFExtractor {
 
   logger.info({ config }, 'Creating PDF extractor');
 
-  return new PDFExtractor(config);
+  return new PDFExtractor(config, parseFn);
 }

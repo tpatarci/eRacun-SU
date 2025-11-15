@@ -150,7 +150,8 @@ export class MessagePublisher {
    * Publish parsed invoice
    */
   async publishParsedInvoice(command: ParsedInvoiceCommand): Promise<void> {
-    if (!this.channel || !this.isConnected) {
+    const channel = this.channel;
+    if (!channel || !this.isConnected) {
       throw new Error('Publisher not connected');
     }
 
@@ -189,14 +190,14 @@ export class MessagePublisher {
         };
 
         // Publish with confirmation
-        this.channel.publish(
+        channel.publish(
           this.config.exchange,
           this.config.routingKey,
           messageBuffer,
           publishOptions
         );
 
-        await this.channel.waitForConfirms();
+        await channel.waitForConfirms();
 
         logger.info({ messageId: command.messageId }, 'Parsed invoice published successfully');
         span.setAttribute('status', 'success');
@@ -214,7 +215,8 @@ export class MessagePublisher {
     content: string,
     source: string
   ): Promise<void> {
-    if (!this.channel || !this.isConnected) {
+    const channel = this.channel;
+    if (!channel || !this.isConnected) {
       throw new Error('Publisher not connected');
     }
 
@@ -253,14 +255,14 @@ export class MessagePublisher {
         };
 
         // Publish to OCR routing key
-        this.channel.publish(
+        channel.publish(
           this.config.exchange,
           'file.image.classify', // Route to OCR service
           messageBuffer,
           publishOptions
         );
 
-        await this.channel.waitForConfirms();
+        await channel.waitForConfirms();
 
         logger.info({ messageId }, 'Scanned PDF published to OCR');
       }
