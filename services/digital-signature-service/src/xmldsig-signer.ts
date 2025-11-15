@@ -88,6 +88,7 @@ export async function signXMLDocument(
     // Create SignedXml instance
     const sig = new SignedXml({
       privateKey: certificate.privateKeyPEM,
+      publicCert: certificate.certificatePEM,
       canonicalizationAlgorithm: opts.canonicalizationAlgorithm,
       signatureAlgorithm: opts.signatureAlgorithm,
     });

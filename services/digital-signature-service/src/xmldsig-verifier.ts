@@ -94,25 +94,37 @@ export function extractCertificateFromXML(signedXml: string): string | null {
 export function parseCertificateInfo(certPEM: string): VerificationResult['certificateInfo'] {
   try {
     const cert = forge.pki.certificateFromPem(certPEM);
-
-    const subjectAttrs = cert.subject.attributes.map(
-      (attr) => `${attr.shortName}=${attr.value}`
-    );
-    const issuerAttrs = cert.issuer.attributes.map(
-      (attr) => `${attr.shortName}=${attr.value}`
-    );
-
-    return {
-      subject: subjectAttrs.join(', '),
-      issuer: issuerAttrs.join(', '),
-      serialNumber: cert.serialNumber,
-      notBefore: cert.validity.notBefore,
-      notAfter: cert.validity.notAfter,
-    };
+    return buildCertificateInfo(cert);
   } catch (error) {
     logger.error({ error }, 'Failed to parse certificate information');
     return undefined;
   }
+}
+
+function buildCertificateInfo(
+  cert: forge.pki.Certificate
+): VerificationResult['certificateInfo'] {
+  const subjectAttrs = cert.subject.attributes.map((attr) => {
+    const label = attr.shortName || attr.name || 'attr';
+    return `${label}=${attr.value}`;
+  });
+  const issuerAttrs = cert.issuer.attributes.map((attr) => {
+    const label = attr.shortName || attr.name || 'attr';
+    return `${label}=${attr.value}`;
+  });
+
+  return {
+    subject: subjectAttrs.join(', '),
+    issuer: issuerAttrs.join(', '),
+    serialNumber: normalizeSerialNumber(cert.serialNumber),
+    notBefore: cert.validity.notBefore,
+    notAfter: cert.validity.notAfter,
+  };
+}
+
+export function normalizeSerialNumber(serial: string): string {
+  const normalized = serial.replace(/^0+(?=[0-9a-fA-F]+$)/, '');
+  return normalized.length > 0 ? normalized : '0';
 }
 
 /**
@@ -138,12 +150,14 @@ export async function verifyXMLSignature(
     errors: [],
   };
 
+  let signingKeyPem: string | undefined;
+
   try {
     logger.info('Verifying XMLDSig signature');
 
     // Extract signature element
     const signatureMatch = signedXml.match(
-      /<Signature[^>]*xmlns="http:\/\/www\.w3\.org\/2000\/09\/xmldsig#"[^>]*>[\s\S]*?<\/Signature>/
+      /<(?:[\w-]+:)?Signature\b[\s\S]*?<\/(?:[\w-]+:)?Signature>/
     );
 
     if (!signatureMatch) {
@@ -153,11 +167,27 @@ export async function verifyXMLSignature(
       return result;
     }
 
+    if (!signatureMatch[0].includes('http://www.w3.org/2000/09/xmldsig#')) {
+      result.errors.push('XMLDSig namespace not found in signature element');
+      xmldsigValidations.inc({ result: 'invalid' });
+      endSpanSuccess(span);
+      return result;
+    }
+
     // Extract certificate from signature
     const certPEM = extractCertificateFromXML(signedXml);
 
     if (certPEM) {
-      result.certificateInfo = parseCertificateInfo(certPEM);
+      try {
+        const parsedCert = forge.pki.certificateFromPem(certPEM);
+        result.certificateInfo = buildCertificateInfo(parsedCert);
+        signingKeyPem = forge.pki.publicKeyToPem(parsedCert.publicKey);
+      } catch (error) {
+        logger.error(
+          { error },
+          'Failed to parse embedded certificate from signed XML'
+        );
+      }
 
       // Validate certificate dates
       if (result.certificateInfo) {
@@ -188,6 +218,14 @@ export async function verifyXMLSignature(
 
     // Verify signature using xml-crypto
     const sig = new SignedXml();
+    const signatureWithKeyProvider = sig as SignedXml & {
+      keyInfoProvider?: EmbeddedCertificateKeyInfoProvider;
+    };
+
+    if (signingKeyPem) {
+      signatureWithKeyProvider.keyInfoProvider =
+        new EmbeddedCertificateKeyInfoProvider(signingKeyPem);
+    }
 
     // Load signature from XML
     sig.loadSignature(signatureMatch[0]);
@@ -242,6 +280,18 @@ export async function verifyXMLSignature(
     result.errors.push(`Verification error: ${(error as Error).message}`);
 
     return result;
+  }
+}
+
+class EmbeddedCertificateKeyInfoProvider {
+  constructor(private readonly publicKeyPem: string) {}
+
+  getKeyInfo(): string {
+    return '<X509Data></X509Data>';
+  }
+
+  getKey(): string {
+    return this.publicKeyPem;
   }
 }
 
