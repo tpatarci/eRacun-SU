@@ -1,4 +1,6 @@
-module.exports = {
+import type { Config } from 'jest';
+
+const config: Config = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   roots: ['<rootDir>/tests'],
@@ -7,14 +9,13 @@ module.exports = {
     'src/**/*.ts',
     '!src/**/*.d.ts',
     '!src/index.ts',
-    '!src/observability.ts', // Configuration module
   ],
   coverageThreshold: {
     global: {
-      branches: 50,
-      functions: 82,
-      lines: 88,
-      statements: 88,
+      branches: 85,
+      functions: 85,
+      lines: 85,
+      statements: 85,
     },
   },
   setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
@@ -22,3 +23,5 @@ module.exports = {
   verbose: true,
   testTimeout: 10000,
 };
+
+export default config;

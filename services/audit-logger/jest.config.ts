@@ -1,5 +1,6 @@
-/** @type {import('jest').Config} */
-module.exports = {
+import type { Config } from 'jest';
+
+const config: Config = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   roots: ['<rootDir>/tests'],
@@ -7,17 +8,20 @@ module.exports = {
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/**/*.d.ts',
-    '!src/**/index.ts',
+    '!src/index.ts'  // Main entry point (integration tested)
   ],
   coverageThreshold: {
     global: {
-      branches: 68,
-      functions: 87,
+      branches: 85,
+      functions: 85,
       lines: 85,
-      statements: 85,
-    },
+      statements: 85
+    }
   },
+  coverageDirectory: 'coverage',
   setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
   moduleFileExtensions: ['ts', 'js', 'json'],
-  verbose: true,
+  verbose: true
 };
+
+export default config;

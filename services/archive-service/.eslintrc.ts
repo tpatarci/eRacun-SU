@@ -1,4 +1,6 @@
-module.exports = {
+import type { Linter } from 'eslint';
+
+const config: Linter.Config = {
   parser: '@typescript-eslint/parser',
   parserOptions: {
     ecmaVersion: 2022,
@@ -25,3 +27,5 @@ module.exports = {
     jest: true
   }
 };
+
+export default config;

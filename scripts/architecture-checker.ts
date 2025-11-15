@@ -1,9 +1,14 @@
-#!/usr/bin/env node
-const fs = require('fs');
-const path = require('path');
+#!/usr/bin/env tsx
+import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
+import { resolve, join, relative, extname, sep } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { dirname } from 'node:path';
 
-const REPO_ROOT = path.resolve(__dirname, '..');
-const SERVICES_DIR = path.join(REPO_ROOT, 'services');
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+
+const REPO_ROOT = resolve(__dirname, '..');
+const SERVICES_DIR = join(REPO_ROOT, 'services');
 const SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx']);
 const WHITELISTED_GATEWAYS = new Set([
   'api-gateway',
@@ -12,13 +17,20 @@ const WHITELISTED_GATEWAYS = new Set([
   'public-api-gateway',
   'upload-gateway'
 ]);
-const PROHIBITED_CLIENT_PATTERNS = [
+
+interface ClientPattern {
+  name: string;
+  regex: RegExp;
+}
+
+const PROHIBITED_CLIENT_PATTERNS: ClientPattern[] = [
   { name: 'axios', regex: /\baxios\b/ },
   { name: 'fetch', regex: /\bfetch\s*\(/ },
   { name: 'superagent', regex: /superagent\.(get|post|put|delete|patch)/i },
   { name: 'node:http', regex: /\bhttp\.request\s*\(/i },
   { name: 'node:https', regex: /\bhttps\.request\s*\(/i }
 ];
+
 const MESSAGE_BUS_INDICATORS = [
   /@eracun\/messaging/,
   /shared\/messaging/,
@@ -27,32 +39,51 @@ const MESSAGE_BUS_INDICATORS = [
   /\.subscribe\s*\(/i,
   /registerHandler\s*\(/i
 ];
+
 const CONTRACT_IMPORT_REGEX = /from\s+['"](@eracun\/contracts|\.\.?(?:\/[\w.-]+)*\/shared\/contracts[^'"]*)['"]/;
 const HTTP_LITERAL_REGEX = /https?:\/\/([a-z0-9.-]+)(?::\d+)?/gi;
 const QUERY_KEYWORDS = /(\bquery\b|queries|read model|read-only)/i;
 
-function listDirectories(dir) {
-  if (!fs.existsSync(dir)) {
-    return [];
-  }
-  return fs
-    .readdirSync(dir)
-    .filter((entry) => fs.statSync(path.join(dir, entry)).isDirectory());
+interface SourceFile {
+  absolutePath: string;
+  relativePath: string;
+  content: string;
 }
 
-function gatherSourceFiles(dir) {
-  const results = [];
-  if (!fs.existsSync(dir)) {
+interface Violation {
+  type: string;
+  filePath: string;
+  message: string;
+  hint?: string;
+  details?: {
+    service: string;
+    host: string;
+    client: string[];
+    adapterScoped: boolean;
+  };
+}
+
+function listDirectories(dir: string): string[] {
+  if (!existsSync(dir)) {
+    return [];
+  }
+  return readdirSync(dir)
+    .filter((entry) => statSync(join(dir, entry)).isDirectory());
+}
+
+function gatherSourceFiles(dir: string): string[] {
+  const results: string[] = [];
+  if (!existsSync(dir)) {
     return results;
   }
-  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  const entries = readdirSync(dir, { withFileTypes: true });
   for (const entry of entries) {
-    const entryPath = path.join(dir, entry.name);
+    const entryPath = join(dir, entry.name);
     if (entry.isDirectory()) {
       results.push(...gatherSourceFiles(entryPath));
       continue;
     }
-    const ext = path.extname(entry.name).toLowerCase();
+    const ext = extname(entry.name).toLowerCase();
     if (SOURCE_EXTENSIONS.has(ext)) {
       results.push(entryPath);
     }
@@ -60,7 +91,7 @@ function gatherSourceFiles(dir) {
   return results;
 }
 
-function normalizeHost(rawHost) {
+function normalizeHost(rawHost: string | undefined): string | null {
   if (!rawHost) {
     return null;
   }
@@ -72,9 +103,13 @@ function normalizeHost(rawHost) {
   return normalized || null;
 }
 
-function extractInternalHosts(content, currentService, knownServices) {
-  const hosts = new Set();
-  let match;
+function extractInternalHosts(
+  content: string,
+  currentService: string,
+  knownServices: Set<string>
+): string[] {
+  const hosts = new Set<string>();
+  let match: RegExpExecArray | null;
   while ((match = HTTP_LITERAL_REGEX.exec(content)) !== null) {
     const candidate = normalizeHost(match[1]);
     if (!candidate) {
@@ -97,14 +132,18 @@ function extractInternalHosts(content, currentService, knownServices) {
   return [...hosts];
 }
 
-function hasMessageBusUsage(files) {
+function hasMessageBusUsage(files: SourceFile[]): boolean {
   return files.some(({ content }) =>
     MESSAGE_BUS_INDICATORS.some((regex) => regex.test(content))
   );
 }
 
-function detectDirectHttpViolations(files, currentService, knownServices) {
-  const violations = [];
+function detectDirectHttpViolations(
+  files: SourceFile[],
+  currentService: string,
+  knownServices: Set<string>
+): Violation[] {
+  const violations: Violation[] = [];
   for (const file of files) {
     const clientMatches = PROHIBITED_CLIENT_PATTERNS.filter((pattern) =>
       pattern.regex.test(file.content)
@@ -124,7 +163,7 @@ function detectDirectHttpViolations(files, currentService, knownServices) {
     }
 
     const hasContractImport = CONTRACT_IMPORT_REGEX.test(file.content);
-    const isAdapterFile = file.relativePath.includes(`${path.sep}adapters${path.sep}`);
+    const isAdapterFile = file.relativePath.includes(`${sep}adapters${sep}`);
 
     internalHosts.forEach((host) => {
       violations.push({
@@ -148,16 +187,20 @@ function detectDirectHttpViolations(files, currentService, knownServices) {
   return violations;
 }
 
-function detectMessageBusCoverage(serviceName, files, readmePath) {
-  const violations = [];
-  const readmeContent = fs.existsSync(readmePath)
-    ? fs.readFileSync(readmePath, 'utf8')
+function detectMessageBusCoverage(
+  serviceName: string,
+  files: SourceFile[],
+  readmePath: string
+): Violation[] {
+  const violations: Violation[] = [];
+  const readmeContent = existsSync(readmePath)
+    ? readFileSync(readmePath, 'utf8')
     : '';
   const declaresQuery = QUERY_KEYWORDS.test(readmeContent);
   if (declaresQuery && !hasMessageBusUsage(files)) {
     violations.push({
       type: 'MESSAGE_BUS',
-      filePath: path.relative(REPO_ROOT, readmePath),
+      filePath: relative(REPO_ROOT, readmePath),
       message: `Service "${serviceName}" declares query responsibilities but no message bus handlers were detected in src/.`,
       hint: 'Register handlers via shared/messaging and publish query responses over the bus instead of using HTTP clients.',
     });
@@ -165,23 +208,23 @@ function detectMessageBusCoverage(serviceName, files, readmePath) {
   return violations;
 }
 
-function collectServiceFiles(serviceDir) {
-  const srcDir = path.join(serviceDir, 'src');
+function collectServiceFiles(serviceDir: string): SourceFile[] {
+  const srcDir = join(serviceDir, 'src');
   const files = gatherSourceFiles(srcDir);
   return files.map((filePath) => ({
     absolutePath: filePath,
-    relativePath: path.relative(REPO_ROOT, filePath),
-    content: fs.readFileSync(filePath, 'utf8'),
+    relativePath: relative(REPO_ROOT, filePath),
+    content: readFileSync(filePath, 'utf8'),
   }));
 }
 
-function run() {
+function run(): void {
   const serviceDirs = listDirectories(SERVICES_DIR);
   const knownServices = new Set(serviceDirs.map((service) => service.toLowerCase()));
-  const allViolations = [];
+  const allViolations: Violation[] = [];
 
   for (const serviceName of serviceDirs) {
-    const serviceDir = path.join(SERVICES_DIR, serviceName);
+    const serviceDir = join(SERVICES_DIR, serviceName);
     const files = collectServiceFiles(serviceDir);
     if (files.length === 0) {
       continue;
@@ -194,7 +237,7 @@ function run() {
     );
     allViolations.push(...httpViolations);
 
-    const readmePath = path.join(serviceDir, 'README.md');
+    const readmePath = join(serviceDir, 'README.md');
     const busViolations = detectMessageBusCoverage(
       serviceName,
       files,
