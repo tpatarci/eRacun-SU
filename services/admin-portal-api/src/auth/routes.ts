@@ -1,5 +1,7 @@
 import { Router, Request, Response } from 'express';
-import jwt from 'jsonwebtoken';
+import jwt, { Secret, SignOptions } from 'jsonwebtoken';
+
+type JwtExpiryValue = string | number;
 import bcrypt from 'bcrypt';
 import { v4 as uuidv4 } from 'uuid';
 import { JWTPayload, AuthenticatedRequest } from './types';
@@ -59,8 +61,9 @@ router.post('/login', async (req: Request, res: Response) => {
     }
 
     // Generate JWT token
-    const jwtSecret = process.env.JWT_SECRET!;
-    const jwtExpiry = process.env.JWT_EXPIRY || '1h';
+    const jwtSecret: Secret = process.env.JWT_SECRET!;
+    const jwtExpiry: JwtExpiryValue = process.env.JWT_EXPIRY || '1h';
+    const jwtOptions: SignOptions = { expiresIn: jwtExpiry as SignOptions['expiresIn'] };
 
     const payload: JWTPayload = {
       userId: user.id,
@@ -68,7 +71,7 @@ router.post('/login', async (req: Request, res: Response) => {
       role: user.role,
     };
 
-    const token = jwt.sign(payload, jwtSecret, { expiresIn: jwtExpiry });
+    const token = jwt.sign(payload, jwtSecret, jwtOptions);
 
     // Create session
     const sessionRepo = getSessionRepository();
@@ -98,7 +101,7 @@ router.post('/login', async (req: Request, res: Response) => {
       msg: 'Login successful',
     });
 
-    res.json({
+    return res.json({
       token,
       expiresIn: jwtExpiry,
       user: {
@@ -115,7 +118,7 @@ router.post('/login', async (req: Request, res: Response) => {
       stack: error.stack,
       msg: 'Login error',
     });
-    res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -146,7 +149,7 @@ router.post('/logout', authenticateJWT, async (req: Request, res: Response) => {
       msg: 'Logout successful',
     });
 
-    res.json({ message: 'Logged out successfully' });
+    return res.json({ message: 'Logged out successfully' });
   } catch (err) {
     const error = err as Error;
     logger.error({
@@ -154,7 +157,7 @@ router.post('/logout', authenticateJWT, async (req: Request, res: Response) => {
       error: error.message,
       msg: 'Logout error',
     });
-    res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -170,8 +173,9 @@ router.post('/refresh', authenticateJWT, async (req: Request, res: Response) => 
     const user = authReq.user!;
 
     // Generate new JWT token
-    const jwtSecret = process.env.JWT_SECRET!;
-    const jwtExpiry = process.env.JWT_EXPIRY || '1h';
+    const jwtSecret: Secret = process.env.JWT_SECRET!;
+    const jwtExpiry: JwtExpiryValue = process.env.JWT_EXPIRY || '1h';
+    const jwtOptions: SignOptions = { expiresIn: jwtExpiry as SignOptions['expiresIn'] };
 
     const payload: JWTPayload = {
       userId: user.userId,
@@ -179,7 +183,7 @@ router.post('/refresh', authenticateJWT, async (req: Request, res: Response) => 
       role: user.role,
     };
 
-    const newToken = jwt.sign(payload, jwtSecret, { expiresIn: jwtExpiry });
+    const newToken = jwt.sign(payload, jwtSecret, jwtOptions);
 
     // Update session
     const sessionRepo = getSessionRepository();
@@ -194,7 +198,7 @@ router.post('/refresh', authenticateJWT, async (req: Request, res: Response) => 
       msg: 'Token refresh successful',
     });
 
-    res.json({
+    return res.json({
       token: newToken,
       expiresIn: jwtExpiry,
     });
@@ -205,7 +209,7 @@ router.post('/refresh', authenticateJWT, async (req: Request, res: Response) => 
       error: error.message,
       msg: 'Token refresh error',
     });
-    res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -225,7 +229,7 @@ router.get('/me', authenticateJWT, async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    res.json({
+    return res.json({
       id: user.id,
       email: user.email,
       role: user.role,
@@ -240,7 +244,7 @@ router.get('/me', authenticateJWT, async (req: Request, res: Response) => {
       error: error.message,
       msg: 'Get current user error',
     });
-    res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 

@@ -43,7 +43,7 @@ router.get('/', authenticateJWT, adminOnly, async (req: Request, res: Response) 
       msg: 'Retrieved all users',
     });
 
-    res.json({ users: userResponses });
+    return res.json({ users: userResponses });
   } catch (err) {
     const error = err as Error;
     logger.error({
@@ -52,7 +52,7 @@ router.get('/', authenticateJWT, adminOnly, async (req: Request, res: Response) 
       stack: error.stack,
       msg: 'Get all users error',
     });
-    res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -99,7 +99,7 @@ router.post('/', authenticateJWT, adminOnly, async (req: Request, res: Response)
       msg: 'User created',
     });
 
-    res.status(201).json({ user: toUserResponse(user) });
+    return res.status(201).json({ user: toUserResponse(user) });
   } catch (err) {
     const error = err as Error;
     logger.error({
@@ -108,7 +108,7 @@ router.post('/', authenticateJWT, adminOnly, async (req: Request, res: Response)
       stack: error.stack,
       msg: 'Create user error',
     });
-    res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -140,7 +140,7 @@ router.get('/:id', authenticateJWT, adminOnly, async (req: Request, res: Respons
       msg: 'Retrieved user details',
     });
 
-    res.json({ user: toUserResponse(user) });
+    return res.json({ user: toUserResponse(user) });
   } catch (err) {
     const error = err as Error;
     logger.error({
@@ -148,7 +148,7 @@ router.get('/:id', authenticateJWT, adminOnly, async (req: Request, res: Respons
       error: error.message,
       msg: 'Get user error',
     });
-    res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -203,7 +203,7 @@ router.patch('/:id', authenticateJWT, adminOnly, async (req: Request, res: Respo
 
     // Fetch updated user
     const updatedUser = await userRepo.getUserById(userId);
-    res.json({ user: toUserResponse(updatedUser!) });
+    return res.json({ user: toUserResponse(updatedUser!) });
   } catch (err) {
     const error = err as Error;
     logger.error({
@@ -211,7 +211,7 @@ router.patch('/:id', authenticateJWT, adminOnly, async (req: Request, res: Respo
       error: error.message,
       msg: 'Update user error',
     });
-    res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 
@@ -251,7 +251,7 @@ router.delete('/:id', authenticateJWT, adminOnly, async (req: Request, res: Resp
       msg: 'User deactivated',
     });
 
-    res.json({ message: 'User deactivated successfully' });
+    return res.json({ message: 'User deactivated successfully' });
   } catch (err) {
     const error = err as Error;
     logger.error({
@@ -259,7 +259,7 @@ router.delete('/:id', authenticateJWT, adminOnly, async (req: Request, res: Resp
       error: error.message,
       msg: 'Deactivate user error',
     });
-    res.status(500).json({ error: 'Internal server error' });
+    return res.status(500).json({ error: 'Internal server error' });
   }
 });
 

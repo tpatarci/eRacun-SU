@@ -56,7 +56,7 @@ export function authenticateJWT(req: Request, res: Response, next: NextFunction)
     });
 
     authAttempts.inc({ status: 'success' });
-    next();
+    return next();
   } catch (err) {
     const error = err as Error;
 
@@ -86,7 +86,7 @@ export function authenticateJWT(req: Request, res: Response, next: NextFunction)
  *
  * Attaches user to request if token is present, but doesn't require it
  */
-export function optionalAuth(req: Request, res: Response, next: NextFunction) {
+export function optionalAuth(req: Request, _res: Response, next: NextFunction) {
   const authHeader = req.headers.authorization;
 
   if (!authHeader) {

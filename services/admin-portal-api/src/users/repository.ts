@@ -4,14 +4,46 @@ import { User, CreateUserRequest, UpdateUserRequest } from './types';
 import { UserRole } from '../auth/types';
 import { logger } from '../observability';
 
+function shouldUseInMemoryStore(): boolean {
+  if (process.env.ADMIN_PORTAL_IN_MEMORY_DB === 'true') {
+    return true;
+  }
+  if (process.env.ADMIN_PORTAL_IN_MEMORY_DB === 'false') {
+    return false;
+  }
+  return process.env.NODE_ENV === 'test';
+}
+
+export function isInMemoryUserStoreEnabled(): boolean {
+  return shouldUseInMemoryStore();
+}
+
 // PostgreSQL connection pool
 let pool: Pool | null = null;
+
+function createNoopPool(): Pool {
+  return {
+    query: async () => {
+      throw new Error('In-memory repository does not expose SQL pool queries');
+    },
+    end: async () => {
+      /* noop */
+    },
+    on: () => createNoopPool(),
+  } as unknown as Pool;
+}
 
 /**
  * Initialize database connection pool
  */
 export function initializePool(config?: PoolConfig) {
   if (pool) {
+    return pool;
+  }
+
+  if (shouldUseInMemoryStore()) {
+    logger.warn('Using in-memory user repository; skipping PostgreSQL pool initialization');
+    pool = createNoopPool();
     return pool;
   }
 
@@ -49,10 +81,21 @@ export function getPool(): Pool {
   return pool;
 }
 
+export interface IUserRepository {
+  createUser(request: CreateUserRequest): Promise<User>;
+  getUserByEmail(email: string): Promise<User | null>;
+  getUserById(id: number): Promise<User | null>;
+  getAllUsers(): Promise<User[]>;
+  updateUser(id: number, updates: UpdateUserRequest): Promise<void>;
+  deactivateUser(id: number): Promise<void>;
+  updateLastLogin(id: number): Promise<void>;
+  emailExists(email: string): Promise<boolean>;
+}
+
 /**
- * User repository
+ * User repository backed by PostgreSQL
  */
-export class UserRepository {
+export class UserRepository implements IUserRepository {
   private pool: Pool;
 
   constructor(pool: Pool) {
@@ -230,15 +273,108 @@ export class UserRepository {
   }
 }
 
+class InMemoryUserRepository implements IUserRepository {
+  private users: User[] = [];
+  private idSeq = 1;
+
+  private cloneUser(user: User): User {
+    return {
+      ...user,
+      createdAt: new Date(user.createdAt),
+      lastLogin: user.lastLogin ? new Date(user.lastLogin) : null,
+    };
+  }
+
+  private findByEmail(email: string): User | undefined {
+    return this.users.find((user) => user.email === email);
+  }
+
+  private findById(id: number): User | undefined {
+    return this.users.find((user) => user.id === id);
+  }
+
+  async createUser(request: CreateUserRequest): Promise<User> {
+    const bcryptRounds = parseInt(process.env.BCRYPT_ROUNDS || '12', 10);
+    const passwordHash = await bcrypt.hash(request.password, bcryptRounds);
+    const now = new Date();
+    const user: User = {
+      id: this.idSeq++,
+      email: request.email,
+      passwordHash,
+      role: request.role,
+      active: true,
+      createdAt: now,
+      lastLogin: null,
+    };
+    this.users.push(user);
+    return this.cloneUser(user);
+  }
+
+  async getUserByEmail(email: string): Promise<User | null> {
+    const user = this.findByEmail(email);
+    return user ? this.cloneUser(user) : null;
+  }
+
+  async getUserById(id: number): Promise<User | null> {
+    const user = this.findById(id);
+    return user ? this.cloneUser(user) : null;
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    const sorted = [...this.users].sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    return sorted.map((user) => this.cloneUser(user));
+  }
+
+  async updateUser(id: number, updates: UpdateUserRequest): Promise<void> {
+    const user = this.findById(id);
+    if (!user) {
+      return;
+    }
+
+    if (updates.role !== undefined) {
+      user.role = updates.role;
+    }
+
+    if (updates.active !== undefined) {
+      user.active = updates.active;
+    }
+
+    if (updates.password !== undefined) {
+      const bcryptRounds = parseInt(process.env.BCRYPT_ROUNDS || '12', 10);
+      user.passwordHash = await bcrypt.hash(updates.password, bcryptRounds);
+    }
+  }
+
+  async deactivateUser(id: number): Promise<void> {
+    const user = this.findById(id);
+    if (user) {
+      user.active = false;
+    }
+  }
+
+  async updateLastLogin(id: number): Promise<void> {
+    const user = this.findById(id);
+    if (user) {
+      user.lastLogin = new Date();
+    }
+  }
+
+  async emailExists(email: string): Promise<boolean> {
+    return this.findByEmail(email) !== undefined;
+  }
+}
+
 // Singleton instance
-let userRepository: UserRepository | null = null;
+let userRepository: IUserRepository | null = null;
 
 /**
  * Get user repository instance
  */
-export function getUserRepository(): UserRepository {
+export function getUserRepository(): IUserRepository {
   if (!userRepository) {
-    userRepository = new UserRepository(getPool());
+    userRepository = shouldUseInMemoryStore()
+      ? new InMemoryUserRepository()
+      : new UserRepository(getPool());
   }
   return userRepository;
 }

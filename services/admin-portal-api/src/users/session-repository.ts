@@ -1,12 +1,22 @@
 import { Pool } from 'pg';
 import { Session } from '../auth/types';
-import { getPool } from './repository';
+import { getPool, isInMemoryUserStoreEnabled } from './repository';
 import { logger } from '../observability';
 
 /**
  * Session repository
  */
-export class SessionRepository {
+export interface ISessionRepository {
+  createSession(session: Session): Promise<void>;
+  getSessionByToken(token: string): Promise<Session | null>;
+  deleteSessionByToken(token: string): Promise<void>;
+  deleteUserSessions(userId: number): Promise<void>;
+  updateSessionToken(oldToken: string, newToken: string): Promise<void>;
+  countActiveSessions(): Promise<number>;
+  cleanupExpiredSessions(): Promise<number>;
+}
+
+export class SessionRepository implements ISessionRepository {
   private pool: Pool;
 
   constructor(pool: Pool) {
@@ -138,15 +148,59 @@ export class SessionRepository {
   }
 }
 
+class InMemorySessionRepository implements ISessionRepository {
+  private sessions: Session[] = [];
+
+  async createSession(session: Session): Promise<void> {
+    this.sessions.push({ ...session });
+  }
+
+  async getSessionByToken(token: string): Promise<Session | null> {
+    const now = Date.now();
+    const session = this.sessions.find((s) => s.token === token && s.expiresAt.getTime() > now);
+    return session ? { ...session } : null;
+  }
+
+  async deleteSessionByToken(token: string): Promise<void> {
+    this.sessions = this.sessions.filter((s) => s.token !== token);
+  }
+
+  async deleteUserSessions(userId: number): Promise<void> {
+    this.sessions = this.sessions.filter((s) => s.userId !== userId);
+  }
+
+  async updateSessionToken(oldToken: string, newToken: string): Promise<void> {
+    const session = this.sessions.find((s) => s.token === oldToken);
+    if (session) {
+      session.token = newToken;
+      session.expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    }
+  }
+
+  async countActiveSessions(): Promise<number> {
+    const now = Date.now();
+    return this.sessions.filter((s) => s.expiresAt.getTime() > now).length;
+  }
+
+  async cleanupExpiredSessions(): Promise<number> {
+    const now = Date.now();
+    const before = this.sessions.length;
+    this.sessions = this.sessions.filter((s) => s.expiresAt.getTime() > now);
+    return before - this.sessions.length;
+  }
+}
+
 // Singleton instance
-let sessionRepository: SessionRepository | null = null;
+let sessionRepository: ISessionRepository | null = null;
 
 /**
  * Get session repository instance
  */
-export function getSessionRepository(): SessionRepository {
+export function getSessionRepository(): ISessionRepository {
   if (!sessionRepository) {
-    sessionRepository = new SessionRepository(getPool());
+    sessionRepository = isInMemoryUserStoreEnabled()
+      ? new InMemorySessionRepository()
+      : new SessionRepository(getPool());
   }
   return sessionRepository;
 }

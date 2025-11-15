@@ -2,8 +2,11 @@ import { Router, Request, Response } from 'express';
 import { authenticateJWT } from '../auth/middleware';
 import { anyAuthenticated } from '../auth/rbac';
 import { AuthenticatedRequest } from '../auth/types';
-import { getDeadLetterHandlerClient } from '../clients/dead-letter-handler';
 import { logger } from '../observability';
+import { getAdminCommandGateway } from '../messaging';
+import { createRequestContext } from '../messaging/request-context';
+
+const messagingGateway = getAdminCommandGateway();
 
 const router = Router();
 
@@ -49,20 +52,19 @@ router.get('/monthly', authenticateJWT, anyAuthenticated, async (req: Request, r
  */
 router.get('/errors', authenticateJWT, anyAuthenticated, async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
+  const context = createRequestContext(authReq);
 
   try {
-    const dlhClient = getDeadLetterHandlerClient();
-    const errorStats = await dlhClient.getErrorStats(authReq.requestId);
-
-    res.json(errorStats);
+    const stats = await messagingGateway.deadLetterStats(context);
+    res.json(stats ?? {});
   } catch (err) {
     const error = err as Error;
     logger.error({
-      request_id: authReq.requestId,
+      request_id: context.requestId,
       error: error.message,
       msg: 'Error report failed',
     });
-    res.status(500).json({ error: 'Failed to generate error report' });
+    res.status(502).json({ error: 'Failed to generate error report' });
   }
 });
 
