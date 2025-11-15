@@ -1,0 +1,61 @@
+#!/bin/sh
+
+# TypeScript Compliance Pre-commit Hook
+# Prevents new JavaScript configuration files from being committed
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Check for new JavaScript config files being added
+NEW_JS_CONFIGS=$(git diff --cached --name-only --diff-filter=A | grep -E '\.(config|rc)\.js$' | grep -v node_modules || true)
+MODIFIED_JS_CONFIGS=$(git diff --cached --name-only --diff-filter=M | grep -E 'jest\.config\.js|eslintrc\.js|prettierrc\.js' | grep -v node_modules || true)
+
+if [ ! -z "$NEW_JS_CONFIGS" ]; then
+  echo "${RED}❌ ERROR: New JavaScript configuration files are not allowed!${NC}"
+  echo ""
+  echo "The following files must be TypeScript:"
+  echo "$NEW_JS_CONFIGS" | while IFS= read -r file; do
+    echo "  ${YELLOW}$file${NC} → should be ${GREEN}${file%.js}.ts${NC}"
+  done
+  echo ""
+  echo "Please convert to TypeScript. See: ${GREEN}docs/TYPESCRIPT_HARMONIZATION_GUIDE.md${NC}"
+  echo ""
+  exit 1
+fi
+
+if [ ! -z "$MODIFIED_JS_CONFIGS" ]; then
+  echo "${YELLOW}⚠️  WARNING: Modifying JavaScript config files${NC}"
+  echo ""
+  echo "These files should be migrated to TypeScript:"
+  echo "$MODIFIED_JS_CONFIGS" | while IFS= read -r file; do
+    echo "  ${YELLOW}$file${NC}"
+  done
+  echo ""
+  echo "Consider migrating as part of this change."
+  echo "See: ${GREEN}docs/TYPESCRIPT_HARMONIZATION_GUIDE.md${NC}"
+  echo ""
+  # Warning only - don't block the commit for modifications
+fi
+
+# Check for new JavaScript files in scripts directory
+NEW_JS_SCRIPTS=$(git diff --cached --name-only --diff-filter=A | grep '^scripts/.*\.js$' || true)
+
+if [ ! -z "$NEW_JS_SCRIPTS" ]; then
+  echo "${RED}❌ ERROR: New JavaScript scripts are not allowed!${NC}"
+  echo ""
+  echo "The following scripts must be TypeScript:"
+  echo "$NEW_JS_SCRIPTS" | while IFS= read -r file; do
+    echo "  ${YELLOW}$file${NC} → should be ${GREEN}${file%.js}.ts${NC}"
+  done
+  echo ""
+  echo "Use TypeScript with tsx for all new scripts."
+  echo "See: ${GREEN}docs/TYPESCRIPT_HARMONIZATION_GUIDE.md${NC}"
+  echo ""
+  exit 1
+fi
+
+# If we get here, all checks passed
+exit 0
