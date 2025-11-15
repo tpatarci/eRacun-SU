@@ -319,11 +319,12 @@ export class MockWORMStorage implements IWORMStorage {
   }
 
   private getRestoreTime(tier: string): number {
+    const base = this.coldRestore;
     const times = {
-      EXPEDITED: 3600000, // 1 hour
-      STANDARD: 14400000, // 4 hours
-      BULK: 43200000, // 12 hours
+      EXPEDITED: Math.max(600000, Math.floor(base / 3)),
+      STANDARD: base,
+      BULK: base * 3,
     };
-    return times[tier as keyof typeof times] ?? times.STANDARD;
+    return times[tier as keyof typeof times] ?? base;
   }
 }
