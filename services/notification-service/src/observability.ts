@@ -184,7 +184,7 @@ export const logger = pino({
         }
         return arg;
       });
-      return method.apply(this, maskedArgs);
+      return method.apply(this, maskedArgs as [string, ...any[]]);
     },
   },
   // Base fields for all logs

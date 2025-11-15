@@ -11,7 +11,7 @@
  */
 
 import express, { Request, Response } from 'express';
-import amqp, { Channel, Connection, ConsumeMessage } from 'amqplib';
+import amqp, { Channel, ConsumeMessage } from 'amqplib';
 import { v4 as uuidv4 } from 'uuid';
 import {
   logger,
@@ -26,12 +26,11 @@ import {
   closePool,
   createSchema,
   healthCheck as dbHealthCheck,
-  NotificationType,
   NotificationPriority,
 } from './repository';
 import { startRateLimiters, stopRateLimiters } from './rate-limiter';
 import { sendEmail, initTransporter, closeTransporter, verifyConnection as verifySmtp } from './email-sender';
-import { sendSMS, initTwilioClient, verifyTwilioConfig } from './sms-sender';
+import { sendSMS, initTwilioClient } from './sms-sender';
 import { sendWebhook } from './webhook-sender';
 
 // =============================================================================
@@ -39,7 +38,6 @@ import { sendWebhook } from './webhook-sender';
 // =============================================================================
 
 const HTTP_PORT = parseInt(process.env.HTTP_PORT || '8085', 10);
-const PROMETHEUS_PORT = parseInt(process.env.PROMETHEUS_PORT || '9093', 10);
 const RABBITMQ_URL = process.env.RABBITMQ_URL || 'amqp://localhost:5672';
 const NOTIFICATION_QUEUE = process.env.NOTIFICATION_QUEUE || 'notifications.send';
 const RABBITMQ_PREFETCH = parseInt(process.env.RABBITMQ_PREFETCH || '10', 10);
@@ -64,7 +62,7 @@ interface NotificationRequest {
 // STATE
 // =============================================================================
 
-let rabbitmqConnection: Connection | null = null;
+let rabbitmqConnection: Awaited<ReturnType<typeof amqp.connect>> | null = null;
 let rabbitmqChannel: Channel | null = null;
 let httpServer: any = null;
 let isShuttingDown = false;
@@ -167,6 +165,10 @@ async function startRabbitMQConsumer(): Promise<void> {
     rabbitmqConnection = await amqp.connect(RABBITMQ_URL);
     rabbitmqChannel = await rabbitmqConnection.createChannel();
 
+    if (!rabbitmqChannel) {
+      throw new Error('Failed to create RabbitMQ channel');
+    }
+
     // Assert queue exists
     await rabbitmqChannel.assertQueue(NOTIFICATION_QUEUE, {
       durable: true, // Queue survives broker restart
@@ -243,7 +245,7 @@ function startHttpApi(): void {
   app.use(express.json({ limit: '1mb' }));
 
   // Request logging middleware
-  app.use((req, res, next) => {
+  app.use((req, _res, next) => {
     logger.debug({ method: req.method, path: req.path }, 'HTTP request received');
     next();
   });
@@ -265,13 +267,13 @@ function startHttpApi(): void {
       // Process notification
       await processNotification(notification);
 
-      res.status(200).json({
+      return res.status(200).json({
         success: true,
         notification_id: notification.notification_id || uuidv4(),
       });
     } catch (error) {
       logger.error({ error }, 'HTTP notification request failed');
-      res.status(500).json({
+      return res.status(500).json({
         success: false,
         error: error instanceof Error ? error.message : String(error),
       });
@@ -281,7 +283,7 @@ function startHttpApi(): void {
   /**
    * GET /health - Health check
    */
-  app.get('/health', async (req: Request, res: Response) => {
+  app.get('/health', async (_req: Request, res: Response) => {
     const dbHealthy = await dbHealthCheck();
     const smtpHealthy = await verifySmtp();
 
@@ -300,7 +302,7 @@ function startHttpApi(): void {
   /**
    * GET /ready - Readiness check
    */
-  app.get('/ready', async (req: Request, res: Response) => {
+  app.get('/ready', async (_req: Request, res: Response) => {
     const dbHealthy = await dbHealthCheck();
     const ready = dbHealthy && rabbitmqChannel !== null;
 
@@ -316,7 +318,7 @@ function startHttpApi(): void {
   /**
    * GET /metrics - Prometheus metrics
    */
-  app.get('/metrics', async (req: Request, res: Response) => {
+  app.get('/metrics', async (_req: Request, res: Response) => {
     try {
       const metrics = await getMetrics();
       res.set('Content-Type', 'text/plain; version=0.0.4; charset=utf-8');

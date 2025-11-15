@@ -36,7 +36,7 @@ export interface HealthCheckResult {
   status: HealthStatus;
   checks: {
     database?: { status: string; latency_ms?: number };
-    message_queue?: { status: string; latency_ms?: number };
+    message_queue?: { status: string; latency_ms?: number; brokers?: number };
     circuit_breaker?: { status: string; failure_rate?: number };
   };
   uptime_seconds?: number;

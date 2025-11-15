@@ -9,7 +9,7 @@
  * - Error message logging for failed notifications
  */
 
-import { Pool, PoolClient } from 'pg';
+import { Pool } from 'pg';
 import { logger } from './observability';
 
 // =============================================================================

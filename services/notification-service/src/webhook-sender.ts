@@ -112,7 +112,7 @@ export async function sendWebhook(params: SendWebhookParams): Promise<WebhookRes
       webhook_url: params.webhook_url,
       priority: params.priority,
     },
-    async (span) => {
+    async (_span) => {
       const startTime = Date.now();
 
       try {
