@@ -3,6 +3,7 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import type { RateLimitRequestHandler } from 'express-rate-limit';
 import {
   logger,
   initObservability,
@@ -13,6 +14,7 @@ import {
 import { initializePool } from './users/repository';
 import { getSessionRepository } from './users/session-repository';
 import { activeSessions } from './observability';
+import { shutdownMessaging } from './messaging';
 
 // Import routes
 import authRoutes from './auth/routes';
@@ -25,6 +27,16 @@ import certificatesRoutes from './certificates/routes';
 
 const HTTP_PORT = parseInt(process.env.HTTP_PORT || '8089', 10);
 const PROMETHEUS_PORT = parseInt(process.env.PROMETHEUS_PORT || '9094', 10);
+const isTestEnv = process.env.NODE_ENV === 'test';
+const noopLimiter: RateLimitRequestHandler = Object.assign(
+  (_req: Request, _res: Response, next: express.NextFunction) => next(),
+  {
+    resetKey: () => {
+      /* noop */
+    },
+    getKey: async () => undefined,
+  }
+);
 
 /**
  * Initialize Express app
@@ -66,24 +78,28 @@ function createApp() {
   app.use(requestTrackingMiddleware);
 
   // Rate limiting for auth endpoints
-  const authLimiter = rateLimit({
-    windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10), // 15 minutes
-    max: parseInt(process.env.RATE_LIMIT_MAX || '5', 10),
-    standardHeaders: true,
-    legacyHeaders: false,
-    message: 'Too many authentication attempts, please try again later',
-  });
+  const authLimiter = isTestEnv
+    ? noopLimiter
+    : rateLimit({
+        windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10), // 15 minutes
+        max: parseInt(process.env.RATE_LIMIT_MAX || '5', 10),
+        standardHeaders: true,
+        legacyHeaders: false,
+        message: 'Too many authentication attempts, please try again later',
+      });
 
   // Rate limiting for API endpoints
-  const apiLimiter = rateLimit({
-    windowMs: 60 * 1000, // 1 minute
-    max: 100,
-    standardHeaders: true,
-    legacyHeaders: false,
-  });
+  const apiLimiter = isTestEnv
+    ? noopLimiter
+    : rateLimit({
+        windowMs: 60 * 1000, // 1 minute
+        max: 100,
+        standardHeaders: true,
+        legacyHeaders: false,
+      });
 
   // Health endpoints (no auth required)
-  app.get('/health', (req: Request, res: Response) => {
+  app.get('/health', (_req: Request, res: Response) => {
     res.json({
       status: 'healthy',
       service: 'admin-portal-api',
@@ -92,7 +108,7 @@ function createApp() {
     });
   });
 
-  app.get('/ready', async (req: Request, res: Response) => {
+  app.get('/ready', async (_req: Request, res: Response) => {
     try {
       // Check database connectivity
       const pool = initializePool();
@@ -135,7 +151,7 @@ function createApp() {
   app.use('/api/v1/certificates', apiLimiter, certificatesRoutes);
 
   // 404 handler
-  app.use((req: Request, res: Response) => {
+  app.use((_req: Request, res: Response) => {
     res.status(404).json({ error: 'Not found' });
   });
 
@@ -160,7 +176,7 @@ function createApp() {
 function startMetricsServer() {
   const metricsApp = express();
 
-  metricsApp.get('/metrics', async (req: Request, res: Response) => {
+  metricsApp.get('/metrics', async (_req: Request, res: Response) => {
     try {
       const metrics = await getMetrics();
       res.set('Content-Type', 'text/plain');
@@ -225,6 +241,9 @@ async function main() {
       const pool = initializePool();
       await pool.end();
       logger.info('Database pool closed');
+
+      await shutdownMessaging();
+      logger.info('Messaging adapter closed');
 
       process.exit(0);
     };

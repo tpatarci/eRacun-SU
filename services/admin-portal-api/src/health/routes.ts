@@ -2,10 +2,11 @@ import { Router, Request, Response } from 'express';
 import { authenticateJWT } from '../auth/middleware';
 import { anyAuthenticated } from '../auth/rbac';
 import { AuthenticatedRequest } from '../auth/types';
-import { getHealthMonitorClient } from '../clients/health-monitor';
-import { getDeadLetterHandlerClient } from '../clients/dead-letter-handler';
-import { getCertLifecycleManagerClient } from '../clients/cert-lifecycle-manager';
 import { logger } from '../observability';
+import { getAdminCommandGateway } from '../messaging';
+import { createRequestContext } from '../messaging/request-context';
+
+const messagingGateway = getAdminCommandGateway();
 
 const router = Router();
 
@@ -16,41 +17,35 @@ const router = Router();
  */
 router.get('/dashboard', authenticateJWT, anyAuthenticated, async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
+  const context = createRequestContext(authReq);
 
   try {
-    const healthClient = getHealthMonitorClient();
-    const dlhClient = getDeadLetterHandlerClient();
-    const certClient = getCertLifecycleManagerClient();
-
-    // Aggregate data from multiple services
-    const [systemHealth, errorStats, certificates] = await Promise.all([
-      healthClient.getDashboard(authReq.requestId).catch(() => null),
-      dlhClient.getErrorStats(authReq.requestId).catch(() => null),
-      certClient.getExpiringCertificates(30, authReq.requestId).catch(() => null),
-    ]);
+    const snapshot = await messagingGateway.fetchHealthDashboard(context);
 
     const dashboard = {
-      system_health: systemHealth,
-      error_stats: errorStats,
-      expiring_certificates: certificates,
+      system_health: snapshot.services ?? [],
+      error_stats: snapshot.deadLetterStats,
+      expiring_certificates: snapshot.expiringCertificates ?? [],
+      dependencies: snapshot.dependencies ?? [],
+      circuit_breakers: snapshot.circuitBreakers ?? [],
       timestamp: new Date().toISOString(),
     };
 
     logger.info({
-      request_id: authReq.requestId,
+      request_id: context.requestId,
       user_id: authReq.user?.userId,
-      msg: 'Dashboard data aggregated',
+      msg: 'Dashboard data aggregated via messaging',
     });
 
     res.json(dashboard);
   } catch (err) {
     const error = err as Error;
     logger.error({
-      request_id: authReq.requestId,
+      request_id: context.requestId,
       error: error.message,
       msg: 'Dashboard aggregation failed',
     });
-    res.status(500).json({ error: 'Failed to aggregate dashboard data' });
+    res.status(502).json({ error: 'Failed to aggregate dashboard data' });
   }
 });
 
@@ -61,20 +56,19 @@ router.get('/dashboard', authenticateJWT, anyAuthenticated, async (req: Request,
  */
 router.get('/services', authenticateJWT, anyAuthenticated, async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
+  const context = createRequestContext(authReq);
 
   try {
-    const healthClient = getHealthMonitorClient();
-    const services = await healthClient.getServicesStatus(authReq.requestId);
-
-    res.json(services);
+    const snapshot = await messagingGateway.fetchServiceStatuses(context);
+    res.json(snapshot.services ?? []);
   } catch (err) {
     const error = err as Error;
     logger.error({
-      request_id: authReq.requestId,
+      request_id: context.requestId,
       error: error.message,
       msg: 'Services status retrieval failed',
     });
-    res.status(500).json({ error: 'Failed to retrieve services status' });
+    res.status(502).json({ error: 'Failed to retrieve services status' });
   }
 });
 
@@ -85,20 +79,19 @@ router.get('/services', authenticateJWT, anyAuthenticated, async (req: Request, 
  */
 router.get('/external', authenticateJWT, anyAuthenticated, async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
+  const context = createRequestContext(authReq);
 
   try {
-    const healthClient = getHealthMonitorClient();
-    const external = await healthClient.getExternalStatus(authReq.requestId);
-
-    res.json(external);
+    const snapshot = await messagingGateway.fetchExternalStatuses(context);
+    res.json(snapshot.dependencies ?? []);
   } catch (err) {
     const error = err as Error;
     logger.error({
-      request_id: authReq.requestId,
+      request_id: context.requestId,
       error: error.message,
       msg: 'External status retrieval failed',
     });
-    res.status(500).json({ error: 'Failed to retrieve external status' });
+    res.status(502).json({ error: 'Failed to retrieve external status' });
   }
 });
 
@@ -109,20 +102,19 @@ router.get('/external', authenticateJWT, anyAuthenticated, async (req: Request, 
  */
 router.get('/circuit-breakers', authenticateJWT, anyAuthenticated, async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
+  const context = createRequestContext(authReq);
 
   try {
-    const healthClient = getHealthMonitorClient();
-    const circuitBreakers = await healthClient.getCircuitBreakers(authReq.requestId);
-
-    res.json(circuitBreakers);
+    const snapshot = await messagingGateway.fetchCircuitBreakers(context);
+    res.json(snapshot.circuitBreakers ?? []);
   } catch (err) {
     const error = err as Error;
     logger.error({
-      request_id: authReq.requestId,
+      request_id: context.requestId,
       error: error.message,
       msg: 'Circuit breakers retrieval failed',
     });
-    res.status(500).json({ error: 'Failed to retrieve circuit breakers' });
+    res.status(502).json({ error: 'Failed to retrieve circuit breakers' });
   }
 });
 

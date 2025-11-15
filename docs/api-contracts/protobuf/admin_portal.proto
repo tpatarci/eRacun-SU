@@ -1,0 +1,159 @@
+syntax = "proto3";
+
+package eracun.v1.admin;
+
+import "common.proto";
+
+option go_package = "github.com/eracun/platform/contracts/adminportal";
+
+// Certificate inventory queries initiated by the admin portal
+message AdminPortalCertificateQuery {
+  eracun.v1.common.RequestContext context = 1;
+  CertificateQueryType query_type = 2;
+  uint32 expiring_within_days = 3;
+}
+
+// Available certificate query types
+enum CertificateQueryType {
+  CERTIFICATE_QUERY_TYPE_UNSPECIFIED = 0;
+  CERTIFICATE_QUERY_TYPE_ALL = 1;
+  CERTIFICATE_QUERY_TYPE_EXPIRING_ONLY = 2;
+}
+
+// Certificate metadata shared with the UI
+message CertificateMetadata {
+  string certificate_id = 1;
+  string common_name = 2;
+  string serial_number = 3;
+  string issuer = 4;
+  int64 valid_from_ms = 5;
+  int64 valid_until_ms = 6;
+  bool is_active = 7;
+}
+
+// Response that wraps certificate query results
+message CertificateQueryResponse {
+  repeated CertificateMetadata certificates = 1;
+}
+
+// Uploads and activates a new PKCS#12 bundle
+message CertificateUploadCommand {
+  eracun.v1.common.RequestContext context = 1;
+  string filename = 2;
+  bytes pkcs12_bundle = 3;
+  string password = 4;
+  string label = 5;
+}
+
+// Upload response
+message CertificateUploadResponse {
+  string certificate_id = 1;
+  string status = 2;
+  string message = 3;
+}
+
+// Dead letter queue operations initiated by admins
+message DeadLetterReviewCommand {
+  eracun.v1.common.RequestContext context = 1;
+  DeadLetterReviewAction action = 2;
+  string error_id = 3;
+  repeated string error_ids = 4;
+  repeated DeadLetterFilter filters = 5;
+}
+
+// Supported DLQ actions
+enum DeadLetterReviewAction {
+  DEAD_LETTER_REVIEW_ACTION_UNSPECIFIED = 0;
+  DEAD_LETTER_REVIEW_ACTION_LIST = 1;
+  DEAD_LETTER_REVIEW_ACTION_GET = 2;
+  DEAD_LETTER_REVIEW_ACTION_RESOLVE = 3;
+  DEAD_LETTER_REVIEW_ACTION_RESUBMIT = 4;
+  DEAD_LETTER_REVIEW_ACTION_BULK_RESOLVE = 5;
+  DEAD_LETTER_REVIEW_ACTION_STATS = 6;
+}
+
+// K/V filters passed to DLQ service
+message DeadLetterFilter {
+  string key = 1;
+  string value = 2;
+}
+
+// Dead letter record shared with the UI
+message DeadLetterItem {
+  string error_id = 1;
+  string original_queue = 2;
+  string reason = 3;
+  string payload_preview = 4;
+  int64 failed_at_ms = 5;
+  string status = 6;
+  repeated string tags = 7;
+}
+
+// Aggregated DLQ stats
+message DeadLetterStats {
+  int64 total = 1;
+  int64 pending = 2;
+  int64 resolved = 3;
+  map<string, int64> by_queue = 4;
+}
+
+// Dead letter response
+message DeadLetterReviewResponse {
+  repeated DeadLetterItem errors = 1;
+  DeadLetterItem error = 2;
+  DeadLetterStats stats = 3;
+  string status = 4;
+}
+
+// Health sections requested by admin portal
+enum HealthSection {
+  HEALTH_SECTION_UNSPECIFIED = 0;
+  HEALTH_SECTION_DASHBOARD = 1;
+  HEALTH_SECTION_SERVICES = 2;
+  HEALTH_SECTION_EXTERNAL = 3;
+  HEALTH_SECTION_CIRCUIT_BREAKERS = 4;
+  HEALTH_SECTION_DEAD_LETTERS = 5;
+  HEALTH_SECTION_CERTIFICATES = 6;
+}
+
+// Health dashboard query
+message HealthDashboardQuery {
+  eracun.v1.common.RequestContext context = 1;
+  repeated HealthSection sections = 2;
+}
+
+// Status of internal services
+message ServiceHealth {
+  string name = 1;
+  string status = 2;
+  double latency_ms = 3;
+  string region = 4;
+  string last_error = 5;
+  int64 updated_at_ms = 6;
+}
+
+// Status of upstream/downstream dependencies
+message ExternalDependencyHealth {
+  string name = 1;
+  string status = 2;
+  double latency_ms = 3;
+  string endpoint = 4;
+  int64 checked_at_ms = 5;
+}
+
+// Circuit breaker snapshot
+message CircuitBreakerState {
+  string name = 1;
+  string state = 2;
+  string reason = 3;
+  int64 updated_at_ms = 4;
+}
+
+// Aggregated response used by the admin dashboard
+message HealthDashboardResponse {
+  repeated ServiceHealth services = 1;
+  repeated ExternalDependencyHealth dependencies = 2;
+  repeated CircuitBreakerState circuit_breakers = 3;
+  DeadLetterStats dead_letter_stats = 4;
+  repeated CertificateMetadata expiring_certificates = 5;
+}

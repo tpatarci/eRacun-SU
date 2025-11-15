@@ -43,7 +43,7 @@ export function requireRole(...roles: UserRole[]) {
       msg: 'RBAC check passed',
     });
 
-    next();
+    return next();
   };
 }
 

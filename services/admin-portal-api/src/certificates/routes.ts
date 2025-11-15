@@ -2,8 +2,11 @@ import { Router, Request, Response } from 'express';
 import { authenticateJWT } from '../auth/middleware';
 import { adminOnly, anyAuthenticated } from '../auth/rbac';
 import { AuthenticatedRequest } from '../auth/types';
-import { getCertLifecycleManagerClient } from '../clients/cert-lifecycle-manager';
 import { logger } from '../observability';
+import { getAdminCommandGateway } from '../messaging';
+import { createRequestContext } from '../messaging/request-context';
+
+const messagingGateway = getAdminCommandGateway();
 
 const router = Router();
 
@@ -14,26 +17,26 @@ const router = Router();
  */
 router.get('/', authenticateJWT, anyAuthenticated, async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
+  const context = createRequestContext(authReq);
 
   try {
-    const certClient = getCertLifecycleManagerClient();
-    const certificates = await certClient.listCertificates(authReq.requestId);
+    const certificates = await messagingGateway.listCertificates(context);
 
     logger.info({
-      request_id: authReq.requestId,
+      request_id: context.requestId,
       user_id: authReq.user?.userId,
-      msg: 'Certificates list retrieved',
+      msg: 'Certificates list retrieved via messaging',
     });
 
-    res.json(certificates);
+    return res.json({ certificates });
   } catch (err) {
     const error = err as Error;
     logger.error({
-      request_id: authReq.requestId,
+      request_id: context.requestId,
       error: error.message,
       msg: 'List certificates failed',
     });
-    res.status(500).json({ error: 'Failed to retrieve certificates' });
+    return res.status(502).json({ error: 'Failed to retrieve certificates' });
   }
 });
 
@@ -44,30 +47,41 @@ router.get('/', authenticateJWT, anyAuthenticated, async (req: Request, res: Res
  */
 router.post('/upload', authenticateJWT, adminOnly, async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
+  const context = createRequestContext(authReq);
+  const { filename, certificate_bundle: certificateBundle, password, label } = req.body || {};
+
+  if (!filename || typeof filename !== 'string') {
+    return res.status(400).json({ error: 'filename is required' });
+  }
+
+  if (!certificateBundle || typeof certificateBundle !== 'string') {
+    return res.status(400).json({ error: 'certificate_bundle (base64 string) is required' });
+  }
 
   try {
-    const certClient = getCertLifecycleManagerClient();
-
-    // Pass form data to cert-lifecycle-manager
-    // NOTE: Express needs multer middleware for multipart/form-data
-    // This is a simplified implementation
-    const result = await certClient.uploadCertificate(req.body as any, authReq.requestId);
-
-    logger.info({
-      request_id: authReq.requestId,
-      user_id: authReq.user?.userId,
-      msg: 'Certificate uploaded',
+    const pkcs12Bundle = certificateBundle.trim();
+    const response = await messagingGateway.uploadCertificate(context, {
+      filename,
+      pkcs12Bundle,
+      password,
+      label,
     });
 
-    res.json(result);
+    logger.info({
+      request_id: context.requestId,
+      user_id: authReq.user?.userId,
+      msg: 'Certificate upload command published',
+    });
+
+    return res.json(response);
   } catch (err) {
     const error = err as Error;
     logger.error({
-      request_id: authReq.requestId,
+      request_id: context.requestId,
       error: error.message,
       msg: 'Certificate upload failed',
     });
-    res.status(500).json({ error: 'Failed to upload certificate' });
+    return res.status(502).json({ error: 'Failed to upload certificate' });
   }
 });
 
@@ -78,21 +92,21 @@ router.post('/upload', authenticateJWT, adminOnly, async (req: Request, res: Res
  */
 router.get('/expiring', authenticateJWT, anyAuthenticated, async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
+  const context = createRequestContext(authReq);
   const days = parseInt(req.query.days as string, 10) || 30;
 
   try {
-    const certClient = getCertLifecycleManagerClient();
-    const expiring = await certClient.getExpiringCertificates(days, authReq.requestId);
+    const expiring = await messagingGateway.getExpiringCertificates(context, days);
 
-    res.json(expiring);
+    return res.json({ certificates: expiring, days });
   } catch (err) {
     const error = err as Error;
     logger.error({
-      request_id: authReq.requestId,
+      request_id: context.requestId,
       error: error.message,
       msg: 'Get expiring certificates failed',
     });
-    res.status(500).json({ error: 'Failed to retrieve expiring certificates' });
+    return res.status(502).json({ error: 'Failed to retrieve expiring certificates' });
   }
 });
 

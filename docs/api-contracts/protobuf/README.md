@@ -13,6 +13,7 @@
 | `parsing.proto` | `eracun.v1.parsing` | Parsing commands (PDF, OCR, file classification) |
 | `validation.proto` | `eracun.v1.validation` | Validation commands (XSD, Schematron, KPD) |
 | `events.proto` | `eracun.v1.events` | Domain events (ingested, parsed, validated, signed, submitted, archived, failed) |
+| `admin_portal.proto` | `eracun.v1.admin` | Admin portal RPC contracts (certificates, DLQ review, health dashboards) |
 
 ---
 

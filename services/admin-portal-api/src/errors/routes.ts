@@ -2,8 +2,12 @@ import { Router, Request, Response } from 'express';
 import { authenticateJWT } from '../auth/middleware';
 import { operatorOrAdmin } from '../auth/rbac';
 import { AuthenticatedRequest } from '../auth/types';
-import { getDeadLetterHandlerClient } from '../clients/dead-letter-handler';
 import { logger } from '../observability';
+import { getAdminCommandGateway } from '../messaging';
+import { createRequestContext } from '../messaging/request-context';
+import { buildDeadLetterFilters } from '../messaging/dead-letter-filters';
+
+const messagingGateway = getAdminCommandGateway();
 
 const router = Router();
 
@@ -14,26 +18,27 @@ const router = Router();
  */
 router.get('/', authenticateJWT, operatorOrAdmin, async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
+  const context = createRequestContext(authReq);
 
   try {
-    const dlhClient = getDeadLetterHandlerClient();
-    const errors = await dlhClient.listErrors(authReq.requestId, req.query);
+    const filters = buildDeadLetterFilters(req.query as Record<string, unknown>);
+    const response = await messagingGateway.listDeadLetterErrors(context, filters);
 
     logger.info({
-      request_id: authReq.requestId,
+      request_id: context.requestId,
       user_id: authReq.user?.userId,
-      msg: 'Retrieved errors list',
+      msg: 'Retrieved errors list via messaging',
     });
 
-    res.json(errors);
+    res.json(response);
   } catch (err) {
     const error = err as Error;
     logger.error({
-      request_id: authReq.requestId,
+      request_id: context.requestId,
       error: error.message,
       msg: 'List errors failed',
     });
-    res.status(500).json({ error: 'Failed to retrieve errors' });
+    res.status(502).json({ error: 'Failed to retrieve errors' });
   }
 });
 
@@ -44,22 +49,21 @@ router.get('/', authenticateJWT, operatorOrAdmin, async (req: Request, res: Resp
  */
 router.get('/:id', authenticateJWT, operatorOrAdmin, async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
+  const context = createRequestContext(authReq);
   const errorId = req.params.id;
 
   try {
-    const dlhClient = getDeadLetterHandlerClient();
-    const errorDetails = await dlhClient.getError(errorId, authReq.requestId);
-
-    res.json(errorDetails);
+    const response = await messagingGateway.getDeadLetterError(context, errorId);
+    res.json(response.error ?? null);
   } catch (err) {
     const error = err as Error;
     logger.error({
-      request_id: authReq.requestId,
+      request_id: context.requestId,
       error_id: errorId,
       error: error.message,
       msg: 'Get error details failed',
     });
-    res.status(500).json({ error: 'Failed to retrieve error details' });
+    res.status(502).json({ error: 'Failed to retrieve error details' });
   }
 });
 
@@ -70,14 +74,14 @@ router.get('/:id', authenticateJWT, operatorOrAdmin, async (req: Request, res: R
  */
 router.post('/:id/resolve', authenticateJWT, operatorOrAdmin, async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
+  const context = createRequestContext(authReq);
   const errorId = req.params.id;
 
   try {
-    const dlhClient = getDeadLetterHandlerClient();
-    const result = await dlhClient.resolveError(errorId, authReq.requestId);
+    const result = await messagingGateway.resolveDeadLetter(context, errorId);
 
     logger.info({
-      request_id: authReq.requestId,
+      request_id: context.requestId,
       user_id: authReq.user?.userId,
       error_id: errorId,
       msg: 'Error resolved',
@@ -87,12 +91,12 @@ router.post('/:id/resolve', authenticateJWT, operatorOrAdmin, async (req: Reques
   } catch (err) {
     const error = err as Error;
     logger.error({
-      request_id: authReq.requestId,
+      request_id: context.requestId,
       error_id: errorId,
       error: error.message,
       msg: 'Resolve error failed',
     });
-    res.status(500).json({ error: 'Failed to resolve error' });
+    res.status(502).json({ error: 'Failed to resolve error' });
   }
 });
 
@@ -103,29 +107,29 @@ router.post('/:id/resolve', authenticateJWT, operatorOrAdmin, async (req: Reques
  */
 router.post('/:id/resubmit', authenticateJWT, operatorOrAdmin, async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
+  const context = createRequestContext(authReq);
   const errorId = req.params.id;
 
   try {
-    const dlhClient = getDeadLetterHandlerClient();
-    const result = await dlhClient.resubmitError(errorId, authReq.requestId);
+    const result = await messagingGateway.resubmitDeadLetter(context, errorId);
 
     logger.info({
-      request_id: authReq.requestId,
+      request_id: context.requestId,
       user_id: authReq.user?.userId,
       error_id: errorId,
       msg: 'Error resubmitted',
     });
 
-    res.json(result);
+    return res.json(result);
   } catch (err) {
     const error = err as Error;
     logger.error({
-      request_id: authReq.requestId,
+      request_id: context.requestId,
       error_id: errorId,
       error: error.message,
       msg: 'Resubmit error failed',
     });
-    res.status(500).json({ error: 'Failed to resubmit error' });
+    return res.status(502).json({ error: 'Failed to resubmit error' });
   }
 });
 
@@ -136,32 +140,32 @@ router.post('/:id/resubmit', authenticateJWT, operatorOrAdmin, async (req: Reque
  */
 router.post('/bulk-resolve', authenticateJWT, operatorOrAdmin, async (req: Request, res: Response) => {
   const authReq = req as AuthenticatedRequest;
-  const { error_ids } = req.body;
+  const context = createRequestContext(authReq);
+  const { error_ids: errorIds } = req.body;
 
-  if (!Array.isArray(error_ids) || error_ids.length === 0) {
+  if (!Array.isArray(errorIds) || errorIds.length === 0) {
     return res.status(400).json({ error: 'error_ids array required' });
   }
 
   try {
-    const dlhClient = getDeadLetterHandlerClient();
-    const result = await dlhClient.bulkResolve(error_ids, authReq.requestId);
+    const result = await messagingGateway.bulkResolveDeadLetters(context, errorIds);
 
     logger.info({
-      request_id: authReq.requestId,
+      request_id: context.requestId,
       user_id: authReq.user?.userId,
-      error_count: error_ids.length,
+      error_count: errorIds.length,
       msg: 'Errors bulk resolved',
     });
 
-    res.json(result);
+    return res.json(result);
   } catch (err) {
     const error = err as Error;
     logger.error({
-      request_id: authReq.requestId,
+      request_id: context.requestId,
       error: error.message,
       msg: 'Bulk resolve failed',
     });
-    res.status(500).json({ error: 'Failed to bulk resolve errors' });
+    return res.status(502).json({ error: 'Failed to bulk resolve errors' });
   }
 });
 
