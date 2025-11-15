@@ -345,7 +345,7 @@ export class ArchiveService {
     return createHash('sha512').update(data).digest('hex');
   }
 
-  private async callSignatureService(xmlContent: Buffer): Promise<boolean> {
+  private async callSignatureService(_xmlContent: Buffer): Promise<boolean> {
     if (!this.signatureServiceUrl) {
       throw new Error('Signature service URL not configured');
     }
