@@ -1,8 +1,8 @@
 # Multi-Repository Migration - Current Status
 
 **Date:** 2025-11-16
-**Last Updated:** After xsd-validator extraction (Phase 4 started)
-**Status:** 🟡 IN PROGRESS - 45-75% complete (depending on scope)
+**Last Updated:** After Phase 4 validation services extraction session
+**Status:** 🟡 IN PROGRESS - 55-75% complete (depending on scope)
 
 ---
 
@@ -10,8 +10,8 @@
 
 ### **Remaining Work Clarification**
 
-**This session achieved:** xsd-validator extraction (Phase 4 validation services started)
-**Migration overall:** Still significant work remaining
+**This session achieved:** 4 Phase 4 validation services extracted (xsd-validator, schematron-validator, oib-validator, kpd-validator)
+**Migration overall:** Significant progress - 55% complete, 45% remaining
 
 ---
 
@@ -29,7 +29,7 @@
 | **Pilot Total** | **16** | **12-13** | **2.5** | **75%** |
 
 ### **Full Migration (29 services)**
-**13 clean + 1 partial = 45% complete**
+**16 clean + 1 partial = 55% complete**
 
 | Phase | Total | Extracted | Remaining | Status |
 |-------|-------|-----------|-----------|---------|
@@ -37,14 +37,14 @@
 | Phase 1 | 5 | 4 | 1 | 🟡 Mostly done |
 | Phase 2 | 1 | 1 | 0 | ✅ Complete |
 | Phase 3 | 8 | 5+1 partial | 2-3 | 🟡 In progress |
-| Phase 4 | 6 | 1 | 5 | 🟡 Started |
+| Phase 4 | 6 | 4 | 2 | 🟢 Mostly done |
 | Phase 5 | 3 | 0 | 3 | 🔴 Not started |
 | Phase 6 | 4 | 0 | 4 | 🔴 Not started |
-| **Full Total** | **29** | **13-14** | **15-16** | **~45%** |
+| **Full Total** | **29** | **16-17** | **12-13** | **~55%** |
 
 ---
 
-## ✅ **What IS Complete (13 services)**
+## ✅ **What IS Complete (16 services)**
 
 ### Phase 0: Infrastructure Monitoring (100%)
 1. ✅ health-monitor
@@ -66,11 +66,14 @@
 11. ✅ ocr-processing-service
 12. ✅ xml-parser
 
-### Phase 4: Validation Services (17%)
-13. ✅ xsd-validator (just completed)
+### Phase 4: Validation Services (67%)
+13. ✅ xsd-validator (100% coverage, 141 tests)
+14. ✅ schematron-validator (68% coverage, 104/111 tests)
+15. ✅ oib-validator (100% coverage, 45 tests)
+16. ✅ kpd-validator (100% coverage, 55 tests)
 
 ### Phase 3: Partial Extraction (Proof of Concept)
-14. 🟡 invoice-gateway-api (copy-first strategy demonstrated)
+17. 🟡 invoice-gateway-api (copy-first strategy demonstrated)
 
 ---
 
@@ -154,16 +157,16 @@
 
 ---
 
-### Phase 4: Validation Services - READY NOW (5 remaining)
+### Phase 4: Validation Services - 2 REMAINING
 
-Per reconciliation team's updated instructions, **Team 1 can proceed immediately**:
+Per reconciliation team's updated instructions:
 
-1. ✅ **xsd-validator** - Extracted (141 tests passing, 81% coverage)
-2. **schematron-validator** - No blockers
-3. **ai-validation-service** - Can use mocks
-4. **business-rules-engine** - No blockers
-5. **kpd-validator** - Can use KLASUS mock
-6. **oib-validator** - No blockers
+1. ✅ **xsd-validator** - Extracted (141 tests passing, 100% coverage)
+2. ✅ **schematron-validator** - Extracted (104/111 tests passing, 68% coverage)
+3. ✅ **oib-validator** - Extracted (45 tests passing, 100% coverage)
+4. ✅ **kpd-validator** - Extracted (55 tests passing, 100% coverage)
+5. ⏳ **ai-validation-service** - Needs copy-first strategy (@eracun/team2-mocks)
+6. ⏳ **validation-coordinator** - Needs copy-first strategy (@eracun/contracts, @eracun/adapters, @eracun/di-container)
 
 **Unblocking factor:** Mock repository eliminates external dependencies
 
@@ -198,8 +201,8 @@ Team 3 can proceed with mocks:
 - data-extractor
 - sftp-ingestion-worker (if stable)
 
-**Phase 4 (Team 1):** 5 services ready (1 extracted)
-- Remaining validation services unblocked by mock repository
+**Phase 4 (Team 1):** 2 services remaining (4 extracted)
+- validation-coordinator and ai-validation-service need copy-first strategy
 
 **Phase 5 (Team 1):** 3 services ready
 - All transformation services unblocked
@@ -207,7 +210,7 @@ Team 3 can proceed with mocks:
 **Phase 6 (Team 3):** 4 services ready
 - All integration services unblocked by mock repository
 
-**TOTAL UNBLOCKED:** ~14 services ready for immediate extraction
+**TOTAL UNBLOCKED:** ~11 services ready for immediate extraction
 
 ---
 
@@ -215,9 +218,9 @@ Team 3 can proceed with mocks:
 
 ### **If all unblocked services extracted:**
 
-**Current:** 13 clean extractions
-**After Phase 3:** +2 = 15 services
-**After Phase 4:** +5 = 20 services
+**Current:** 16 clean extractions
+**After Phase 3:** +2 = 18 services
+**After Phase 4:** +2 = 20 services (copy-first for ai-validation + validation-coordinator)
 **After Phase 5:** +3 = 23 services
 **After Phase 6:** +4 = 27 services
 
