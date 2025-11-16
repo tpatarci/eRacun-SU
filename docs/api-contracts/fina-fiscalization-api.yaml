@@ -1,0 +1,341 @@
+openapi: 3.1.0
+info:
+  title: FINA Fiscalization Service API
+  description: Croatian Tax Authority (FINA) e-invoice fiscalization API mock specification
+  version: 2.0.0
+  contact:
+    name: FINA Support
+    phone: 01 4404 707
+    url: https://cms.fina.hr
+
+servers:
+  - url: https://cis.porezna-uprava.hr:8449
+    description: Production server
+  - url: https://cistest.apis-it.hr:8449
+    description: Test server (available from September 2025)
+  - url: http://localhost:8449
+    description: Local mock server
+
+paths:
+  /FiskalizacijaService:
+    post:
+      summary: Submit invoice for fiscalization
+      description: Submit B2C invoice to Croatian Tax Authority for fiscalization
+      operationId: fiscalizeInvoice
+      tags:
+        - Fiscalization
+      requestBody:
+        required: true
+        content:
+          text/xml:
+            schema:
+              $ref: '#/components/schemas/FiscalizationRequest'
+      responses:
+        '200':
+          description: Successful fiscalization
+          content:
+            text/xml:
+              schema:
+                $ref: '#/components/schemas/FiscalizationResponse'
+        '400':
+          description: Invalid request (schema validation failed)
+          content:
+            text/xml:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Authentication failed (invalid certificate)
+        '422':
+          description: Business rule validation failed
+          content:
+            text/xml:
+              schema:
+                $ref: '#/components/schemas/ValidationErrorResponse'
+        '500':
+          description: Internal server error
+        '503':
+          description: Service temporarily unavailable
+
+  /FiskalizacijaService/status:
+    get:
+      summary: Check fiscalization service status
+      description: Health check endpoint for service availability
+      operationId: getServiceStatus
+      tags:
+        - Health
+      responses:
+        '200':
+          description: Service is operational
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceStatus'
+        '503':
+          description: Service is down or in maintenance
+
+  /FiskalizacijaService/verify:
+    post:
+      summary: Verify fiscalized invoice
+      description: Verify previously fiscalized invoice by JIR code
+      operationId: verifyInvoice
+      tags:
+        - Verification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - jir
+                - oib
+              properties:
+                jir:
+                  type: string
+                  description: Unique invoice identifier (JIR)
+                  pattern: '^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$'
+                oib:
+                  type: string
+                  description: OIB of the issuer
+                  pattern: '^\d{11}$'
+      responses:
+        '200':
+          description: Invoice verification successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerificationResponse'
+        '404':
+          description: Invoice not found
+
+components:
+  schemas:
+    FiscalizationRequest:
+      type: object
+      xml:
+        name: RacunZahtjev
+        namespace: http://www.apis-it.hr/fin/2012/types/f73
+      required:
+        - Zaglavlje
+        - Racun
+      properties:
+        Zaglavlje:
+          type: object
+          required:
+            - IdPoruke
+            - DatumVrijeme
+          properties:
+            IdPoruke:
+              type: string
+              format: uuid
+              description: Message identifier
+            DatumVrijeme:
+              type: string
+              format: date-time
+              description: Request timestamp
+        Racun:
+          type: object
+          required:
+            - Oib
+            - USustPdv
+            - DatVrijeme
+            - OznSlijed
+            - BrRac
+            - Pdv
+            - IznosUkupno
+          properties:
+            Oib:
+              type: string
+              pattern: '^\d{11}$'
+              description: Issuer OIB
+            USustPdv:
+              type: boolean
+              description: VAT system indicator
+            DatVrijeme:
+              type: string
+              format: date-time
+              description: Invoice timestamp
+            OznSlijed:
+              type: string
+              enum: ['P', 'N']
+              description: Sequence marker (P=by location, N=by invoice)
+            BrRac:
+              type: object
+              required:
+                - BrOznRac
+                - OznPosPr
+                - OznNapUr
+              properties:
+                BrOznRac:
+                  type: string
+                  description: Invoice number
+                OznPosPr:
+                  type: string
+                  description: Business location identifier
+                OznNapUr:
+                  type: string
+                  description: Cash register identifier
+            Pdv:
+              type: array
+              description: VAT breakdown
+              items:
+                type: object
+                required:
+                  - Stopa
+                  - Osnovica
+                  - Iznos
+                properties:
+                  Stopa:
+                    type: number
+                    enum: [25.00, 13.00, 5.00, 0.00]
+                    description: VAT rate percentage
+                  Osnovica:
+                    type: number
+                    description: Tax base amount
+                  Iznos:
+                    type: number
+                    description: VAT amount
+            IznosUkupno:
+              type: number
+              description: Total invoice amount including VAT
+
+    FiscalizationResponse:
+      type: object
+      xml:
+        name: RacunOdgovor
+        namespace: http://www.apis-it.hr/fin/2012/types/f73
+      required:
+        - Zaglavlje
+        - Jir
+      properties:
+        Zaglavlje:
+          type: object
+          required:
+            - IdPoruke
+            - DatumVrijeme
+          properties:
+            IdPoruke:
+              type: string
+              format: uuid
+              description: Response message identifier
+            DatumVrijeme:
+              type: string
+              format: date-time
+              description: Response timestamp
+        Jir:
+          type: string
+          description: Unique invoice identifier assigned by tax authority
+          pattern: '^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$'
+        Greske:
+          type: array
+          description: List of errors if any
+          items:
+            type: object
+            properties:
+              SifraGreske:
+                type: string
+                description: Error code
+              PorukaGreske:
+                type: string
+                description: Error message
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          description: Error code
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: array
+          items:
+            type: string
+
+    ValidationErrorResponse:
+      type: object
+      required:
+        - errors
+      properties:
+        errors:
+          type: array
+          items:
+            type: object
+            required:
+              - field
+              - code
+              - message
+            properties:
+              field:
+                type: string
+                description: Field that failed validation
+              code:
+                type: string
+                description: Validation error code
+              message:
+                type: string
+                description: Human-readable validation error
+
+    ServiceStatus:
+      type: object
+      required:
+        - status
+        - timestamp
+      properties:
+        status:
+          type: string
+          enum: [operational, degraded, maintenance, down]
+        timestamp:
+          type: string
+          format: date-time
+        version:
+          type: string
+          description: API version
+        testMode:
+          type: boolean
+          description: Whether in test mode
+        certificateExpiry:
+          type: string
+          format: date-time
+          description: When the service certificate expires
+
+    VerificationResponse:
+      type: object
+      required:
+        - jir
+        - status
+        - fiscalizedAt
+      properties:
+        jir:
+          type: string
+          description: Unique invoice identifier
+        status:
+          type: string
+          enum: [valid, cancelled, pending]
+        fiscalizedAt:
+          type: string
+          format: date-time
+        invoiceAmount:
+          type: number
+        issuerOib:
+          type: string
+
+  securitySchemes:
+    clientCertificate:
+      type: mutualTLS
+      description: FINA X.509 certificate for authentication
+
+security:
+  - clientCertificate: []
+
+tags:
+  - name: Fiscalization
+    description: Invoice fiscalization operations
+  - name: Health
+    description: Service health and status
+  - name: Verification
+    description: Invoice verification operations
