@@ -28,3 +28,17 @@ Directory: /tmp/eracun-infrastructure-pilot
   schematron-validator: 2 parent references
   ubl-transformer: 9 parent references
   ubl-transformer: 5 @eracun imports
+  validation-coordinator: 11 parent references
+  validation-coordinator: 10 @eracun imports
+  xml-parser: 2 parent references
+  xsd-validator: 19 parent references
+
+Summary
+-------
+Total Services: 27
+Parent References: 24 services affected
+@eracun Imports: 5 services affected
+Build Success: 20/27
+Test Success: 20/27
+
+Independence Score: 60%
