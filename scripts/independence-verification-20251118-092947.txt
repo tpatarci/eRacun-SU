@@ -1,0 +1,30 @@
+Repository Independence Verification Report
+===========================================
+Date: uto, 18.11.2025.  09:29:47 CET
+Directory: /tmp/eracun-infrastructure-pilot
+
+  ai-validation-service: 1 parent references
+  ai-validation-service: 4 @eracun imports
+  archive-service: 23 parent references
+  attachment-handler: 10 parent references
+  audit-logger: 16 parent references
+  digital-signature-service: 6 parent references
+  file-classifier: 25 parent references
+  fina-connector: 4 parent references
+  health-monitor: 58 parent references
+  iban-validator: 3 parent references
+  invoice-gateway-api: 102 parent references
+  invoice-gateway-api: 7 @eracun imports
+  kpd-registry-sync: 20 parent references
+  kpd-validator: 1 parent references
+  notification-service: 43 parent references
+  ocr-processing-service: 11 parent references
+  ocr-processing-service: 1 @eracun imports
+  oib-validator: 3 parent references
+  pdf-parser: 14 parent references
+  porezna-connector: 6 parent references
+  reporting-service: 2 parent references
+  retry-scheduler: 38 parent references
+  schematron-validator: 2 parent references
+  ubl-transformer: 9 parent references
+  ubl-transformer: 5 @eracun imports

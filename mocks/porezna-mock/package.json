@@ -1,41 +1,31 @@
 {
-  "name": "@eracun/fina-mock",
+  "name": "@eracun/porezna-mock",
   "version": "1.0.0",
-  "description": "Production-grade mock service for FINA fiscalization API",
+  "description": "Production-grade mock service for Croatian Tax Authority API",
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
     "start": "node dist/server.js",
     "test": "jest --coverage",
-    "test:watch": "jest --watch",
-    "test:integration": "jest --config jest.integration.config.js",
     "lint": "eslint src/**/*.ts",
-    "format": "prettier --write src/**/*.ts",
-    "docker:build": "docker build -t eracun/fina-mock:latest .",
-    "docker:run": "docker run -p 8449:8449 eracun/fina-mock:latest"
+    "format": "prettier --write src/**/*.ts"
   },
   "dependencies": {
     "express": "^4.18.2",
     "body-parser": "^1.20.2",
-    "fast-xml-parser": "^4.3.2",
-    "soap": "^1.0.0",
     "uuid": "^9.0.1",
     "winston": "^3.11.0",
-    "dotenv": "^16.3.1",
-    "joi": "^17.11.0"
+    "dotenv": "^16.3.1"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/node": "^20.10.0",
     "@types/uuid": "^9.0.7",
-    "@types/jest": "^29.5.10",
     "typescript": "^5.3.0",
     "tsx": "^4.6.2",
     "jest": "^29.7.0",
     "ts-jest": "^29.1.1",
-    "supertest": "^6.3.3",
-    "@types/supertest": "^2.0.16",
     "eslint": "^8.55.0",
     "@typescript-eslint/eslint-plugin": "^6.13.0",
     "@typescript-eslint/parser": "^6.13.0",

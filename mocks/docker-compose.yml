@@ -1,0 +1,184 @@
+version: '3.8'
+
+services:
+  # FINA Tax Authority Mock
+  fina-mock:
+    build: ./fina-mock
+    container_name: eracun-fina-mock
+    ports:
+      - "8449:8449"
+    environment:
+      - FINA_PORT=8449
+      - CHAOS_MODE=${CHAOS_MODE:-off}
+      - ERROR_RATE=${ERROR_RATE:-0.01}
+      - LATENCY_MIN=${LATENCY_MIN:-100}
+      - LATENCY_MAX=${LATENCY_MAX:-500}
+      - NODE_ENV=${NODE_ENV:-development}
+    volumes:
+      - fina-logs:/app/logs
+      - ./fina-mock/fixtures:/app/fixtures:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8449/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - eracun-mocks
+
+  # Porezna API Mock
+  porezna-mock:
+    build: ./porezna-mock
+    container_name: eracun-porezna-mock
+    ports:
+      - "8450:8450"
+    environment:
+      - POREZNA_PORT=8450
+      - CHAOS_MODE=${CHAOS_MODE:-off}
+      - ERROR_RATE=${ERROR_RATE:-0.01}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8450/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - eracun-mocks
+
+  # Email Service Mock (SMTP + IMAP)
+  email-mock:
+    build: ./email-mock
+    container_name: eracun-email-mock
+    ports:
+      - "1025:1025"  # SMTP
+      - "1143:1143"  # IMAP
+      - "8025:8025"  # Web UI
+    environment:
+      - SMTP_PORT=1025
+      - IMAP_PORT=1143
+      - WEB_PORT=8025
+    volumes:
+      - email-data:/app/maildir
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "1025"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - eracun-mocks
+
+  # KLASUS Registry Mock
+  klasus-mock:
+    build: ./klasus-mock
+    container_name: eracun-klasus-mock
+    ports:
+      - "8451:8451"
+    environment:
+      - KLASUS_PORT=8451
+      - DATA_VERSION=2025
+    volumes:
+      - ./klasus-mock/data:/app/data:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8451/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - eracun-mocks
+
+  # Bank API Mock
+  bank-mock:
+    build: ./bank-mock
+    container_name: eracun-bank-mock
+    ports:
+      - "8452:8452"
+    environment:
+      - BANK_PORT=8452
+      - SIMULATE_DELAYS=true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8452/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - eracun-mocks
+
+  # Certificate Authority Mock
+  cert-mock:
+    build: ./cert-mock
+    container_name: eracun-cert-mock
+    ports:
+      - "8453:8453"
+    environment:
+      - CERT_PORT=8453
+      - AUTO_APPROVE=true
+    volumes:
+      - cert-store:/app/certs
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8453/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - eracun-mocks
+
+  # Mock Admin UI (for managing all mocks)
+  mock-admin:
+    build: ./mock-admin
+    container_name: eracun-mock-admin
+    ports:
+      - "8080:8080"
+    environment:
+      - ADMIN_PORT=8080
+      - FINA_URL=http://fina-mock:8449
+      - POREZNA_URL=http://porezna-mock:8450
+      - KLASUS_URL=http://klasus-mock:8451
+      - BANK_URL=http://bank-mock:8452
+      - CERT_URL=http://cert-mock:8453
+    depends_on:
+      - fina-mock
+      - porezna-mock
+      - klasus-mock
+      - bank-mock
+      - cert-mock
+    restart: unless-stopped
+    networks:
+      - eracun-mocks
+
+  # Redis for shared state (optional)
+  redis:
+    image: redis:7-alpine
+    container_name: eracun-mock-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - eracun-mocks
+
+networks:
+  eracun-mocks:
+    driver: bridge
+    name: eracun-mocks-network
+
+volumes:
+  fina-logs:
+    name: eracun-fina-logs
+  email-data:
+    name: eracun-email-data
+  cert-store:
+    name: eracun-cert-store
+  redis-data:
+    name: eracun-redis-data

@@ -378,6 +378,57 @@ Before we can define business logic for individual bounded contexts, we need to 
 
 ---
 
+## 🟡 Priority 1.5: External Service Mocking Infrastructure
+
+### TODO-009: Implement External Service Mocks Repository
+
+**Status:** 🚀 Strategy Defined, Implementation Pending
+**Created:** 2025-11-15
+**Depends On:** None (can proceed in parallel)
+
+**Objective:**
+- Create separate `eracun-mocks` repository for simulating external services
+- Enable development to proceed without blocking on unavailable services
+- Implement contract-first development with production parity
+
+**Strategy Document:** @docs/EXTERNAL_SERVICE_MOCKING_STRATEGY.md
+
+**Implementation Phases:**
+1. **Phase 1 (Week 1-2):** Critical services (FINA, Porezna, Email)
+2. **Phase 2 (Week 3-4):** Supporting services (Bank API, DZS KLASUS)
+3. **Phase 3 (Week 5):** Chaos engineering capabilities
+
+**Key Principles:**
+- Contract-first development (OpenAPI/WSDL/AsyncAPI)
+- Production behavior parity (realistic delays, errors)
+- Environment toggle (mock vs real via config)
+- Chaos engineering by default (test resilience)
+
+**Repository Structure:**
+```
+eracun-mocks/
+├── fina-simulator/        # Tax authority mock
+├── porezna-simulator/     # Porezna Uprava mock
+├── email-provider/        # SMTP/IMAP mock
+├── bank-api-simulator/    # Banking API mock
+├── shared/chaos-engine/   # Failure injection
+└── docker-compose.yml     # Run all together
+```
+
+**Next Actions:**
+1. Create `eracun-mocks` repository
+2. Implement FINA simulator with SOAP endpoints
+3. Set up contract validation pipeline
+4. Document usage for development teams
+
+**Success Criteria:**
+- All teams unblocked from day 1
+- Contract test coverage >95%
+- Zero integration bugs from contract mismatches
+- Seamless migration to real services (config change only)
+
+---
+
 ## 🟢 Priority 2: Supporting Documentation (Non-Blocking)
 
 ### TODO-005: Create Service Dependency Matrix
