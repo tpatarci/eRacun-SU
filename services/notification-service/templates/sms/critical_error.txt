@@ -1,1 +1,0 @@
-[eRacun] CRITICAL: Service {{service_name}} down. Impact: {{impact}}. Incident ID: {{incident_id}}. Action required.

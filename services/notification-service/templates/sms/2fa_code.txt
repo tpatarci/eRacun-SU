@@ -1,3 +1,0 @@
-Your eRacun verification code: {{code}}
-
-This code expires in {{expiry_minutes}} minutes. Do not share with anyone.

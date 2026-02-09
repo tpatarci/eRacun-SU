@@ -1,3 +1,0 @@
-# Integration tests directory
-# 25% of test suite - service boundaries, message contracts
-# Uses testcontainers for PostgreSQL, RabbitMQ, localstack (S3)
