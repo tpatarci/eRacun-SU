@@ -1,4 +1,5 @@
 import * as soap from 'soap';
+import * as fs from 'fs/promises';
 import { logger } from '../shared/logger.js';
 import type {
   FINAInvoice,
@@ -20,6 +21,10 @@ export interface SOAPClientConfig {
   endpointUrl?: string;
   /** Request timeout (milliseconds) */
   timeout?: number;
+  /** Path to PKCS#12 certificate file (.p12) for client authentication */
+  certPath?: string;
+  /** Certificate passphrase */
+  certPassphrase?: string;
 }
 
 /**
@@ -60,7 +65,27 @@ export class FINASOAPClient {
     try {
       logger.info({ wsdlUrl: this.config.wsdlUrl }, 'Initializing FINA SOAP client');
 
-      this.client = await soap.createClientAsync(this.config.wsdlUrl);
+      // Prepare SOAP client options
+      const clientOptions: Record<string, unknown> = {};
+
+      // Add certificate if provided (for client authentication)
+      if (this.config.certPath && this.config.certPassphrase !== undefined) {
+        try {
+          const certBuffer = await fs.readFile(this.config.certPath);
+          clientOptions.pfx = certBuffer;
+          clientOptions.passphrase = this.config.certPassphrase;
+          logger.info({ certPath: this.config.certPath }, 'Client certificate configured');
+        } catch (error) {
+          logger.error({ certPath: this.config.certPath, error }, 'Failed to read certificate file');
+          throw new FINASOAPError(
+            `Failed to read certificate file: ${this.config.certPath}`,
+            'CERT_READ_ERROR',
+            error as Error
+          );
+        }
+      }
+
+      this.client = await soap.createClientAsync(this.config.wsdlUrl, clientOptions);
 
       if (this.config.endpointUrl) {
         this.client.setEndpoint(this.config.endpointUrl);
