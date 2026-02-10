@@ -1,22 +1,13 @@
-import type { Request } from 'express';
 import type { Response } from 'express';
 import { getConfigs, updateConfig, deleteConfig } from '../../repositories/user-config-repository.js';
 import { finaConfigSchema, imapConfigSchema } from '../schemas.js';
 import { logger } from '../../shared/logger.js';
-import type { AuthenticatedRequest } from '../../shared/auth.js';
+import { authMiddleware, type AuthenticatedRequest } from '../../shared/auth.js';
 
 // GET /api/v1/users/me/config
 export async function getConfigsHandler(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const userId = req.user?.id;
-
-  if (!userId) {
-    res.status(401).json({
-      error: 'Unauthorized',
-      message: 'Authentication required',
-      requestId: req.id,
-    });
-    return;
-  }
+  // userId is guaranteed to exist because authMiddleware is used
+  const userId = req.user!.id;
 
   try {
     const configs = await getConfigs(userId);
@@ -45,17 +36,9 @@ export async function getConfigsHandler(req: AuthenticatedRequest, res: Response
 
 // PUT /api/v1/users/me/config/:service
 export async function updateConfigHandler(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const userId = req.user?.id;
+  // userId is guaranteed to exist because authMiddleware is used
+  const userId = req.user!.id;
   const { service } = req.params;
-
-  if (!userId) {
-    res.status(401).json({
-      error: 'Unauthorized',
-      message: 'Authentication required',
-      requestId: req.id,
-    });
-    return;
-  }
 
   // Validate service name
   if (service !== 'fina' && service !== 'imap') {
@@ -117,17 +100,9 @@ export async function updateConfigHandler(req: AuthenticatedRequest, res: Respon
 
 // DELETE /api/v1/users/me/config/:service
 export async function deleteConfigHandler(req: AuthenticatedRequest, res: Response): Promise<void> {
-  const userId = req.user?.id;
+  // userId is guaranteed to exist because authMiddleware is used
+  const userId = req.user!.id;
   const { service } = req.params;
-
-  if (!userId) {
-    res.status(401).json({
-      error: 'Unauthorized',
-      message: 'Authentication required',
-      requestId: req.id,
-    });
-    return;
-  }
 
   // Validate service name
   if (service !== 'fina' && service !== 'imap') {
@@ -168,18 +143,18 @@ export const configRoutes = [
     path: '/me/config',
     method: 'get',
     handler: getConfigsHandler,
-    middleware: undefined,
+    middleware: [authMiddleware],
   },
   {
     path: '/me/config/:service',
     method: 'put',
     handler: updateConfigHandler,
-    middleware: undefined,
+    middleware: [authMiddleware],
   },
   {
     path: '/me/config/:service',
     method: 'delete',
     handler: deleteConfigHandler,
-    middleware: undefined,
+    middleware: [authMiddleware],
   },
 ];
