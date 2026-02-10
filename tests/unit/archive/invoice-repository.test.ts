@@ -76,13 +76,15 @@ describe('Invoice Repository', () => {
 
       await updateInvoiceStatus(
         '550e8400-e29b-41d4-a716-446655440000',
+        '550e8400-e29b-41d4-a716-446655440001',
         'completed',
         'JIR-12345',
         { success: true }
       );
 
       expect(mockQuery).toHaveBeenCalledTimes(1);
-      expect(mockQuery.mock.calls[0][1]).toEqual(['completed', 'JIR-12345', '{"success":true}', '550e8400-e29b-41d4-a716-446655440000']);
+      // Parameters: status, jir, finaResponse, id, userId
+      expect(mockQuery.mock.calls[0][1]).toEqual(['completed', 'JIR-12345', '{"success":true}', '550e8400-e29b-41d4-a716-446655440000', '550e8400-e29b-41d4-a716-446655440001']);
     });
   });
 
@@ -96,16 +98,16 @@ describe('Invoice Repository', () => {
 
       mockQuery.mockResolvedValue({ rows: [mockInvoice] });
 
-      const result = await getInvoiceById('550e8400-e29b-41d4-a716-446655440000');
+      const result = await getInvoiceById('550e8400-e29b-41d4-a716-446655440000', '550e8400-e29b-41d4-a716-446655440001');
 
       expect(result).toEqual(mockInvoice);
-      expect(mockQuery.mock.calls[0][1]).toEqual(['550e8400-e29b-41d4-a716-446655440000']);
+      expect(mockQuery.mock.calls[0][1]).toEqual(['550e8400-e29b-41d4-a716-446655440000', '550e8400-e29b-41d4-a716-446655440001']);
     });
 
     it('should return null for non-existent ID', async () => {
       mockQuery.mockResolvedValue({ rows: [] });
 
-      const result = await getInvoiceById('nonexistent-id');
+      const result = await getInvoiceById('nonexistent-id', '550e8400-e29b-41d4-a716-446655440001');
 
       expect(result).toBeNull();
     });
@@ -120,18 +122,18 @@ describe('Invoice Repository', () => {
 
       mockQuery.mockResolvedValue({ rows: mockInvoices });
 
-      const result = await getInvoicesByOIB('12345678903');
+      const result = await getInvoicesByOIB('12345678903', '550e8400-e29b-41d4-a716-446655440001');
 
       expect(result).toEqual(mockInvoices);
-      expect(mockQuery.mock.calls[0][1]).toEqual(['12345678903', 50, 0]);
+      expect(mockQuery.mock.calls[0][1]).toEqual(['12345678903', '550e8400-e29b-41d4-a716-446655440001', 50, 0]);
     });
 
     it('should support custom limit and offset', async () => {
       mockQuery.mockResolvedValue({ rows: [] });
 
-      await getInvoicesByOIB('12345678903', 100, 50);
+      await getInvoicesByOIB('12345678903', '550e8400-e29b-41d4-a716-446655440001', 100, 50);
 
-      expect(mockQuery.mock.calls[0][1]).toEqual(['12345678903', 100, 50]);
+      expect(mockQuery.mock.calls[0][1]).toEqual(['12345678903', '550e8400-e29b-41d4-a716-446655440001', 100, 50]);
     });
   });
 
@@ -139,10 +141,10 @@ describe('Invoice Repository', () => {
     it('should update invoice status', async () => {
       mockQuery.mockResolvedValue({ rowCount: 1 });
 
-      await updateStatus('550e8400-e29b-41d4-a716-446655440000', 'processing');
+      await updateStatus('550e8400-e29b-41d4-a716-446655440000', '550e8400-e29b-41d4-a716-446655440001', 'processing');
 
       expect(mockQuery).toHaveBeenCalledTimes(1);
-      expect(mockQuery.mock.calls[0][1]).toEqual(['processing', '550e8400-e29b-41d4-a716-446655440000']);
+      expect(mockQuery.mock.calls[0][1]).toEqual(['processing', '550e8400-e29b-41d4-a716-446655440000', '550e8400-e29b-41d4-a716-446655440001']);
     });
   });
 
@@ -153,13 +155,13 @@ describe('Invoice Repository', () => {
       // SQL injection attempt
       const maliciousId = "'; DROP TABLE invoices; --";
 
-      await getInvoiceById(maliciousId);
+      await getInvoiceById(maliciousId, '550e8400-e29b-41d4-a716-446655440001');
 
       // The query should use parameterized statement
       const sql = mockQuery.mock.calls[0][0];
       expect(sql).toContain('$1');
       // Malicious string should be passed as parameter, not interpolated
-      expect(mockQuery.mock.calls[0][1]).toEqual([maliciousId]);
+      expect(mockQuery.mock.calls[0][1]).toEqual([maliciousId, '550e8400-e29b-41d4-a716-446655440001']);
     });
   });
 });
