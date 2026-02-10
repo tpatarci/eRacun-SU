@@ -1,4 +1,4 @@
-import type { Request, type Response } from 'express';
+import type { Response } from 'express';
 import type { AuthenticatedRequest } from '../../shared/auth.js';
 import { authMiddleware } from '../../shared/auth.js';
 import { getInvoiceById, getInvoicesByOIB, createInvoice as createInvoiceRecord } from '../../archive/invoice-repository.js';
@@ -8,10 +8,14 @@ import { invoiceSubmissionSchema } from '../schemas.js';
 import { logger } from '../../shared/logger.js';
 
 // GET /api/v1/invoices/:id
-export async function getInvoiceByIdHandler(req: Request, res: Response): Promise<void> {
+export async function getInvoiceByIdHandler(req: AuthenticatedRequest, res: Response): Promise<void> {
   const { id } = req.params;
+  // userId is guaranteed to exist because authMiddleware is used
+  const userId = req.user!.id;
+  // Express can return id as string[] in edge cases, normalize to string
+  const invoiceId = Array.isArray(id) ? id[0] : id;
 
-  const invoice = await getInvoiceById(id);
+  const invoice = await getInvoiceById(invoiceId, userId);
 
   if (!invoice) {
     res.status(404).json({
@@ -25,10 +29,14 @@ export async function getInvoiceByIdHandler(req: Request, res: Response): Promis
 }
 
 // GET /api/v1/invoices/:id/status
-export async function getInvoiceStatusHandler(req: Request, res: Response): Promise<void> {
+export async function getInvoiceStatusHandler(req: AuthenticatedRequest, res: Response): Promise<void> {
   const { id } = req.params;
+  // userId is guaranteed to exist because authMiddleware is used
+  const userId = req.user!.id;
+  // Express can return id as string[] in edge cases, normalize to string
+  const invoiceId = Array.isArray(id) ? id[0] : id;
 
-  const invoice = await getInvoiceById(id);
+  const invoice = await getInvoiceById(invoiceId, userId);
 
   if (!invoice) {
     res.status(404).json({
@@ -97,10 +105,12 @@ export async function submitInvoiceHandler(req: AuthenticatedRequest, res: Respo
 }
 
 // GET /api/v1/invoices?oib=xxx&limit=50&offset=0
-export async function getInvoicesByOIBHandler(req: Request, res: Response): Promise<void> {
+export async function getInvoicesByOIBHandler(req: AuthenticatedRequest, res: Response): Promise<void> {
   const oib = req.query.oib as string;
   const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
   const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
+  // userId is guaranteed to exist because authMiddleware is used
+  const userId = req.user!.id;
 
   if (!oib) {
     res.status(400).json({
@@ -110,7 +120,7 @@ export async function getInvoicesByOIBHandler(req: Request, res: Response): Prom
     return;
   }
 
-  const invoices = await getInvoicesByOIB(oib, limit, offset);
+  const invoices = await getInvoicesByOIB(oib, userId, limit, offset);
 
   res.json({
     invoices,
@@ -126,16 +136,19 @@ export const invoiceRoutes = [
     path: '/:id',
     method: 'get',
     handler: getInvoiceByIdHandler,
+    middleware: [authMiddleware],
   },
   {
     path: '/:id/status',
     method: 'get',
     handler: getInvoiceStatusHandler,
+    middleware: [authMiddleware],
   },
   {
     path: '/',
     method: 'get',
     handler: getInvoicesByOIBHandler,
+    middleware: [authMiddleware],
   },
   {
     path: '/',
