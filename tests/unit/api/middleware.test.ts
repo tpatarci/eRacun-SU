@@ -59,7 +59,8 @@ describe('Express App', () => {
 
       expect(res.status).toHaveBeenCalledWith(500);
       expect(res.json).toHaveBeenCalledWith({
-        error: 'Internal Server Error',
+        code: 'INTERNAL_ERROR',
+        message: 'Internal Server Error',
         requestId: 'test-request-id',
       });
     });

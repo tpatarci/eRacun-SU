@@ -10,6 +10,7 @@ import { invoiceRoutes } from './routes/invoices.js';
 import { userRoutes } from './routes/users.js';
 import { configRoutes } from './routes/config.js';
 import { authRoutes } from './routes/auth.js';
+import { buildErrorResponse, NotFoundError, ValidationError, InternalError, UnauthorizedError, ForbiddenError, ConflictError, BadRequestError } from './errors.js';
 
 // Request ID middleware
 export function requestIdMiddleware(
@@ -32,10 +33,27 @@ export function errorHandler(
 ): void {
   logger.error({ error: err, requestId: req.id }, 'Request error');
 
-  res.status(500).json({
-    error: 'Internal Server Error',
-    requestId: req.id,
-  });
+  // Determine status code based on error type
+  let statusCode = 500;
+  if (err instanceof NotFoundError) {
+    statusCode = 404;
+  } else if (err instanceof ValidationError) {
+    statusCode = 400;
+  } else if (err instanceof UnauthorizedError) {
+    statusCode = 401;
+  } else if (err instanceof ForbiddenError) {
+    statusCode = 403;
+  } else if (err instanceof ConflictError) {
+    statusCode = 409;
+  } else if (err instanceof BadRequestError) {
+    statusCode = 400;
+  }
+  // Default to 500 for all other errors (including plain Error and APIError)
+
+  // Build standardized error response
+  const errorResponse = buildErrorResponse(err, req.id, statusCode);
+
+  res.status(statusCode).json(errorResponse);
 }
 
 /**
