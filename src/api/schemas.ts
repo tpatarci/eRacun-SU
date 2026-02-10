@@ -81,3 +81,12 @@ export const loginSchema = z.object({
   email: emailSchema,
   password: passwordSchema,
 });
+
+/**
+ * User creation schema
+ */
+export const userCreationSchema = z.object({
+  email: emailSchema,
+  password: passwordSchema,
+  name: z.string().min(1, 'Name is required').optional(),
+});

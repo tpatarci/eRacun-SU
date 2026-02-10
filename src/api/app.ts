@@ -7,6 +7,7 @@ import { logger } from '../shared/logger.js';
 import { loadConfig } from '../shared/config.js';
 import { healthCheck, healthCheckDb } from './routes/health.js';
 import { invoiceRoutes } from './routes/invoices.js';
+import { userRoutes } from './routes/users.js';
 
 // Request ID middleware
 export function requestIdMiddleware(
@@ -105,7 +106,13 @@ export function createApp() {
   // Invoice routes
   for (const route of invoiceRoutes) {
     const middlewares = route.middleware || [];
-    (app as any)[route.method](route.path, ...middlewares, route.handler);
+    (app as any)[route.method]('/api/v1/invoices' + route.path, ...middlewares, route.handler);
+  }
+
+  // User routes
+  for (const route of userRoutes) {
+    const middlewares = route.middleware || [];
+    (app as any)[route.method]('/api/v1/users' + route.path, ...middlewares, route.handler);
   }
 
   // Error handler (must be last)
