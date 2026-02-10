@@ -90,3 +90,22 @@ export const userCreationSchema = z.object({
   password: passwordSchema,
   name: z.string().min(1, 'Name is required').optional(),
 });
+
+/**
+ * FINA configuration schema
+ */
+export const finaConfigSchema = z.object({
+  wsdlUrl: z.string().url('Invalid WSDL URL format'),
+  certPath: z.string().min(1, 'Certificate path is required'),
+  certPassphrase: z.string().min(1, 'Certificate passphrase is required'),
+});
+
+/**
+ * IMAP configuration schema
+ */
+export const imapConfigSchema = z.object({
+  host: z.string().min(1, 'IMAP host is required'),
+  port: z.number().int().min(1).max(65535).default(993),
+  user: z.string().min(1, 'IMAP username is required'),
+  password: z.string().min(1, 'IMAP password is required'),
+});
