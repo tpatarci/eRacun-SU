@@ -4,6 +4,7 @@ import { submitInvoiceForProcessing } from '../../jobs/invoice-submission.js';
 import { validationMiddleware } from '../middleware/validate.js';
 import { invoiceSubmissionSchema } from '../schemas.js';
 import { logger } from '../../shared/logger.js';
+import { NotFoundError, BadRequestError, InternalError, buildErrorResponse } from '../errors.js';
 
 // GET /api/v1/invoices/:id
 export async function getInvoiceByIdHandler(req: Request, res: Response): Promise<void> {
@@ -12,10 +13,8 @@ export async function getInvoiceByIdHandler(req: Request, res: Response): Promis
   const invoice = await getInvoiceById(id);
 
   if (!invoice) {
-    res.status(404).json({
-      error: 'Invoice not found',
-      requestId: req.id,
-    });
+    const error = new NotFoundError('Invoice not found');
+    res.status(404).json(buildErrorResponse(error, req.id, 404));
     return;
   }
 
@@ -29,10 +28,8 @@ export async function getInvoiceStatusHandler(req: Request, res: Response): Prom
   const invoice = await getInvoiceById(id);
 
   if (!invoice) {
-    res.status(404).json({
-      error: 'Invoice not found',
-      requestId: req.id,
-    });
+    const error = new NotFoundError('Invoice not found');
+    res.status(404).json(buildErrorResponse(error, req.id, 404));
     return;
   }
 
@@ -82,10 +79,8 @@ export async function submitInvoiceHandler(req: Request, res: Response): Promise
       error: error instanceof Error ? error.message : String(error),
     }, 'Failed to submit invoice');
 
-    res.status(500).json({
-      error: 'Failed to submit invoice',
-      requestId: req.id,
-    });
+    const internalError = new InternalError('Failed to submit invoice', error instanceof Error ? error : undefined);
+    res.status(500).json(buildErrorResponse(internalError, req.id, 500));
   }
 }
 
@@ -96,10 +91,8 @@ export async function getInvoicesByOIBHandler(req: Request, res: Response): Prom
   const offset = req.query.offset ? parseInt(req.query.offset as string, 10) : 0;
 
   if (!oib) {
-    res.status(400).json({
-      error: 'Missing required query parameter: oib',
-      requestId: req.id,
-    });
+    const error = new BadRequestError('Missing required query parameter: oib');
+    res.status(400).json(buildErrorResponse(error, req.id, 400));
     return;
   }
 
