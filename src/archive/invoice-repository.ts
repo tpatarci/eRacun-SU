@@ -6,12 +6,13 @@ export async function createInvoice(data: {
   invoiceNumber: string;
   originalXml: string;
   signedXml: string;
+  userId: string;
 }): Promise<Invoice> {
   const result = await query(
-    `INSERT INTO invoices (oib, invoice_number, original_xml, signed_xml)
-     VALUES ($1, $2, $3, $4)
+    `INSERT INTO invoices (oib, invoice_number, original_xml, signed_xml, user_id)
+     VALUES ($1, $2, $3, $4, $5)
      RETURNING *`,
-    [data.oib, data.invoiceNumber, data.originalXml, data.signedXml]
+    [data.oib, data.invoiceNumber, data.originalXml, data.signedXml, data.userId]
   );
   return result.rows[0];
 }

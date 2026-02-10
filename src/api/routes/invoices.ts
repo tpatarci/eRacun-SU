@@ -1,5 +1,6 @@
 import type { Request, type Response } from 'express';
 import type { AuthenticatedRequest } from '../../shared/auth.js';
+import { authMiddleware } from '../../shared/auth.js';
 import { getInvoiceById, getInvoicesByOIB, createInvoice as createInvoiceRecord } from '../../archive/invoice-repository.js';
 import { submitInvoiceForProcessing } from '../../jobs/invoice-submission.js';
 import { validationMiddleware } from '../middleware/validate.js';
@@ -49,20 +50,23 @@ export async function getInvoiceStatusHandler(req: Request, res: Response): Prom
 // POST /api/v1/invoices
 export async function submitInvoiceHandler(req: AuthenticatedRequest, res: Response): Promise<void> {
   const invoiceData = req.body;
+  // userId is guaranteed to exist because authMiddleware is used
+  const userId = req.user!.id;
 
   try {
-    // Create database record first
+    // Create database record first with user context
     const invoice = await createInvoiceRecord({
       oib: invoiceData.oib,
       invoiceNumber: invoiceData.invoiceNumber,
       originalXml: invoiceData.originalXml || '',
       signedXml: invoiceData.signedXml || '',
+      userId,
     });
 
-    // Enqueue async processing job
+    // Enqueue async processing job with user context
     const jobId = await submitInvoiceForProcessing({
       invoiceId: invoice.id,
-      userId: req.user?.id || '',
+      userId,
       oib: invoice.oib,
       invoiceNumber: invoice.invoiceNumber,
       originalXml: invoice.originalXml,
@@ -71,6 +75,7 @@ export async function submitInvoiceHandler(req: AuthenticatedRequest, res: Respo
 
     logger.info({
       invoiceId: invoice.id,
+      userId,
       jobId,
     }, 'Invoice submitted for processing');
 
@@ -136,6 +141,6 @@ export const invoiceRoutes = [
     path: '/',
     method: 'post',
     handler: submitInvoiceHandler,
-    middleware: [validationMiddleware(invoiceSubmissionSchema)],
+    middleware: [authMiddleware, validationMiddleware(invoiceSubmissionSchema)],
   },
 ];
