@@ -77,7 +77,11 @@ describe('Invoice Flow E2E Tests (Mocked)', () => {
     app.get('/api/v1/invoices/:id', (req: any, res: any) => {
       const invoice = mockInvoices.find((inv: any) => inv.id === req.params.id);
       if (!invoice) {
-        res.status(404).json({ error: 'Invoice not found', requestId: req.id });
+        res.status(404).json({
+          code: 'NOT_FOUND',
+          message: 'Invoice not found',
+          requestId: req.id
+        });
         return;
       }
       res.json(invoice);
@@ -86,7 +90,11 @@ describe('Invoice Flow E2E Tests (Mocked)', () => {
     app.get('/api/v1/invoices/:id/status', (req: any, res: any) => {
       const invoice = mockInvoices.find((inv: any) => inv.id === req.params.id);
       if (!invoice) {
-        res.status(404).json({ error: 'Invoice not found', requestId: req.id });
+        res.status(404).json({
+          code: 'NOT_FOUND',
+          message: 'Invoice not found',
+          requestId: req.id
+        });
         return;
       }
       res.json({
@@ -178,7 +186,8 @@ describe('Invoice Flow E2E Tests (Mocked)', () => {
         .expect(400);
 
       expect(response.body).toMatchObject({
-        error: 'Validation failed',
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
         requestId: expect.any(String),
       });
       expect(response.body.errors).toBeInstanceOf(Array);
@@ -193,7 +202,9 @@ describe('Invoice Flow E2E Tests (Mocked)', () => {
         .expect(400);
 
       expect(response.body).toMatchObject({
-        error: 'Validation failed',
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        requestId: expect.any(String),
       });
     });
 
@@ -206,7 +217,9 @@ describe('Invoice Flow E2E Tests (Mocked)', () => {
         .expect(400);
 
       expect(response.body).toMatchObject({
-        error: 'Validation failed',
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        requestId: expect.any(String),
       });
     });
 
@@ -219,7 +232,9 @@ describe('Invoice Flow E2E Tests (Mocked)', () => {
         .expect(400);
 
       expect(response.body).toMatchObject({
-        error: 'Validation failed',
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        requestId: expect.any(String),
       });
     });
 
@@ -232,7 +247,9 @@ describe('Invoice Flow E2E Tests (Mocked)', () => {
         .expect(400);
 
       expect(response.body).toMatchObject({
-        error: 'Validation failed',
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        requestId: expect.any(String),
       });
     });
 
@@ -269,7 +286,9 @@ describe('Invoice Flow E2E Tests (Mocked)', () => {
         .expect(400);
 
       expect(response.body).toMatchObject({
-        error: 'Validation failed',
+        code: 'VALIDATION_ERROR',
+        message: 'Validation failed',
+        requestId: expect.any(String),
       });
     });
 
@@ -326,7 +345,8 @@ describe('Invoice Flow E2E Tests (Mocked)', () => {
         .expect(404);
 
       expect(response.body).toMatchObject({
-        error: 'Invoice not found',
+        code: 'NOT_FOUND',
+        message: 'Invoice not found',
         requestId: expect.any(String),
       });
     });
