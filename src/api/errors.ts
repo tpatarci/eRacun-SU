@@ -97,3 +97,42 @@ export class BadRequestError extends APIError {
     this.name = 'BadRequestError';
   }
 }
+
+/**
+ * Error response interface
+ */
+export interface ErrorResponse {
+  code: string;
+  message: string;
+  requestId: string;
+  errors?: Array<{ field: string; message: string }>;
+}
+
+/**
+ * Build a standardized error response object
+ *
+ * @param error - The error object (can be APIError or plain Error)
+ * @param requestId - The request ID for tracing
+ * @param statusCode - HTTP status code (used to determine default message)
+ * @returns A standardized error response object
+ */
+export function buildErrorResponse(error: Error, requestId: string, statusCode: number): ErrorResponse {
+  const response: ErrorResponse = {
+    code: 'INTERNAL_ERROR',
+    message: 'Internal Server Error',
+    requestId,
+  };
+
+  // If it's an APIError, use its code and message
+  if (error instanceof APIError) {
+    response.code = error.code;
+    response.message = error.message;
+  }
+
+  // For ValidationError, include field errors
+  if (error instanceof ValidationError && error.errors) {
+    response.errors = error.errors;
+  }
+
+  return response;
+}
