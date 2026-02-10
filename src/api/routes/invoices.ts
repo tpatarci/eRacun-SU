@@ -1,4 +1,5 @@
 import type { Request, type Response } from 'express';
+import type { AuthenticatedRequest } from '../../shared/auth.js';
 import { getInvoiceById, getInvoicesByOIB, createInvoice as createInvoiceRecord } from '../../archive/invoice-repository.js';
 import { submitInvoiceForProcessing } from '../../jobs/invoice-submission.js';
 import { validationMiddleware } from '../middleware/validate.js';
@@ -46,7 +47,7 @@ export async function getInvoiceStatusHandler(req: Request, res: Response): Prom
 }
 
 // POST /api/v1/invoices
-export async function submitInvoiceHandler(req: Request, res: Response): Promise<void> {
+export async function submitInvoiceHandler(req: AuthenticatedRequest, res: Response): Promise<void> {
   const invoiceData = req.body;
 
   try {
@@ -61,6 +62,7 @@ export async function submitInvoiceHandler(req: Request, res: Response): Promise
     // Enqueue async processing job
     const jobId = await submitInvoiceForProcessing({
       invoiceId: invoice.id,
+      userId: req.user?.id || '',
       oib: invoice.oib,
       invoiceNumber: invoice.invoiceNumber,
       originalXml: invoice.originalXml,

@@ -8,6 +8,7 @@ import type { Invoice } from '../archive/types.js';
  */
 export interface InvoiceJobData {
   invoiceId: string;
+  userId: string;
   oib: string;
   invoiceNumber: string;
   originalXml: string;
