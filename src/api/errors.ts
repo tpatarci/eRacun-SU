@@ -112,15 +112,18 @@ export interface ErrorResponse {
  * Build a standardized error response object
  *
  * @param error - The error object (can be APIError or plain Error)
- * @param requestId - The request ID for tracing
- * @param statusCode - HTTP status code (used to determine default message)
+ * @param requestId - The request ID for tracing (will be generated if not provided)
+ * @param _statusCode - HTTP status code (not currently used but kept for API compatibility)
  * @returns A standardized error response object
  */
-export function buildErrorResponse(error: Error, requestId: string, statusCode: number): ErrorResponse {
+export function buildErrorResponse(error: Error, requestId?: string, _statusCode?: number): ErrorResponse {
+  // Generate request ID if not provided
+  const id = requestId || 'unknown';
+
   const response: ErrorResponse = {
     code: 'INTERNAL_ERROR',
     message: 'Internal Server Error',
-    requestId,
+    requestId: id,
   };
 
   // If it's an APIError, use its code and message

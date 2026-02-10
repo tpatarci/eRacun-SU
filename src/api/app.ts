@@ -3,7 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { logger } from '../shared/logger.js';
 import { healthCheck, healthCheckDb } from './routes/health.js';
 import { invoiceRoutes } from './routes/invoices.js';
-import { buildErrorResponse, NotFoundError, ValidationError, InternalError, UnauthorizedError, ForbiddenError, ConflictError, BadRequestError } from './errors.js';
+import { buildErrorResponse, NotFoundError, ValidationError, UnauthorizedError, ForbiddenError, ConflictError, BadRequestError } from './errors.js';
 
 // Request ID middleware
 export function requestIdMiddleware(
@@ -22,7 +22,7 @@ export function errorHandler(
   err: Error,
   req: Request,
   res: Response,
-  next: NextFunction
+  _next: NextFunction
 ): void {
   logger.error({ error: err, requestId: req.id }, 'Request error');
 
@@ -65,7 +65,8 @@ export function createApp() {
   // Invoice routes
   for (const route of invoiceRoutes) {
     const middlewares = route.middleware || [];
-    app[route.method]('/api/v1/invoices' + route.path, ...middlewares, route.handler);
+    const method = route.method as 'get' | 'post' | 'put' | 'delete' | 'patch';
+    app[method]('/api/v1/invoices' + route.path, ...middlewares, route.handler);
   }
 
   // Error handler (must be last)

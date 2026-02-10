@@ -1,4 +1,4 @@
-import type { Request, type Response } from 'express';
+import { type Request, type Response } from 'express';
 import { getInvoiceById, getInvoicesByOIB, createInvoice as createInvoiceRecord } from '../../archive/invoice-repository.js';
 import { submitInvoiceForProcessing } from '../../jobs/invoice-submission.js';
 import { validationMiddleware } from '../middleware/validate.js';
@@ -10,7 +10,7 @@ import { NotFoundError, BadRequestError, InternalError, buildErrorResponse } fro
 export async function getInvoiceByIdHandler(req: Request, res: Response): Promise<void> {
   const { id } = req.params;
 
-  const invoice = await getInvoiceById(id);
+  const invoice = await getInvoiceById(String(id));
 
   if (!invoice) {
     const error = new NotFoundError('Invoice not found');
@@ -25,7 +25,7 @@ export async function getInvoiceByIdHandler(req: Request, res: Response): Promis
 export async function getInvoiceStatusHandler(req: Request, res: Response): Promise<void> {
   const { id } = req.params;
 
-  const invoice = await getInvoiceById(id);
+  const invoice = await getInvoiceById(String(id));
 
   if (!invoice) {
     const error = new NotFoundError('Invoice not found');

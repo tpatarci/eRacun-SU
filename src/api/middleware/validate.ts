@@ -1,4 +1,4 @@
-import type { Request, type Response, type NextFunction } from 'express';
+import { type Request, type Response, type NextFunction } from 'express';
 import type { ZodSchema } from 'zod';
 import { logger } from '../../shared/logger.js';
 import { ValidationError, buildErrorResponse } from '../errors.js';

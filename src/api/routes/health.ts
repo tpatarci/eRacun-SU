@@ -1,4 +1,4 @@
-import type { Request, type Response } from 'express';
+import { type Request, type Response } from 'express';
 import { getPool } from '../../shared/db.js';
 import { logger } from '../../shared/logger.js';
 import { InternalError, buildErrorResponse } from '../errors.js';
