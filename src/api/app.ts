@@ -65,7 +65,7 @@ export function createApp() {
   // Invoice routes
   for (const route of invoiceRoutes) {
     const middlewares = route.middleware || [];
-    app[route.method](route.path, ...middlewares, route.handler);
+    app[route.method]('/api/v1/invoices' + route.path, ...middlewares, route.handler);
   }
 
   // Error handler (must be last)
