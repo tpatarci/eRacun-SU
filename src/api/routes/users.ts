@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 import { getUserById, createUser as createUserRecord, getUserByEmail } from '../../repositories/user-repository.js';
-import { hashPassword } from '../../shared/auth.js';
+import { hashPassword, authMiddleware, type AuthenticatedRequest } from '../../shared/auth.js';
 import { validationMiddleware } from '../middleware/validate.js';
 import { userCreationSchema } from '../schemas.js';
 import { logger } from '../../shared/logger.js';
@@ -72,8 +72,42 @@ export async function createUserHandler(req: Request, res: Response): Promise<vo
   }
 }
 
+// GET /api/v1/users/me
+export async function getMeHandler(req: AuthenticatedRequest, res: Response): Promise<void> {
+  if (!req.user) {
+    res.status(401).json({
+      error: 'Unauthorized',
+      message: 'Authentication required',
+      requestId: req.id,
+    });
+    return;
+  }
+
+  // Get full user data from database
+  const user = await getUserById(req.user.id);
+
+  if (!user) {
+    res.status(404).json({
+      error: 'User not found',
+      requestId: req.id,
+    });
+    return;
+  }
+
+  // Don't expose password hash in response
+  const { passwordHash, ...userResponse } = user;
+
+  res.json(userResponse);
+}
+
 // Route handlers with validation middleware
 export const userRoutes = [
+  {
+    path: '/me',
+    method: 'get',
+    handler: getMeHandler,
+    middleware: [authMiddleware],
+  },
   {
     path: '/:id',
     method: 'get',

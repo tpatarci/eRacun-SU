@@ -9,6 +9,7 @@ import { healthCheck, healthCheckDb } from './routes/health.js';
 import { invoiceRoutes } from './routes/invoices.js';
 import { userRoutes } from './routes/users.js';
 import { configRoutes } from './routes/config.js';
+import { authRoutes } from './routes/auth.js';
 
 // Request ID middleware
 export function requestIdMiddleware(
@@ -120,6 +121,12 @@ export function createApp() {
   for (const route of configRoutes) {
     const middlewares = 'middleware' in route ? (route.middleware ?? []) : [];
     (app as any)[route.method]('/api/v1/users' + route.path, ...middlewares, route.handler);
+  }
+
+  // Auth routes
+  for (const route of authRoutes) {
+    const middlewares = 'middleware' in route ? (route.middleware ?? []) : [];
+    (app as any)[route.method]('/api/v1/auth' + route.path, ...middlewares, route.handler);
   }
 
   // Error handler (must be last)
