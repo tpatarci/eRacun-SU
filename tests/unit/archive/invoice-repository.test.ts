@@ -32,6 +32,7 @@ describe('Invoice Repository', () => {
         status: 'pending',
         created_at: new Date(),
         updated_at: new Date(),
+        user_id: '550e8400-e29b-41d4-a716-446655440001',
       };
 
       mockQuery.mockResolvedValue({ rows: [mockInvoice] });
@@ -41,6 +42,7 @@ describe('Invoice Repository', () => {
         invoiceNumber: '1/PP1/1',
         originalXml: '<Invoice/>',
         signedXml: '<Invoice><Signature/></Invoice>',
+        userId: '550e8400-e29b-41d4-a716-446655440001',
       });
 
       expect(result).toEqual(mockInvoice);
@@ -56,14 +58,15 @@ describe('Invoice Repository', () => {
         invoiceNumber: '1/PP1/1',
         originalXml: '<Invoice/>',
         signedXml: '<Invoice><Signature/></Invoice>',
+        userId: '550e8400-e29b-41d4-a716-446655440001',
       });
 
       const sql = mockQuery.mock.calls[0][0];
       const params = mockQuery.mock.calls[0][1];
 
       // Check for parameterized queries ($1, $2, etc.)
-      expect(sql).toMatch(/\$[1-4]/);
-      expect(params).toHaveLength(4);
+      expect(sql).toMatch(/\$[1-5]/);
+      expect(params).toHaveLength(5);
     });
   });
 
