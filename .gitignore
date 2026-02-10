@@ -110,3 +110,9 @@ ehthumbs.db
 ehthumbs_vista.db
 Desktop.ini
 $RECYCLE.BIN/
+
+# Auto Claude data directory
+.auto-claude/
+
+# Archive directory (old files kept for reference)
+_archive/
