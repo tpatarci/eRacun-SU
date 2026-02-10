@@ -1,6 +1,7 @@
 import type { Request, type Response, type NextFunction } from 'express';
 import type { ZodSchema } from 'zod';
 import { logger } from '../../shared/logger.js';
+import { ValidationError, buildErrorResponse } from '../errors.js';
 
 export function validationMiddleware(schema: ZodSchema) {
   return (req: Request, res: Response, next: NextFunction) => {
@@ -17,11 +18,10 @@ export function validationMiddleware(schema: ZodSchema) {
         requestId: req.id,
       }, 'Validation failed');
 
-      res.status(400).json({
-        error: 'Validation failed',
-        errors,
-        requestId: req.id,
-      });
+      const validationError = new ValidationError('Validation failed', errors);
+      const errorResponse = buildErrorResponse(validationError, req.id, 400);
+
+      res.status(400).json(errorResponse);
       return;
     }
 
