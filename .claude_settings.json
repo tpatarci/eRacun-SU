@@ -1,0 +1,39 @@
+{
+  "sandbox": {
+    "enabled": true,
+    "autoAllowBashIfSandboxed": true
+  },
+  "permissions": {
+    "defaultMode": "acceptEdits",
+    "allow": [
+      "Read(./**)",
+      "Write(./**)",
+      "Edit(./**)",
+      "Glob(./**)",
+      "Grep(./**)",
+      "Read(/home/tomislav/development/eRa\u010dun-SU/.auto-claude/worktrees/tasks/002-refactor-for-multi-user-support/**)",
+      "Write(/home/tomislav/development/eRa\u010dun-SU/.auto-claude/worktrees/tasks/002-refactor-for-multi-user-support/**)",
+      "Edit(/home/tomislav/development/eRa\u010dun-SU/.auto-claude/worktrees/tasks/002-refactor-for-multi-user-support/**)",
+      "Glob(/home/tomislav/development/eRa\u010dun-SU/.auto-claude/worktrees/tasks/002-refactor-for-multi-user-support/**)",
+      "Grep(/home/tomislav/development/eRa\u010dun-SU/.auto-claude/worktrees/tasks/002-refactor-for-multi-user-support/**)",
+      "Read(/home/tomislav/development/eRa\u010dun-SU/.auto-claude/worktrees/tasks/002-refactor-for-multi-user-support/.auto-claude/specs/002-refactor-for-multi-user-support/**)",
+      "Write(/home/tomislav/development/eRa\u010dun-SU/.auto-claude/worktrees/tasks/002-refactor-for-multi-user-support/.auto-claude/specs/002-refactor-for-multi-user-support/**)",
+      "Edit(/home/tomislav/development/eRa\u010dun-SU/.auto-claude/worktrees/tasks/002-refactor-for-multi-user-support/.auto-claude/specs/002-refactor-for-multi-user-support/**)",
+      "Read(/home/tomislav/development/eRa\u010dun-SU/.auto-claude/**)",
+      "Write(/home/tomislav/development/eRa\u010dun-SU/.auto-claude/**)",
+      "Edit(/home/tomislav/development/eRa\u010dun-SU/.auto-claude/**)",
+      "Glob(/home/tomislav/development/eRa\u010dun-SU/.auto-claude/**)",
+      "Grep(/home/tomislav/development/eRa\u010dun-SU/.auto-claude/**)",
+      "Bash(*)",
+      "WebFetch(*)",
+      "WebSearch(*)",
+      "mcp__context7__resolve-library-id(*)",
+      "mcp__context7__get-library-docs(*)",
+      "mcp__graphiti-memory__search_nodes(*)",
+      "mcp__graphiti-memory__search_facts(*)",
+      "mcp__graphiti-memory__add_episode(*)",
+      "mcp__graphiti-memory__get_episodes(*)",
+      "mcp__graphiti-memory__get_entity_edge(*)"
+    ]
+  }
+}

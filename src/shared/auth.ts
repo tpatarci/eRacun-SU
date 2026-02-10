@@ -2,23 +2,6 @@ import type { Request, Response, NextFunction } from 'express';
 import { randomBytes } from 'crypto';
 import { logger } from './logger.js';
 
-// Type imports - bcrypt will be installed as part of this task
-// import bcrypt from 'bcrypt';
-
-/**
- * Session data structure
- */
-export interface Session {
-  /** User ID */
-  userId: string;
-  /** User email */
-  email: string;
-  /** Session token */
-  token: string;
-  /** Timestamp when session was created */
-  createdAt: Date;
-}
-
 /**
  * Extended Express Request with user context
  */
@@ -67,12 +50,9 @@ export function generateSessionToken(): string {
 
 /**
  * Authentication middleware for Express routes
- * Validates session token and attaches user context to request
+ * Validates session and attaches user context to request
  *
- * Expected session format:
- * - Header: Authorization: Bearer <token>
- * - Query: ?token=<token>
- *
+ * Session is managed by express-session with Redis store
  * On success: attaches req.user with { id, email }
  * On failure: returns 401 Unauthorized
  */
@@ -81,62 +61,43 @@ export function authMiddleware(
   res: Response,
   next: NextFunction
 ): void {
-  // Get token from Authorization header or query parameter
-  const authHeader = req.headers.authorization;
-  const queryToken = req.query.token as string | undefined;
+  // Check if session exists and has user data
+  const session = req.session;
 
-  let token: string | undefined;
-
-  if (authHeader?.startsWith('Bearer ')) {
-    token = authHeader.substring(7);
-  } else if (queryToken) {
-    token = queryToken;
-  }
-
-  if (!token) {
+  if (!session || !session.userId || !session.email) {
     logger.warn({
       requestId: req.id,
       ip: req.ip,
       path: req.path,
-    }, 'Authentication failed: No token provided');
+      hasSession: !!session,
+    }, 'Authentication failed: No valid session');
 
     res.status(401).json({
       error: 'Unauthorized',
-      message: 'Authentication token required',
+      message: 'Authentication required',
       requestId: req.id,
     });
     return;
   }
 
-  // TODO: Validate token against sessions storage (database or Redis)
-  // For now, this is a placeholder that will be enhanced in subtask-2-3
-  // when session middleware is added to app.ts
-  //
-  // Future implementation:
-  // const session = await getSession(token);
-  // if (!session || session.expiresAt < new Date()) {
-  //   res.status(401).json({ error: 'Invalid or expired token' });
-  //   return;
-  // }
-  // req.user = { id: session.userId, email: session.email };
+  // Attach user context to request
+  req.user = {
+    id: session.userId,
+    email: session.email,
+  };
 
-  logger.warn({
+  logger.debug({
     requestId: req.id,
-    token: token.substring(0, 8) + '...', // Log partial token for security
-  }, 'Auth middleware: Session validation not yet implemented');
+    userId: req.user.id,
+    path: req.path,
+  }, 'Request authenticated');
 
-  // Temporary: For development, allow requests with valid token format
-  // This will be replaced with proper session validation
-  res.status(501).json({
-    error: 'Not Implemented',
-    message: 'Session validation will be implemented in subtask-2-3',
-    requestId: req.id,
-  });
+  next();
 }
 
 /**
  * Optional authentication middleware
- * Attaches user context if token is present, but doesn't require it
+ * Attaches user context if session is present, but doesn't require it
  * Useful for routes that work for both authenticated and anonymous users
  */
 export function optionalAuthMiddleware(
@@ -144,20 +105,13 @@ export function optionalAuthMiddleware(
   res: Response,
   next: NextFunction
 ): void {
-  const authHeader = req.headers.authorization;
-  const queryToken = req.query.token as string | undefined;
+  const session = req.session;
 
-  let token: string | undefined;
-
-  if (authHeader?.startsWith('Bearer ')) {
-    token = authHeader.substring(7);
-  } else if (queryToken) {
-    token = queryToken;
-  }
-
-  if (token) {
-    // TODO: Validate token and attach user
-    // For now, skip since session storage isn't ready
+  if (session && session.userId && session.email) {
+    req.user = {
+      id: session.userId,
+      email: session.email,
+    };
   }
 
   next();
@@ -191,3 +145,4 @@ export function requireRole(requiredRole: string) {
     next();
   };
 }
+

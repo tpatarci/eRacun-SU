@@ -1,6 +1,11 @@
 import { type Request, type Response } from 'express';
 import { getUserByEmail } from '../../repositories/user-repository.js';
-import { verifyPassword, generateSessionToken, type AuthenticatedRequest } from '../../shared/auth.js';
+import {
+  verifyPassword,
+  generateSessionToken,
+  authMiddleware,
+  type AuthenticatedRequest,
+} from '../../shared/auth.js';
 import { validationMiddleware } from '../middleware/validate.js';
 import { loginSchema } from '../schemas.js';
 import { logger } from '../../shared/logger.js';
@@ -65,8 +70,16 @@ export async function loginHandler(req: Request, res: Response): Promise<void> {
       return;
     }
 
-    // Generate session token
+    // Create session using express-session
+    const authReq = req as AuthenticatedRequest;
     const token = generateSessionToken();
+
+    // Set session data
+    if (authReq.session) {
+      authReq.session.userId = user.id;
+      authReq.session.email = user.email;
+      authReq.session.token = token;
+    }
 
     logger.info({
       userId: user.id,
@@ -74,16 +87,16 @@ export async function loginHandler(req: Request, res: Response): Promise<void> {
       requestId: req.id,
     }, 'User logged in successfully');
 
-    // TODO: Store session in database/Redis (subtask-2-3)
-    // For now, return the token which will be validated once session storage is implemented
-
+    // Return user info with session ID as token
+    // For cookie-based clients, the session is automatically managed
+    // For API clients, the session ID can be used with ?token=... query param
     const response: LoginResponse = {
       user: {
         id: user.id,
         email: user.email,
         name: user.name || undefined,
       },
-      token,
+      token: authReq.sessionID || token,
     };
 
     res.json(response);
@@ -103,17 +116,33 @@ export async function loginHandler(req: Request, res: Response): Promise<void> {
 
 // POST /api/v1/auth/logout
 export async function logoutHandler(req: AuthenticatedRequest, res: Response): Promise<void> {
-  // TODO: Invalidate session in database/Redis (subtask-2-3)
-  // For now, return a success response noting that full logout will be implemented later
+  // Destroy the session
+  const session = req.session as any; // Type assertion for destroy method
+  session?.destroy((err: Error | null) => {
+    if (err) {
+      logger.error({
+        error: err,
+        userId: req.user?.id,
+        requestId: req.id,
+      }, 'Logout failed: Error destroying session');
 
-  logger.info({
-    userId: req.user?.id,
-    requestId: req.id,
-  }, 'Logout requested');
+      res.status(500).json({
+        error: 'Internal server error',
+        message: 'Logout failed',
+        requestId: req.id,
+      });
+      return;
+    }
 
-  res.json({
-    message: 'Logged out successfully',
-    // Note: Session invalidation will be implemented in subtask-2-3
+    logger.info({
+      userId: req.user?.id,
+      requestId: req.id,
+    }, 'User logged out successfully');
+
+    res.clearCookie('eracun.sid');
+    res.json({
+      message: 'Logged out successfully',
+    });
   });
 }
 
@@ -151,12 +180,12 @@ export const authRoutes = [
     path: '/logout',
     method: 'post' as const,
     handler: logoutHandler,
-    // TODO: Add auth middleware in subtask-2-3
+    middleware: [authMiddleware], // Require authentication
   },
   {
     path: '/me',
     method: 'get' as const,
     handler: getMeHandler,
-    // TODO: Add auth middleware in subtask-2-3
+    middleware: [authMiddleware], // Require authentication
   },
 ];
