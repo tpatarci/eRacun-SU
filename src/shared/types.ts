@@ -182,3 +182,12 @@ export interface User {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export interface UserConfig {
+  id: string;
+  userId: string;
+  serviceName: 'fina' | 'imap';
+  config: Record<string, unknown>;
+  createdAt: Date;
+  updatedAt: Date;
+}
