@@ -58,3 +58,54 @@ export const oibQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
   offset: z.coerce.number().int().min(0).default(0),
 });
+
+/**
+ * Email validation
+ */
+const emailSchema = z
+  .string()
+  .min(1, 'Email is required')
+  .email('Invalid email format');
+
+/**
+ * Password validation
+ */
+const passwordSchema = z
+  .string()
+  .min(8, 'Password must be at least 8 characters long');
+
+/**
+ * Login request schema
+ */
+export const loginSchema = z.object({
+  email: emailSchema,
+  password: passwordSchema,
+});
+
+/**
+ * User creation schema
+ */
+export const userCreationSchema = z.object({
+  email: emailSchema,
+  password: passwordSchema,
+  name: z.string().min(1, 'Name is required').optional(),
+});
+
+/**
+ * FINA configuration schema
+ */
+export const finaConfigSchema = z.object({
+  wsdlUrl: z.string().url('Invalid WSDL URL format'),
+  certPath: z.string().min(1, 'Certificate path is required'),
+  certPassphrase: z.string().min(1, 'Certificate passphrase is required'),
+});
+
+/**
+ * IMAP configuration schema
+ */
+export const imapConfigSchema = z.object({
+  host: z.string().min(1, 'IMAP host is required'),
+  port: z.number().int().min(1).max(65535).default(993),
+  user: z.string().min(1, 'IMAP username is required'),
+  password: z.string().min(1, 'IMAP password is required'),
+});

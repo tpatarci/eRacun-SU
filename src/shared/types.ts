@@ -173,3 +173,21 @@ export interface JobPayload {
   oib: string;
   invoiceData: Record<string, unknown>;
 }
+
+export interface User {
+  id: string;
+  email: string;
+  passwordHash: string;
+  name?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface UserConfig {
+  id: string;
+  userId: string;
+  serviceName: 'fina' | 'imap';
+  config: Record<string, unknown>;
+  createdAt: Date;
+  updatedAt: Date;
+}

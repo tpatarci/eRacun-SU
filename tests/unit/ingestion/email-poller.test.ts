@@ -43,6 +43,7 @@ describe('Email Poller', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     emailPoller = new EmailPoller({
+      userId: 'test-user-id',
       host: 'imap.example.com',
       port: 993,
       user: 'test@example.com',
@@ -65,6 +66,7 @@ describe('Email Poller', () => {
   describe('constructor', () => {
     it('should create poller with config', () => {
       const poller = new EmailPoller({
+        userId: 'test-user-id',
         host: 'imap.test.com',
         port: 993,
         user: 'user@test.com',
@@ -76,6 +78,7 @@ describe('Email Poller', () => {
 
     it('should use default values for optional config', () => {
       const poller = new EmailPoller({
+        userId: 'test-user-id',
         host: 'imap.test.com',
         port: 993,
         user: 'user@test.com',
@@ -83,6 +86,18 @@ describe('Email Poller', () => {
       });
 
       expect(poller).toBeDefined();
+    });
+
+    it('should throw error if userId is not provided', () => {
+      expect(() => {
+        new EmailPoller({
+          userId: '',
+          host: 'imap.test.com',
+          port: 993,
+          user: 'user@test.com',
+          password: 'pass',
+        });
+      }).toThrow();
     });
   });
 

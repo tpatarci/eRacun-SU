@@ -1,13 +1,14 @@
 import { Queue, Worker, Job } from 'bullmq';
 import { logger } from '../shared/logger.js';
-import { fiscalizeInvoice } from '../fina/fina-client.js';
-import type { Invoice } from '../archive/types.js';
+import { createFINAClient } from '../fina/fina-client.js';
+import { loadUserConfig } from '../shared/tenant-config.js';
 
 /**
  * Invoice job data
  */
 export interface InvoiceJobData {
   invoiceId: string;
+  userId: string;
   oib: string;
   invoiceNumber: string;
   originalXml: string;
@@ -64,37 +65,100 @@ export function createInvoiceQueue(redisUrl: string): Queue<InvoiceJobData> {
 export async function processFinaSubmission(
   job: Job<InvoiceJobData>
 ): Promise<JobStatusUpdate> {
-  const { invoiceId, oib, invoiceNumber, signedXml } = job.data;
+  const { invoiceId, userId, oib, invoiceNumber, signedXml } = job.data;
 
   logger.info({
     invoiceId,
+    userId,
     jobId: job.id,
   }, 'Processing FINA submission job');
 
   try {
-    const result = await fiscalizeInvoice({
-      oib,
-      invoiceNumber,
-      dateTime: new Date().toISOString(),
-      businessPremises: 'PP1', // TODO: get from invoice data
-      cashRegister: '1', // TODO: get from invoice data
-      totalAmount: '0', // TODO: get from invoice data
-      signedXml,
+    // Load user-specific FINA configuration
+    const userConfig = await loadUserConfig(userId);
+
+    if (!userConfig.fina) {
+      const error = 'FINA configuration not found for user. Please configure your fiscalization settings.';
+      logger.error({
+        invoiceId,
+        userId,
+      }, 'FINA submission failed: missing configuration');
+
+      return {
+        invoiceId,
+        status: 'failed',
+        error,
+      };
+    }
+
+    const finaConfig = userConfig.fina;
+
+    // Create FINA client with user's credentials
+    const finaClient = createFINAClient({
+      wsdlUrl: finaConfig.wsdlUrl,
+      certPath: finaConfig.certPath,
+      certPassphrase: finaConfig.certPassphrase,
     });
 
-    logger.info({
-      invoiceId,
-      jir: result.jir,
-    }, 'FINA submission successful');
+    // Initialize the client
+    await finaClient.initialize();
 
-    return {
-      invoiceId,
-      status: 'submitted',
-      jir: result.jir,
-    };
+    try {
+      // Fiscalize the invoice
+      const result = await finaClient.fiscalizeInvoice(
+        {
+          oib,
+          datVrijeme: new Date().toISOString(),
+          brojRacuna: invoiceNumber,
+          oznPoslProstora: 'PP1', // TODO: get from invoice data
+          oznNapUr: '1', // TODO: get from invoice data
+          ukupanIznos: '0', // TODO: get from invoice data
+          nacinPlac: 'G', // TODO: get from invoice data
+          zki: '000000000000000000', // TODO: get from signed XML
+          pdv: undefined,
+          pnp: undefined,
+          ostaliPor: undefined,
+          nakDost: undefined,
+          paragonBroj: undefined,
+          specNamj: undefined,
+        },
+        signedXml
+      );
+
+      if (!result.success) {
+        const error = result.error?.message || 'Unknown FINA error';
+        logger.error({
+          invoiceId,
+          userId,
+          error,
+        }, 'FINA submission failed: service error');
+
+        return {
+          invoiceId,
+          status: 'failed',
+          error,
+        };
+      }
+
+      logger.info({
+        invoiceId,
+        userId,
+        jir: result.jir,
+      }, 'FINA submission successful');
+
+      return {
+        invoiceId,
+        status: 'submitted',
+        jir: result.jir,
+      };
+    } finally {
+      // Clean up client resources
+      await finaClient.close();
+    }
   } catch (error) {
     logger.error({
       invoiceId,
+      userId,
       error: error instanceof Error ? error.message : String(error),
     }, 'FINA submission failed');
 

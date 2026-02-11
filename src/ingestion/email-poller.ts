@@ -1,6 +1,7 @@
 import IFlow from 'imapflow';
 import { logger } from '../shared/logger.js';
 import type { Config } from '../shared/config.js';
+import type { UserConfig } from '../shared/types.js';
 
 /**
  * Attachment found in email
@@ -27,6 +28,7 @@ export interface EmailMessage {
  * Email poller configuration
  */
 export interface EmailPollerConfig {
+  userId: string;
   host: string;
   port: number;
   user: string;
@@ -45,6 +47,9 @@ class EmailPoller {
   private pollInterval: NodeJS.Timeout | null = null;
 
   constructor(config: EmailPollerConfig) {
+    if (!config.userId) {
+      throw new Error('userId is required for EmailPoller');
+    }
     this.config = {
       mailbox: 'INBOX',
       markSeen: true,
@@ -80,6 +85,7 @@ class EmailPoller {
     try {
       await this.client.connect();
       logger.info({
+        userId: this.config.userId,
         host: this.config.host,
         mailbox: this.config.mailbox,
       }, 'Connected to IMAP server');
@@ -87,6 +93,7 @@ class EmailPoller {
       // Select mailbox
       const mailbox = await this.client.mailboxOpen(this.config.mailbox!);
       logger.info({
+        userId: this.config.userId,
         mailbox: this.config.mailbox,
         totalMessages: mailbox.exists,
       }, 'Mailbox opened');
@@ -98,12 +105,14 @@ class EmailPoller {
       this.pollInterval = setInterval(() => {
         this.poll(onMessage).catch((error) => {
           logger.error({
+            userId: this.config.userId,
             error: error instanceof Error ? error.message : String(error),
           }, 'Error during email poll');
         });
       }, intervalMs);
 
       logger.info({
+        userId: this.config.userId,
         intervalMs,
       }, 'Email polling started');
     } catch (error) {
@@ -137,6 +146,7 @@ class EmailPoller {
 
           if (emailMessage.attachments.length > 0) {
             logger.info({
+              userId: this.config.userId,
               messageId: emailMessage.messageId,
               attachmentCount: emailMessage.attachments.length,
             }, 'Found email with attachments');
@@ -150,6 +160,7 @@ class EmailPoller {
           }
         } catch (error) {
           logger.error({
+            userId: this.config.userId,
             messageId: message.envelope?.messageId,
             error: error instanceof Error ? error.message : String(error),
           }, 'Error processing email message');
@@ -157,6 +168,7 @@ class EmailPoller {
       }
     } catch (error) {
       logger.error({
+        userId: this.config.userId,
         error: error instanceof Error ? error.message : String(error),
       }, 'Error fetching emails');
       throw error;
@@ -192,6 +204,7 @@ class EmailPoller {
           }
         } catch (error) {
           logger.warn({
+            userId: this.config.userId,
             filename,
             error: error instanceof Error ? error.message : String(error),
           }, 'Failed to download attachment');
@@ -231,7 +244,9 @@ class EmailPoller {
 
     await this.disconnect();
 
-    logger.info('Email polling stopped');
+    logger.info({
+      userId: this.config.userId,
+    }, 'Email polling stopped');
   }
 
   /**
@@ -243,6 +258,7 @@ class EmailPoller {
         await this.client.logout();
       } catch (error) {
         logger.error({
+          userId: this.config.userId,
           error: error instanceof Error ? error.message : String(error),
         }, 'Error during IMAP logout');
       }
@@ -252,20 +268,51 @@ class EmailPoller {
 }
 
 /**
- * Create email poller from configuration
+ * Create email poller from global configuration
+ * @deprecated Use createEmailPollerForUser instead for multi-user support
  */
-export function createEmailPoller(config: Config): EmailPoller {
+export function createEmailPoller(config: Config, userId = 'default'): EmailPoller {
   if (!config.IMAP_HOST || !config.IMAP_USER || !config.IMAP_PASS) {
     throw new Error('IMAP configuration is incomplete. Set IMAP_HOST, IMAP_USER, and IMAP_PASS');
   }
 
   return new EmailPoller({
+    userId,
     host: config.IMAP_HOST,
     port: config.IMAP_PORT,
     user: config.IMAP_USER,
     password: config.IMAP_PASS,
     mailbox: 'INBOX',
     markSeen: true,
+  });
+}
+
+/**
+ * Create email poller for a specific user from their stored configuration
+ *
+ * @param userConfig - User's IMAP configuration from database
+ * @returns EmailPoller instance configured for the specific user
+ * @throws Error if required IMAP fields are missing from user config
+ */
+export function createEmailPollerForUser(userConfig: UserConfig): EmailPoller {
+  if (userConfig.serviceName !== 'imap') {
+    throw new Error(`Expected 'imap' service name, got '${userConfig.serviceName}'`);
+  }
+
+  const imapConfig = userConfig.config as Record<string, unknown>;
+
+  if (!imapConfig.host || !imapConfig.user || !imapConfig.password) {
+    throw new Error('IMAP configuration is incomplete. Required: host, user, password');
+  }
+
+  return new EmailPoller({
+    userId: userConfig.userId,
+    host: imapConfig.host as string,
+    port: (imapConfig.port as number) ?? 993,
+    user: imapConfig.user as string,
+    password: imapConfig.password as string,
+    mailbox: (imapConfig.mailbox as string | undefined) ?? 'INBOX',
+    markSeen: (imapConfig.markSeen as boolean | undefined) ?? true,
   });
 }
 
