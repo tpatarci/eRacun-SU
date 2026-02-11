@@ -112,6 +112,7 @@ export const userRoutes = [
     path: '/:id',
     method: 'get',
     handler: getUserByIdHandler,
+    middleware: [authMiddleware], // SECURITY: Added authentication to prevent user enumeration
   },
   {
     path: '/',
