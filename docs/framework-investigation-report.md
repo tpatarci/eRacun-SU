@@ -3,7 +3,7 @@
 **Project:** eRačun-SU - Croatian Electronic Invoicing System
 **Investigation Date:** 2026-02-19
 **Investigation Type:** Framework Integrity and Documentation Assessment
-**Report Version:** 1.1 (Draft - Phase 2: FINA Fiscalization Integration Verification)
+**Report Version:** 1.2 (Draft - Phase 2: FINA Fiscalization Integration Verification)
 
 ---
 
@@ -12,7 +12,7 @@
 This report documents a comprehensive investigation of the eRačun-SU software framework to verify implementation completeness, assess documentation quality, and determine suitability for production use. The investigation was triggered by concerns that the software may have been created under "false pretenses" with incomplete or improperly collected documentation.
 
 **Phase 1 Status:** ✅ COMPLETE - Codebase Discovery and Structure Mapping
-**Phase 2 Status:** 🟡 IN PROGRESS - FINA Fiscalization Integration Verification (1 of 4 subtasks complete)
+**Phase 2 Status:** 🟡 IN PROGRESS - FINA Fiscalization Integration Verification (2 of 4 subtasks complete)
 
 ---
 
@@ -1173,11 +1173,256 @@ Based on the FINA WSDL v1.9 specification for Croatian fiscalization, the follow
 
 ---
 
-## 9. Next Steps - Investigation Plan
+## 9. Certificate Parsing and Validation Verification
+
+**Status:** ✅ COMPLETE - Subtask 2-2: Certificate Management Verification
+
+**File Analyzed:** `src/signing/certificate-parser.ts` (275 LOC)
+
+### 9.1 Certificate Features - Verification Matrix
+
+| Feature | Function | Lines | Status | Notes |
+|---------|----------|-------|--------|-------|
+| **PKCS#12 Parsing** | `parseCertificate()` | 96-154 | ✅ COMPLETE | Parse .p12 certificates with node-forge |
+| **File Loading** | `loadCertificateFromFile()` | 57-86 | ✅ COMPLETE | Read certificate from filesystem with error handling |
+| **Certificate Info** | `extractCertificateInfo()` | 163-197 | ✅ COMPLETE | Extract subject, issuer, serial, validity dates |
+| **Expiration Check** | `validateCertificate()` | 205-243 | ✅ COMPLETE | Check notBefore/notAfter dates |
+| **Issuer Validation** | `validateCertificate()` | 218-229 | ✅ COMPLETE | Verify FINA/AKD issuer |
+| **Expiry Warning** | `validateCertificate()` | 231-240 | ✅ COMPLETE | 30-day expiration warning |
+| **Validation Assert** | `assertCertificateValid()` | 251-275 | ✅ COMPLETE | Throw on critical validation errors |
+| **PEM Conversion** | `parseCertificate()` | 140-141 | ✅ COMPLETE | Export cert and key to PEM format |
+
+### 9.2 Implementation Details
+
+#### 9.2.1 PKCS#12 Certificate Parsing (`parseCertificate()`)
+**Lines:** 96-154
+
+**Features Implemented:**
+| Feature | Implementation | Status |
+|---------|----------------|--------|
+| PKCS#12 parsing | `forge.pkcs12.pkcs12FromAsn1()` with node-forge | ✅ Complete |
+| Certificate extraction | `certBag` parsing with null checks | ✅ Complete |
+| Private key extraction | `pkcs8ShroudedKeyBag` parsing | ✅ Complete |
+| Password protection | Passphrase required for decryption | ✅ Complete |
+| PEM conversion | `forge.pki.certificateToPem()` and `privateKeyToPem()` | ✅ Complete |
+| Error handling | Custom `CertificateParseError` with cause | ✅ Complete |
+
+**Validation:**
+- ✅ Checks for empty certificate bags
+- ✅ Checks for empty key bags
+- ✅ Validates certificate and key presence
+- ✅ Throws descriptive errors for malformed PKCS#12
+
+**Assessment:** ✅ **COMPLETE** - Full PKCS#12 parsing with proper error handling
+
+#### 9.2.2 Certificate Information Extraction (`extractCertificateInfo()`)
+**Lines:** 163-197
+
+**Fields Extracted:**
+| Field | Source | Status |
+|-------|--------|--------|
+| Subject DN | `certificate.subject.attributes` | ✅ Complete |
+| Issuer DN | `certificate.issuer.attributes` | ✅ Complete |
+| Issuer CN | `certificate.issuer.getField('CN')` | ✅ Complete |
+| Serial Number | `certificate.serialNumber` | ✅ Complete |
+| Not Before | `certificate.validity.notBefore` | ✅ Complete |
+| Not After | `certificate.validity.notAfter` | ✅ Complete |
+| Public Key | `certificate.publicKey` | ✅ Complete |
+
+**Optimization Note:** Lines 166-181 implement IMPROVEMENT-019 - optimized DN extraction using `reduce()` to avoid intermediate array allocation (performance improvement).
+
+**Assessment:** ✅ **COMPLETE** - All required certificate fields extracted
+
+#### 9.2.3 Certificate Validation (`validateCertificate()`)
+**Lines:** 205-243
+
+**Validation Rules:**
+| Rule | Implementation | Status |
+|------|----------------|--------|
+| Not yet valid | Check `notBefore > now` | ✅ Complete |
+| Expired | Check `notAfter < now` | ✅ Complete |
+| FINA issuer | Validate issuer is FINA/AKD | ✅ Complete |
+| Expiry warning | Check `daysUntilExpiry <= 30` | ✅ Complete |
+
+**Valid Issuers:**
+- `Fina RDC 2015 CA` (primary FINA issuer)
+- `FINA` (alternative)
+- `AKD` (alternative provider)
+
+**Warning Logic:**
+- Non-critical warnings (expiring soon) are returned but don't block usage
+- Critical errors (expired, not yet valid, invalid issuer) block usage
+
+**Assessment:** ✅ **COMPLETE** - Comprehensive validation with appropriate severity levels
+
+#### 9.2.4 Validation Assertion (`assertCertificateValid()`)
+**Lines:** 251-275
+
+**Behavior:**
+| Error Type | Action | Status |
+|------------|--------|--------|
+| Critical errors | Throw `CertificateValidationError` | ✅ Complete |
+| Warnings | Log but don't throw | ✅ Complete |
+| Success | Log success message | ✅ Complete |
+
+**Error Filtering:**
+- Lines 255-256: Filter out "expiring soon" warnings from critical errors
+- Only throws on validation failures that would block production usage
+
+**Assessment:** ✅ **COMPLETE** - Proper separation of warnings and critical errors
+
+#### 9.2.5 File Loading (`loadCertificateFromFile()`)
+**Lines:** 57-86
+
+**Features:**
+| Feature | Implementation | Status |
+|---------|----------------|--------|
+| Filesystem read | `fs.readFile()` with async/await | ✅ Complete |
+| Logging | Structured logging with pino | ✅ Complete |
+| Error handling | Catches and wraps in `CertificateParseError` | ✅ Complete |
+| Certificate metadata | Logs subject, issuer, serial, dates on success | ✅ Complete |
+
+**Security:**
+- ✅ Certificate password passed as parameter (not hardcoded)
+- ✅ No sensitive data logged
+- ✅ File path included in error messages for debugging
+
+**Assessment:** ✅ **COMPLETE** - Safe file loading with comprehensive logging
+
+### 9.3 Error Handling Assessment
+
+**Custom Error Types:**
+| Error Type | Usage | Properties | Status |
+|------------|-------|------------|--------|
+| `CertificateParseError` | Parsing failures | message, cause (optional) | ✅ Complete |
+| `CertificateValidationError` | Validation failures | message, errors (array) | ✅ Complete |
+
+**Error Scenarios Covered:**
+- ✅ File not found (handled by fs.readFile error)
+- ✅ Invalid password (caught by node-forge)
+- ✅ Malformed PKCS#12 (caught by try-catch)
+- ✅ Missing certificate/key in bag (explicit checks)
+- ✅ Expired certificates (validation)
+- ✅ Invalid issuer (validation)
+
+**Assessment:** ✅ **COMPLETE** - Comprehensive error handling with descriptive messages
+
+### 9.4 Type Safety Assessment
+
+**Interfaces Defined:**
+| Interface | Purpose | Completeness |
+|-----------|---------|--------------|
+| `CertificateInfo` | Certificate metadata | ✅ Complete (8 fields) |
+| `ParsedCertificate` | Parsed certificate with key | ✅ Complete (4 fields) |
+
+**Type Annotations:**
+- ✅ All functions have full type signatures
+- ✅ Parameters and return types explicitly typed
+- ✅ Error types extend from Error
+- ✅ Forge library types properly imported
+
+**Assessment:** ✅ **COMPLETE** - Full TypeScript type safety
+
+### 9.5 Security Assessment
+
+| Security Aspect | Implementation | Status |
+|-----------------|----------------|--------|
+| **Private Key Handling** | Loaded into memory, never logged | ✅ Secure |
+| **Password Storage** | Passed via parameter (not hardcoded) | ✅ Secure |
+| **Certificate Storage** | Loaded from filesystem | ✅ Secure |
+| **Logging** | No sensitive data in logs (DN, issuer logged - not secret) | ✅ Acceptable |
+| **Error Messages** | No secrets in error messages | ✅ Secure |
+| **Memory Management** | Relies on node-forge cleanup (industry standard) | ✅ Acceptable |
+
+**Assessment:** ✅ **SECURE** - No security vulnerabilities identified
+
+### 9.6 Croatian Compliance Assessment
+
+| Requirement | Implementation | Status |
+|-------------|----------------|--------|
+| **PKCS#12 Format** | Full support via node-forge | ✅ Compliant |
+| **FINA Issuer Validation** | Checks for "Fina RDC 2015 CA", "FINA", "AKD" | ✅ Compliant |
+| **Expiration Monitoring** | Validates notBefore/notAfter dates | ✅ Compliant |
+| **Expiry Warnings** | 30-day advance warning | ✅ Compliant |
+| **Certificate Chain** | Extracts full certificate info including issuer DN | ✅ Compliant |
+| **Private Key Access** | RSA private key extracted for signing | ✅ Compliant |
+
+**Assessment:** ✅ **COMPLIANT** - Meets Croatian certificate requirements for fiscalization
+
+### 9.7 Test Coverage Assessment
+
+**Test File:** `tests/unit/signing/certificate-parser.test.ts` (139 LOC)
+
+**Test Coverage:**
+| Feature | Test Coverage | Status |
+|---------|--------------|--------|
+| `loadCertificateFromFile` | Success, wrong passphrase, file not found | ✅ Complete |
+| `parseCertificate` | Buffer parsing | ✅ Complete |
+| `extractCertificateInfo` | Field extraction | ✅ Complete |
+| `validateCertificate` | Expired, near-expiry, valid cert | ✅ Complete |
+| `assertCertificateValid` | Throws on invalid | ✅ Complete |
+| `CertificateParseError` | Error creation, cause chain | ✅ Complete |
+| `CertificateValidationError` | Error creation, errors array | ✅ Complete |
+
+**Test Quality:**
+- ✅ Uses test fixtures (`test-cert.p12`)
+- ✅ Tests error conditions
+- ✅ Tests edge cases (expired, near-expiry)
+- ✅ Tests custom error types
+
+**Assessment:** ✅ **COMPLETE** - Comprehensive test coverage
+
+### 9.8 Integration Points
+
+**Certificate Parser Usage in Codebase:**
+| Module | Usage | Lines |
+|--------|-------|-------|
+| `src/signing/index.ts` | Re-exports all functions | 3 |
+| `tests/unit/signing/zki-generator.test.ts` | Loads test certificate for ZKI signing | 13-17 |
+| `tests/unit/signing/xmldsig-signer.test.ts` | Loads test certificate for XML signing | 14-18 |
+| `tests/e2e/invoice-flow-mocked.test.ts` | Integration tests with certificate loading | 414-543 |
+| `src/fina/fina-client.ts` | Reads PKCS#12 directly (does NOT use parser) | 74-76 |
+
+**Note:** The FINA client (`src/fina/fina-client.ts` lines 74-76) reads the certificate file directly and passes it to the SOAP client, rather than using `loadCertificateFromFile()`. This is acceptable as the SOAP library requires the raw buffer, not the parsed certificate.
+
+**Assessment:** ✅ **INTEGRATED** - Certificate parser used throughout test suite and signing modules
+
+### 9.9 Gaps and Issues Found
+
+**No gaps identified in the certificate parsing and validation implementation.**
+
+All required features for Croatian fiscalization are implemented:
+- ✅ PKCS#12 certificate parsing
+- ✅ Certificate validation (expiration, issuer)
+- ✅ Expiry monitoring with warnings
+- ✅ FINA-specific issuer validation
+- ✅ Error handling and logging
+- ✅ Type safety
+- ✅ Test coverage
+
+### 9.10 Summary
+
+**Certificate Management Assessment:** ✅ **100% COMPLETE AND COMPLIANT**
+
+| Category | Status | Details |
+|----------|--------|---------|
+| **PKCS#12 Parsing** | ✅ Complete | Full certificate and private key extraction |
+| **Validation** | ✅ Complete | Expiration, issuer, expiry warning |
+| **Error Handling** | ✅ Complete | Custom error types with descriptive messages |
+| **Type Safety** | ✅ Complete | Full TypeScript definitions |
+| **Croatian Compliance** | ✅ Compliant | FINA issuer validation, PKCS#12 support |
+| **Security** | ✅ Secure | No hardcoded secrets, proper key handling |
+| **Testing** | ✅ Complete | Comprehensive unit test coverage |
+
+**Verification:** The certificate parsing and validation implementation is production-ready and fully compliant with Croatian fiscalization certificate requirements. All PKCS#12 parsing, validation, and expiration monitoring features are implemented with proper error handling and security practices.
+
+---
+
+## 10. Next Steps - Investigation Plan
 
 ### Phase 2: FINA Verification (In Progress)
 - [x] Verify FINA SOAP client handles all required operations ✅
-- [ ] Verify certificate parsing and validation
+- [x] Verify certificate parsing and validation ✅
 - [ ] Verify ZKI generation algorithm correctness
 - [ ] Verify OIB validation implementation
 - [ ] **CRITICAL:** Investigate hardcoded invoice data in `src/jobs/queue.ts` (already documented in Phase 1)
@@ -1232,8 +1477,8 @@ Based on the FINA WSDL v1.9 specification for Croatian fiscalization, the follow
 
 ---
 
-**Report Status:** Phase 1 COMPLETE - Phase 2 IN PROGRESS (1 of 4 subtasks complete)
-**Next Update:** After Phase 2 (FINA Verification) completion (3 subtasks remaining)
+**Report Status:** Phase 1 COMPLETE - Phase 2 IN PROGRESS (2 of 4 subtasks complete)
+**Next Update:** After Phase 2 (FINA Verification) completion (2 subtasks remaining)
 
 ---
 
