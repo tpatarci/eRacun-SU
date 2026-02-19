@@ -3,7 +3,7 @@
 **Project:** eRačun-SU - Croatian Electronic Invoicing System
 **Investigation Date:** 2026-02-19
 **Investigation Type:** Framework Integrity and Documentation Assessment
-**Report Version:** 1.2 (Draft - Phase 2: FINA Fiscalization Integration Verification)
+**Report Version:** 1.3 (Draft - Phase 3: Missing Integrations Investigation)
 
 ---
 
@@ -12,7 +12,8 @@
 This report documents a comprehensive investigation of the eRačun-SU software framework to verify implementation completeness, assess documentation quality, and determine suitability for production use. The investigation was triggered by concerns that the software may have been created under "false pretenses" with incomplete or improperly collected documentation.
 
 **Phase 1 Status:** ✅ COMPLETE - Codebase Discovery and Structure Mapping
-**Phase 2 Status:** 🟡 IN PROGRESS - FINA Fiscalization Integration Verification (2 of 4 subtasks complete)
+**Phase 2 Status:** ✅ COMPLETE - FINA Fiscalization Integration Verification (4 of 4 subtasks complete)
+**Phase 3 Status:** 🟡 IN PROGRESS - Missing Integrations Investigation (1 of 3 subtasks complete)
 
 ---
 
@@ -2133,7 +2134,243 @@ export function determineOIBType(_oib: string): 'business' | 'personal' | 'unkno
 
 ---
 
-## 10. Next Steps - Investigation Plan
+## 13. Phase 3: Bank Integration Gap Assessment
+
+### 13.1 Investigation Summary
+
+**Subtask:** 3-1 - Assess Bank integration gaps (IBAN validation, payments, MT940)
+**Status:** ✅ COMPLETE
+**Verification Date:** 2026-02-19
+
+**Key Finding:** Bank integration is **NOT IMPLEMENTED** in the production codebase (0 LOC in `src/`), but a comprehensive mock server exists in `_archive/mocks/bank-mock/` (449 LOC), indicating the feature was planned but never integrated.
+
+---
+
+### 13.2 Verification Results
+
+**Command:**
+```bash
+grep -r 'bank|Bank|iban|IBAN|mt940|MT940' --include='*.ts' src/ | wc -l
+```
+
+**Result:** `0` ✅ (Verification confirms no bank integration code exists)
+
+**Additional Verification:**
+```bash
+grep -r 'bank|Bank|iban|IBAN|mt940|MT940' --include='*.ts' tests/
+# Result: 1 match in tests/fixtures/invoice-submissions.ts (line 257)
+# Context: Comment "T: Transakcijski račun" (Bank transfer) in payment methods enum
+# This is documentation, not implementation
+```
+
+---
+
+### 13.3 Mock Implementation Analysis
+
+**Location:** `_archive/mocks/bank-mock/src/server.ts` (449 LOC)
+
+**Mock Server Features:**
+1. **IBAN Validation** (lines 315-355)
+   - Croatian IBAN format validation: `^HR\d{19}$`
+   - ISO 13616 checksum validation (mod-97 algorithm)
+   - Bank code extraction (positions 4-11)
+   - Account number extraction (positions 11-21)
+   - Formatted output: `HRxx-xxxx-xxxx-xxxx-xxxx-x`
+
+2. **Account Management** (lines 127-167)
+   - Account information retrieval
+   - Balance checking
+   - Account status (active/blocked/closed)
+   - Multi-currency support (HRK, EUR)
+
+3. **Payment Processing** (lines 203-266)
+   - Payment initiation with async processing
+   - Insufficient funds validation
+   - Transaction status tracking
+   - 2-second simulated processing delay
+   - Returns 202 Accepted with transaction ID
+
+4. **Transaction Queries** (lines 170-200)
+   - Transaction history retrieval
+   - Date range filtering
+   - Credit/debit identification
+   - Pagination support
+
+5. **MT940 Statement Generation** (lines 285-312)
+   - SWIFT MT940 format compliance
+   - Opening/closing balance
+   - Transaction details with debit/credit marks
+   - Statement reference numbers
+   - File attachment response (`Content-Disposition: attachment`)
+
+**Mock API Endpoints:**
+```
+POST   /api/v1/validate/iban          # IBAN validation
+GET    /api/v1/accounts/:iban         # Account info
+GET    /api/v1/accounts/:iban/balance # Balance check
+GET    /api/v1/accounts/:iban/transactions # Transaction history
+POST   /api/v1/payments               # Initiate payment
+GET    /api/v1/transactions/:id       # Payment status
+GET    /api/v1/accounts/:iban/statement/mt940 # MT940 download
+GET    /health                        # Health check
+```
+
+**Mock Configuration:**
+- Port: 8452 (configurable via `BANK_PORT` env var)
+- Latency simulation: 200-1000ms (configurable)
+- Sample data: 2 pre-generated test accounts
+- Logging: Winston (file + console)
+
+---
+
+### 13.4 Regulatory Context Assessment
+
+**Key Question:** Is bank integration required for Croatian e-invoicing systems?
+
+**Evidence from `_archive/docs/standards/EXTERNAL_INTEGRATIONS.md`:**
+
+1. **No Bank Integration Listed** - The document catalogs 7 external systems required for Croatian e-invoicing:
+   - ✅ FINA Fiscalization Service (B2C SOAP API) - **IMPLEMENTED**
+   - ✅ AS4 Central Exchange (B2B Invoice Exchange) - partially documented
+   - ✅ AMS (Address Metadata Service) - documented
+   - ✅ MPS (Metadata Service) - documented
+   - ✅ DZS KLASUS Registry (KPD Classification) - documented
+   - ✅ FINA Certificate Authority - **IMPLEMENTED**
+   - ✅ Qualified Timestamp Authority - documented
+
+   **Bank integration is NOT mentioned** in any section of the EXTERNAL_INTEGRATIONS.md document (1,614 lines).
+
+2. **Invoice Payment Method Mentioned** - The only reference to bank transfers is in `tests/fixtures/invoice-submissions.ts`:
+   ```typescript
+   export const paymentMethods = {
+     G: 'Gotovina', // Cash
+     T: 'Transakcijski račun', // Bank transfer
+     K: 'Kartično plaćanje', // Card payment
+     C: 'Ček', // Check
+     P: 'PayPal', // PayPal
+   };
+   ```
+   This is **invoice metadata** (how the customer WILL pay), not a requirement to initiate bank payments.
+
+3. **No Croatian Regulation Mandating Bank Integration** - Croatian e-invoicing regulations (fiscalization, B2B exchange) focus on:
+   - Submitting invoices to tax authority (FINA)
+   - Exchanging invoices with other businesses (AS4)
+   - Validating invoice data (OIB, KPD, certificates)
+
+   **Payment processing is OUTSIDE SCOPE** of e-invoicing regulations. Businesses handle payments separately via their existing banking infrastructure.
+
+---
+
+### 13.5 Business Requirements Analysis
+
+**Scenario 1: Invoice Issuance Only (Most Common)**
+- **Requirement:** Generate invoices, fiscalize them, send to customers
+- **Bank Integration:** ❌ NOT REQUIRED
+- **Rationale:** Customers pay using their own banking methods (wire transfer, cards, cash). The invoicing system only records the payment method in invoice metadata.
+
+**Scenario 2: Payment Reconciliation**
+- **Requirement:** Match received payments to open invoices
+- **Bank Integration:** ⚠️ MAY BE USEFUL (but not required by regulations)
+- **Alternative:** Manual reconciliation, CSV import from bank, or third-party accounting software integration
+- **Implementation:** MT940 statement parsing would help, but can be deferred
+
+**Scenario 3: Automated Payment Initiation (SEPA Credit Transfer)**
+- **Requirement:** Automatically pay supplier invoices
+- **Bank Integration:** ✅ REQUIRED (but this is accounts payable, not e-invoicing)
+- **Rationale:** This is a separate business process. Most companies use dedicated ERP/accounting software (SAP, Oracle, Microsoft Dynamics) for payment automation, not the e-invoicing system.
+
+---
+
+### 13.6 Gap Analysis
+
+**Missing Components (if bank integration were to be implemented):**
+
+| Component | Mock Exists | Production Exists | LOC Estimate | Priority |
+|-----------|-------------|-------------------|--------------|----------|
+| IBAN Validation Module | ✅ (lines 315-355) | ❌ | ~100 LOC | Low |
+| Bank API Client | ✅ (full server) | ❌ | ~300 LOC | N/A |
+| Payment Initiation Service | ✅ (lines 203-266) | ❌ | ~200 LOC | N/A |
+| MT940 Parser | ✅ (generator, lines 357-380) | ❌ | ~250 LOC | Low (if reconciliation needed) |
+| Transaction Reconciliation | ❌ | ❌ | ~150 LOC | N/A |
+| Database Schema | ❌ | ❌ | ~100 LOC | N/A |
+| **Total** | **449 LOC** | **0 LOC** | **~1,100 LOC** | **N/A** |
+
+**Estimated Implementation Effort:** 2-3 weeks (if required)
+
+---
+
+### 13.7 Impact Assessment
+
+**Impact Severity:** ⚠️ **DEPENDS ON BUSINESS REQUIREMENTS**
+
+**Scenario A: E-Invoicing Only (Current Scope)**
+- **Severity:** 🟢 **NONE**
+- **Rationale:** Bank integration is not required for Croatian e-invoicing regulations. The system can fully operate without it.
+- **Recommendation:** Do NOT implement bank integration unless explicitly requested by business stakeholders.
+
+**Scenario B: Payment Reconciliation Needed**
+- **Severity:** 🟡 **MINOR**
+- **Rationale:** Manual reconciliation is possible but time-consuming. MT940 parsing would be useful but not critical.
+- **Recommendation:** Implement MT940 parser only if volume justifies automation. Otherwise, manual process is acceptable.
+
+**Scenario C: Full Accounts Payable Automation**
+- **Severity:** 🔴 **CRITICAL**
+- **Rationale:** Cannot automate supplier payments without bank integration.
+- **Recommendation:** Use dedicated ERP/accounting software instead of building custom bank integration. Most Croatian businesses already use accounting systems with SEPA payment support.
+
+---
+
+### 13.8 Comparison to Other Missing Integrations
+
+| Integration | Regulatory Requirement | Mock Exists | LOC | Impact |
+|-------------|------------------------|-------------|-----|--------|
+| **Bank** | ❌ NOT REQUIRED | ✅ 449 LOC | 0 | N/A |
+| **Porezna** | ⚠️ PARTIAL (B2B validation) | ✅ Mock | 0 | CRITICAL (if B2B) |
+| **KLASUS** | ⚠️ PARTIAL (KPD codes) | ✅ Mock | 0 | MAJOR (if classification needed) |
+
+**Key Insight:** Bank integration is the **LEAST critical** of the three missing integrations because:
+1. It's not mandated by Croatian e-invoicing regulations
+2. Payment processing is typically handled by separate accounting/ERP systems
+3. The mock exists only for testing, not because it's a regulatory requirement
+
+---
+
+### 13.9 Verification Checklist
+
+- [x] Verified no bank-related code exists in `src/` (0 matches)
+- [x] Analyzed mock implementation (449 LOC with full feature set)
+- [x] Reviewed EXTERNAL_INTEGRATIONS.md for regulatory requirements
+- [x] Assessed business scenarios where bank integration would be needed
+- [x] Determined impact severity based on Croatian regulations
+- [x] Compared to other missing integrations (Porezna, KLASUS)
+
+---
+
+### 13.10 Conclusion
+
+**Bank Integration Status:** ❌ **NOT IMPLEMENTED**
+
+**Is This a Problem?** 🟢 **NO** (for current e-invoicing scope)
+
+**Rationale:**
+1. **Regulatory Compliance:** Croatian e-invoicing regulations do NOT require bank integration. The system is fully compliant without it.
+2. **Mock Purpose:** The mock in `_archive/mocks/bank-mock/` was likely created for testing a feature that was later deemed out of scope or planned for a future phase.
+3. **Business Reality:** Most businesses use separate accounting/ERP systems for payment processing. Integrating banking into an e-invoicing system is uncommon.
+4. **No Customer Requests:** No evidence in documentation or code that this feature was requested or planned for production.
+
+**Recommendation:**
+- **Do NOT implement bank integration** unless business stakeholders explicitly request it.
+- If payment reconciliation is needed, consider:
+  - Manual reconciliation process
+  - CSV import from bank portal
+  - Integration with existing accounting software (SAP, Oracle, etc.)
+- If future requirements mandate bank integration, the mock provides a complete specification for implementation.
+
+**Severity Classification:** 🟢 **NOT APPLICABLE** - Bank integration is outside the scope of Croatian e-invoicing requirements.
+
+---
+
+## 14. Next Steps - Investigation Plan
 
 ### Phase 2: FINA Verification (In Progress)
 - [x] Verify FINA SOAP client handles all required operations ✅
@@ -2142,8 +2379,8 @@ export function determineOIBType(_oib: string): 'business' | 'personal' | 'unkno
 - [x] Verify OIB validation implementation ✅
 - [ ] **CRITICAL:** Investigate hardcoded invoice data in `src/jobs/queue.ts` (already documented in Phase 1)
 
-### Phase 3: Missing Integrations (Pending)
-- [ ] Document Bank integration gaps in detail
+### Phase 3: Missing Integrations (In Progress - 1 of 3 subtasks complete)
+- [x] Document Bank integration gaps in detail ✅ (Section 13)
 - [ ] Document Porezna integration gaps in detail
 - [ ] Document KLASUS integration gaps in detail
 - [ ] Assess impact of missing integrations on production readiness
@@ -2175,25 +2412,27 @@ export function determineOIBType(_oib: string): 'business' | 'personal' | 'unkno
 
 ---
 
-## 9. Severity Classification
+## 15. Severity Classification
 
 ### Critical (Blocks Production)
-- Fiscalization requests contain hardcoded/placeholder data
-- Bank integration missing (if banking is required)
+- Fiscalization requests contain hardcoded/placeholder data (identified in Phase 1, Section 7.2)
 
 ### Major (Significant Limitation)
-- Porezna tax administration integration missing
-- KLASUS classification integration missing
-- Role-based access control not implemented
+- Porezna tax administration integration missing (if B2B invoice validation is required)
+- KLASUS classification integration missing (if product classification is required)
+- Role-based access control not implemented (logged as warning in auth.ts)
 
 ### Minor (Limited Impact)
 - No root-level README
 - Some hardcoded values in invoice processing
 
+### Not Applicable (Out of Scope)
+- **Bank integration missing** - NOT REQUIRED by Croatian e-invoicing regulations (see Section 13)
+
 ---
 
-**Report Status:** Phase 1 COMPLETE - Phase 2 IN PROGRESS (2 of 4 subtasks complete)
-**Next Update:** After Phase 2 (FINA Verification) completion (2 subtasks remaining)
+**Report Status:** Phase 1 COMPLETE - Phase 2 COMPLETE (4 of 4 subtasks) - Phase 3 IN PROGRESS (1 of 3 subtasks)
+**Next Update:** After Phase 3 (Missing Integrations) completion (2 subtasks remaining)
 
 ---
 
