@@ -486,7 +486,9 @@
             "type": "manual",
             "instructions": "Review the generated report at docs/framework-investigation-report.md. Confirm all sections are complete and findings are evidence-based."
           },
-          "status": "pending"
+          "status": "completed",
+          "notes": "Completed comprehensive Phase 8 investigation report with 16 subsections (17.1-17.16). Generated final determination: SOFTWARE NEEDS REMEDIATION (strong foundations, 3 critical gaps), FALSE PRETENSES ALLEGATION DEBUNKED (no evidence of misrepresentation). Report updated to version 1.9 (Final), 5,192 lines total with 158 subsections. All investigation deliverables confirmed complete.",
+          "updated_at": "2026-02-19T10:31:44.008642+00:00"
         },
         {
           "id": "subtask-8-2",
@@ -500,7 +502,9 @@
             "type": "manual",
             "instructions": "Review the final determination section. Confirm it is supported by evidence and clearly answers the core questions."
           },
-          "status": "pending"
+          "status": "completed",
+          "notes": "Completed comprehensive final determination with evidence-based justification. Created concise executive summary document (docs/final-determination-summary.md) that clearly answers both core questions:\n\nQuestion 1: Is This Software Suitable for Its Intended Purpose?\nANSWER: ⚠️ NEEDS REMEDIATION - Strong technical foundations but 3 critical implementation gaps block production deployment:\n- CRITICAL-001: Hardcoded fiscalization data (production bug, 2-4 hours to fix)\n- CRITICAL-002: KPD validation not implemented (regulatory non-compliance, 2-3 weeks)\n- CRITICAL-003: UBL invoice generator not implemented (EN 16931 non-compliance, 2-3 weeks)\n\nPath to production: 4-6 weeks estimated.\n\nQuestion 2: Were the 'False Pretenses' Allegations Confirmed?\nANSWER: ✅ NO - ALLEGATIONS DEBUNKED - No evidence of misrepresentation found:\n- Archived documentation quality: 10/10 (Excellent, 115+ files)\n- Clear regulatory requirements documented (875-line compliance guide)\n- Transparent implementation status (TODOs mark incomplete work)\n- No attempt to hide gaps or misrepresent capabilities\n- Well-documented architectural decisions (7 ADRs)\n\nFinal determination supported by comprehensive evidence from 8 investigation phases (21 subtasks). All deliverables complete and documented in framework-investigation-report.md (5,192 lines).",
+          "updated_at": "2026-02-19T10:36:48.116853+00:00"
         }
       ]
     }
@@ -672,6 +676,6 @@
   "qa_signoff": null,
   "status": "in_progress",
   "planStatus": "in_progress",
-  "updated_at": "2026-02-19T10:23:20.434Z",
-  "last_updated": "2026-02-19T10:25:19.840812+00:00"
+  "updated_at": "2026-02-19T10:32:29.205Z",
+  "last_updated": "2026-02-19T10:36:48.116877+00:00"
 }
