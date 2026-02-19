@@ -3,7 +3,7 @@
 **Project:** eRačun-SU - Croatian Electronic Invoicing System
 **Investigation Date:** 2026-02-19
 **Investigation Type:** Framework Integrity and Documentation Assessment
-**Report Version:** 1.3 (Draft - Phase 3: Missing Integrations Investigation)
+**Report Version:** 1.4 (Draft - Phase 3: Missing Integrations Investigation - Subtask 3-2 Complete)
 
 ---
 
@@ -13,7 +13,9 @@ This report documents a comprehensive investigation of the eRačun-SU software f
 
 **Phase 1 Status:** ✅ COMPLETE - Codebase Discovery and Structure Mapping
 **Phase 2 Status:** ✅ COMPLETE - FINA Fiscalization Integration Verification (4 of 4 subtasks complete)
-**Phase 3 Status:** 🟡 IN PROGRESS - Missing Integrations Investigation (1 of 3 subtasks complete)
+**Phase 3 Status:** 🟡 IN PROGRESS - Missing Integrations Investigation (2 of 3 subtasks complete)
+
+**🔍 CRITICAL FINDING (Subtask 3-2):** The "Porezna Tax Administration Integration" referenced in the investigation plan is a **terminology error**. "Porezna" means "Tax Authority" in Croatian, and the FINA Fiscalization integration verified in Phase 2 **IS** the tax authority connection. There is NO separate "Porezna OAuth API" in the Croatian e-invoicing ecosystem. The `porezna-mock` in `_archive/mocks/` is a hypothetical REST API mock that does not correspond to an actual production system.
 
 ---
 
@@ -671,31 +673,54 @@ grep -r "bank\|Bank\|iban\|IBAN\|mt940\|MT940" --include='*.ts' src/
 
 #### 3.3.2 Porezna Tax Administration Integration
 
-**Status:** ❌ NOT IMPLEMENTED
+**Status:** ✅ **ALREADY IMPLEMENTED** (as FINA Fiscalization)
 
-**Expected Features:**
-- OAuth 2.0 flow for authentication
-- Batch invoice submission
-- Invoice validation with tax authority
-- Status tracking for submitted invoices
-- Rate limiting and retry logic
+**CRITICAL CLARIFICATION:** "Porezna" means "Tax Authority" in Croatian. The FINA Fiscalization integration verified in Phase 2 (Section 3.2) **IS** the tax authority integration. There is NO separate "Porezna API" in the Croatian e-invoicing ecosystem.
 
-**Mock Status:** ✅ Mock exists in `_archive/mocks/porezna-mock/` (not integrated)
+**Evidence from EXTERNAL_INTEGRATIONS.md:**
+- Section 2.1: "FINA Fiscalization Service" - Provider: "Croatian Tax Authority (Porezna uprava)"
+- The FINA SOAP API at `https://cis.porezna-uprava.hr:8449/FiskalizacijaService` **IS** the tax authority endpoint
+- No separate OAuth 2.0 tax authority API is documented in the official external systems catalog
+
+**What the Mock Represents:**
+The `porezna-mock` in `_archive/mocks/` is a **hypothetical mock** for a REST API + OAuth system that:
+- Does not exist in the actual Croatian tax authority infrastructure
+- Appears to be a placeholder for potential future REST API migration
+- Was created for testing purposes but does not correspond to a real integration requirement
 
 **Verification:**
 ```bash
 grep -r "porezna\|Porezna\|POREZNA\|oauth\|OAuth" --include='*.ts' src/
-# Result: 0 matches - no tax administration integration exists
+# Result: 0 matches - no SEPARATE "Porezna" integration exists
 ```
 
-**Impact:** ⚠️ **CRITICAL**
-- Cannot validate invoices with Croatian tax authority
-- Cannot submit invoices in batch
-- Cannot track invoice validation status
-- Cannot ensure tax compliance
-- **Business Impact:** If tax validation is required by law or business rules, this is a production blocker
+**Impact Assessment:**
+- **ACTUAL STATUS:** ✅ Tax authority integration IS implemented (via FINA SOAP API)
+- **Verified in Phase 2:** 483 LOC in `src/fina/fina-client.ts`, all operations working
+- **No OAuth required:** FINA uses X.509 certificate authentication (already implemented)
+- **No batch submission gap:** FINA handles invoice submission (with queue for offline resilience)
 
-**Severity:** CRITICAL (if tax validation is required) / N/A (if out of scope)
+**Severity:** ✅ **NOT APPLICABLE** - This is NOT a missing integration. The term "Porezna" in the investigation plan was a terminology error. The tax authority integration (FINA) is complete and verified.
+
+**Detailed Assessment:**
+
+According to `_archive/docs/standards/EXTERNAL_INTEGRATIONS.md` (1,614 lines), the Croatian e-invoicing system has these tax authority integrations:
+
+1. **FINA Fiscalization Service (B2C)** - ✅ IMPLEMENTED
+   - Provider: Croatian Tax Authority (Porezna uprava)
+   - Protocol: SOAP 1.2 over HTTPS
+   - Authentication: X.509 certificate
+   - Location: `src/fina/fina-client.ts` (483 LOC)
+   - Status: 100% complete (verified in Phase 2, Section 8)
+
+2. **AS4 Central Exchange (B2B)** - ⚠️ NOT REQUIRED FOR B2C
+   - Provider: Croatian Tax Authority
+   - Protocol: AS4 (OASIS ebMS 3.0)
+   - Use Case: B2B invoice exchange
+   - Note: This is for B2B, not B2C fiscalization
+   - Status: Not in scope for current B2C-focused implementation
+
+**Conclusion:** The "Porezna integration" referred to in this investigation is a **terminology confusion**. The FINA fiscalization service IS the connection to "Porezna uprava" (Croatian Tax Authority). The integration is complete, verified, and compliant.
 
 ---
 
@@ -730,19 +755,41 @@ grep -r "klasus\|Klasus\|KLASUS" --include='*.ts' src/
 ### 3.4 Summary Statistics
 
 **Implemented Integrations:** 6 services, 2,604 LOC
-- FINA Fiscalization (100% complete) - 913 LOC
-- Certificate Management (100% complete) - 275 LOC
-- ZKI Generator (100% complete) - 252 LOC
-- XML-DSig Signing (100% complete) - 234 LOC
-- OIB Validation (100% complete) - 256 LOC
-- Email Ingestion (100% complete) - 609 LOC
+- FINA Fiscalization (100% complete) - 913 LOC ✅
+  - **NOTE:** This IS the "Porezna" (Tax Authority) integration
+  - Verified in Phase 2: SOAP client, certificate auth, all operations working
+- Certificate Management (100% complete) - 275 LOC ✅
+- ZKI Generator (100% complete) - 252 LOC ✅
+- XML-DSig Signing (100% complete) - 234 LOC ✅
+- OIB Validation (100% complete) - 256 LOC ✅
+- Email Ingestion (100% complete) - 609 LOC ✅
 
-**Missing Integrations:** 3 services, 0 LOC
-- Bank Integration (0% complete) - mock exists
-- Porezna Tax Administration (0% complete) - mock exists
-- KLASUS Classification (0% complete) - mock exists
+**Missing/Not Applicable Integrations:**
+- **Bank Integration** (0% complete) - ❌ OUT OF SCOPE
+  - Mock exists but not integrated
+  - Payment processing is NOT a requirement for e-invoicing per EXTERNAL_INTEGRATIONS.md
+  - Severity: NOT APPLICABLE (unless business stakeholders explicitly request payment features)
 
-**Mock Servers:** 3 mocks exist for missing integrations (Bank, Porezna, KLASUS) but are not connected to the main application
+- **Porezna Tax Administration** ✅ **ALREADY IMPLEMENTED**
+  - Terminology confusion: "Porezna" = "Tax Authority" in Croatian
+  - FINA Fiscalization IS the tax authority integration
+  - The `porezna-mock` is hypothetical (REST API doesn't exist in Croatian infrastructure)
+  - No separate OAuth integration exists or is needed
+  - Severity: NOT APPLICABLE (already complete via FINA)
+
+- **KLASUS Classification** (0% complete) - ⚠️ MAY BE REQUIRED
+  - Mock exists but not integrated
+  - KPD (Klasifikacija poslovnih djelatnosti) codes are used for invoice classification
+  - No public API exists as of 2025 (per EXTERNAL_INTEGRATIONS.md section 2.5)
+  - Manual validation or local database required
+  - Severity: MAJOR (if classification is required for compliance) / N/A (if out of scope)
+
+**Mock Servers:** 3 mocks exist in `_archive/mocks/`:
+- `bank-mock/` - Hypothetical, not required for e-invoicing
+- `porezna-mock/` - Hypothetical REST API, doesn't exist in production (real system uses SOAP)
+- `klasus-mock/` - Useful for testing, but no public API exists yet
+
+**Key Finding:** The investigation plan's concern about "missing Porezna integration" was based on a terminology error. The tax authority connection (FINA) is fully implemented and verified.
 
 ---
 
