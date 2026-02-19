@@ -200,56 +200,186 @@ Note: Mock services exist for Bank, Porezna, and KLASUS, but actual integrations
 
 ## 2. API Routes Inventory
 
+**Route Files:** 5 total files in `src/api/routes/`
+- `auth.ts` - Authentication endpoints (exports `authRoutes`)
+- `users.ts` - User management (exports `userRoutes`)
+- `config.ts` - Configuration management (exports `configRoutes`)
+- `invoices.ts` - Invoice submission and retrieval (exports `invoiceRoutes`)
+- `health.ts` - Health check endpoints (exports individual handlers, not a routes array)
+
+**Verification:** `grep -r 'export.*Routes' src/api/routes/` returns 4 (health.ts exports handlers, not a Routes array)
+
 ### 2.1 Authentication Routes (`/api/v1/auth`)
 
-| Method | Path | Handler | Auth | Purpose |
-|--------|------|---------|------|---------|
-| POST | `/register` | `registerHandler` | No | User registration |
-| POST | `/login` | `loginHandler` | No | User login |
-| POST | `/logout` | `logoutHandler` | Yes | User logout |
-| GET | `/me` | `getCurrentUserHandler` | Yes | Get current user info |
+**File:** `src/api/routes/auth.ts` (192 LOC)
+**Export:** `authRoutes` array
 
-**Authentication:** Session-based with Redis store
-**Security:** bcrypt password hashing, httpOnly cookies, secure flag in production
+| Method | Path | Handler | Middleware | Purpose |
+|--------|------|---------|------------|---------|
+| POST | `/login` | `loginHandler` | `validationMiddleware(loginSchema)` | User login with email/password |
+| POST | `/logout` | `logoutHandler` | `authMiddleware` | Destroy user session |
+| GET | `/me` | `getMeHandler` | `authMiddleware` | Get current authenticated user info |
+
+**Authentication:** Session-based with Redis store (connect-redis)
+**Security:**
+- bcrypt password hashing (10 rounds)
+- httpOnly cookies to prevent XSS
+- secure flag in production (HTTPS-only)
+- sameSite: 'lax' for CSRF protection
+- 24-hour session expiration with rolling refresh
+
+**Response Format:**
+```json
+{
+  "user": { "id": "uuid", "email": "user@example.com", "name": "Optional Name" },
+  "token": "session-id"
+}
+```
 
 ### 2.2 Invoice Routes (`/api/v1/invoices`)
 
-| Method | Path | Handler | Auth | Purpose |
-|--------|------|---------|------|---------|
-| GET | `/:id` | `getInvoiceByIdHandler` | Yes | Retrieve invoice by ID |
-| GET | `/:id/status` | `getInvoiceStatusHandler` | Yes | Get invoice processing status |
-| GET | `/` | `getInvoicesByOIBHandler` | Yes | List invoices by OIB |
-| POST | `/` | `submitInvoiceHandler` | Yes | Submit invoice for fiscalization |
+**File:** `src/api/routes/invoices.ts` (160 LOC)
+**Export:** `invoiceRoutes` array
 
-**Features:** User data isolation via `user_id` filtering, async processing with BullMQ
+| Method | Path | Handler | Middleware | Purpose |
+|--------|------|---------|------------|---------|
+| GET | `/:id` | `getInvoiceByIdHandler` | `authMiddleware` | Retrieve invoice by ID (with user isolation) |
+| GET | `/:id/status` | `getInvoiceStatusHandler` | `authMiddleware` | Get invoice processing status (status, jir, timestamps) |
+| GET | `/` | `getInvoicesByOIBHandler` | `authMiddleware` | List invoices by OIB (supports `?oib=xxx&limit=50&offset=0`) |
+| POST | `/` | `submitInvoiceHandler` | `authMiddleware`, `validationMiddleware(invoiceSubmissionSchema)` | Submit invoice for fiscalization (returns 202 with jobId) |
+
+**Features:**
+- User data isolation via `user_id` filtering in all queries
+- Async processing with BullMQ background jobs
+- Returns 202 Accepted for invoice submission (immediate queueing)
+- Supports pagination with limit/offset query parameters
+
+**Response Format (POST):**
+```json
+{
+  "invoiceId": "uuid",
+  "jobId": "bullmq-job-id",
+  "status": "queued"
+}
+```
 
 ### 2.3 User Routes (`/api/v1/users`)
 
-| Method | Path | Handler | Auth | Purpose |
-|--------|------|---------|------|---------|
-| GET | `/` | `getUsersHandler` | Yes | List users |
-| POST | `/` | `createUserHandler` | Yes | Create new user |
-| GET | `/:id` | `getUserByIdHandler` | Yes | Get user by ID |
-| PUT | `/:id` | `updateUserHandler` | Yes | Update user |
-| DELETE | `/:id` | `deleteUserHandler` | Yes | Delete user |
+**File:** `src/api/routes/users.ts` (124 LOC)
+**Export:** `userRoutes` array
+
+| Method | Path | Handler | Middleware | Purpose |
+|--------|------|---------|------------|---------|
+| GET | `/me` | `getMeHandler` | `authMiddleware` | Get current user's full profile |
+| GET | `/:id` | `getUserByIdHandler` | `authMiddleware` | Get user by ID (SECURITY: auth prevents enumeration) |
+| POST | `/` | `createUserHandler` | `validationMiddleware(userCreationSchema)` | Create new user account |
+
+**Security Note:** All user routes require authentication to prevent user enumeration attacks
+**Password Hashing:** bcrypt with 10 rounds before storage
+**Response:** Never includes `passwordHash` field
+
+**Validation:**
+- Email uniqueness check before creation (returns 409 Conflict if exists)
+- User creation schema validation via Zod
 
 ### 2.4 Configuration Routes (`/api/v1/users`)
 
-| Method | Path | Handler | Auth | Purpose |
-|--------|------|---------|------|---------|
-| GET | `/:userId/config` | `getConfigHandler` | Yes | Get user configuration |
-| PUT | `/:userId/config` | `updateConfigHandler` | Yes | Update user configuration |
+**File:** `src/api/routes/config.ts` (161 LOC)
+**Export:** `configRoutes` array
+
+| Method | Path | Handler | Middleware | Purpose |
+|--------|------|---------|------------|---------|
+| GET | `/me/config` | `getConfigsHandler` | `authMiddleware` | Get all user configurations (returns as object keyed by service name) |
+| PUT | `/me/config/:service` | `updateConfigHandler` | `authMiddleware` | Update configuration for specific service (validates with service-specific schema) |
+| DELETE | `/me/config/:service` | `deleteConfigHandler` | `authMiddleware` | Delete configuration for specific service (returns 204 No Content) |
 
 **Supported Services:** `fina`, `imap`
+**Validation:**
+- Service name validated (must be 'fina' or 'imap')
+- Request body validated with `finaConfigSchema` or `imapConfigSchema` (Zod)
+- Returns 400 Bad Request for invalid service names or malformed config data
+
+**Response Format (GET):**
+```json
+{
+  "configs": {
+    "fina": { "wsdlUrl": "...", "certificatePath": "...", ... },
+    "imap": { "host": "...", "port": 993, ... }
+  }
+}
+```
+
+**Response Format (PUT):**
+```json
+{
+  "serviceName": "fina",
+  "config": { /* validated config object */ },
+  "updatedAt": "2026-02-19T10:30:00.000Z"
+}
+```
 
 ### 2.5 Health Check Routes
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| GET | `/health` | Application health check |
-| GET | `/health/db` | Database connectivity check |
+**File:** `src/api/routes/health.ts` (36 LOC)
+**Export:** Individual handler functions (not a routes array)
 
-**Total Route Files:** 5 (auth, config, health, invoices, users)
+| Method | Path | Handler | Middleware | Purpose |
+|--------|------|---------|------------|---------|
+| GET | `/health` | `healthCheck` | None | Application health check (returns status, timestamp, version) |
+| GET | `/health/db` | `healthCheckDb` | None | Database connectivity check (queries `SELECT 1`) |
+
+**Response Format (/health):**
+```json
+{
+  "status": "ok",
+  "timestamp": "2026-02-19T10:30:00.000Z",
+  "version": "1.0.0"
+}
+```
+
+**Response Format (/health/db):**
+```json
+{
+  "status": "ok"
+}
+```
+or
+```json
+{
+  "status": "error",
+  "message": "Database connection failed"
+}
+```
+
+### 2.6 Route Registration
+
+**File:** `src/api/app.ts` (lines 104-130)
+
+Routes are registered using a consistent pattern:
+```typescript
+for (const route of invoiceRoutes) {
+  const middlewares = 'middleware' in route ? (route.middleware ?? []) : [];
+  (app as any)[route.method]('/api/v1/invoices' + route.path, ...middlewares, route.handler);
+}
+```
+
+This pattern allows for:
+- Flexible middleware stacks per route
+- Dynamic HTTP method binding
+- Consistent path prefixing
+
+### 2.7 Summary Statistics
+
+| Category | Count |
+|----------|-------|
+| **Total Route Files** | 5 |
+| **Total Route Exports** | 4 (authRoutes, userRoutes, configRoutes, invoiceRoutes) |
+| **Total Endpoints** | 13 |
+| **Public Endpoints** | 2 (login, health) |
+| **Protected Endpoints** | 11 (require authMiddleware) |
+| **Validation Endpoints** | 2 (login, create user, submit invoice) |
+
+**Authentication Required:** 11 of 13 endpoints (85%)
 
 ---
 
