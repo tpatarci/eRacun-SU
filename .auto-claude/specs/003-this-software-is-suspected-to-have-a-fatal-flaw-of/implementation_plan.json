@@ -449,7 +449,9 @@
             "type": "manual",
             "instructions": "Review historical context section. Confirm key decisions are noted."
           },
-          "status": "pending"
+          "status": "completed",
+          "notes": "Completed comprehensive review of archived documentation for historical context. Analyzed 115+ archived markdown files including START_HERE.md (1,293 lines - migration plan from 31 microservices to monolith), CROATIAN_COMPLIANCE.md (875 lines - regulatory requirements), 7 ADRs (architecture decision records), DEVELOPMENT_STANDARDS.md, and MULTI_REPO_MIGRATION_PLAN.md (proposal - not executed). Created Section 16.11 in investigation report with 9 subsections covering: (16.11.1) Migration history from microservices to monolith - verified 31 services simplified to single modular monolith (~3,000 LOC), banned dependencies removed (amqplib, kafkajs, @grpc, opossum, @opentelemetry, prom-client, inversify) - all confirmed absent from current package.json, (16.11.2) Croatian regulatory compliance framework - verified 4 of 5 critical pillars implemented (FINA SOAP, digital signatures, OIB validation, 11-year archiving), KPD classification missing (already documented as critical gap in Phase 3), (16.11.3) Architecture Decision Records - 7 ADRs reviewed showing historical context for architectural decisions, migration consistent with simplification principle, (16.11.4) Development standards - pragmatic adaptation after migration (removed distributed system patterns - circuit breakers, distributed tracing, Prometheus - correctly identified as unnecessary for monolith), (16.11.5) Multi-repository migration plan - proposal to split into 6 domain repos correctly abandoned in favor of monolith (correct decision), (16.11.6) Key architectural decisions informed by historical context - 6 major decisions validated (monolith over microservices ✅, remove distributed tracing ✅, remove circuit breakers ✅, keep BullMQ ✅, FINA SOAP ✅, multi-user architecture ✅), (16.11.7) Historical timeline - 11-phase migration timeline shows systematic well-executed migration, all phases completed, (16.11.8) Impact on current assessment - 6 findings re-evaluated with historical context (Porezna integration N/A, Bank integration N/A, KPD gap confirmed CRITICAL, no circuit breakers ✅ correct, no distributed tracing ✅ correct, fiscalization bug CRITICAL), (16.11.9) Conclusion - archived documentation quality 10/10 (excellent), validates current implementation, \"false pretenses\" allegation debunked - software was NOT created under false pretenses, archived docs are comprehensive and accurate, migration was well-documented and justified, gaps (KPD, fiscalization bug) are implementation issues not misrepresentation. Key insight: The historical context reveals that the current monolithic architecture is the CORRECT result of a deliberate simplification effort, NOT incomplete implementation of a microservices vision.",
+          "updated_at": "2026-02-19T10:25:19.840791+00:00"
         }
       ]
     },
@@ -670,6 +672,6 @@
   "qa_signoff": null,
   "status": "in_progress",
   "planStatus": "in_progress",
-  "updated_at": "2026-02-19T10:16:11.888Z",
-  "last_updated": "2026-02-19T10:14:59.126178+00:00"
+  "updated_at": "2026-02-19T10:23:20.434Z",
+  "last_updated": "2026-02-19T10:25:19.840812+00:00"
 }
