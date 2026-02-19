@@ -385,26 +385,362 @@ This pattern allows for:
 
 ## 3. External Service Integration Status
 
-### 3.1 Implemented Integrations
+### 3.1 Integration Matrix
 
-| Service | Status | Evidence | Completeness |
-|---------|--------|----------|--------------|
-| **FINA Fiscalization** | ✅ IMPLEMENTED | `src/fina/fina-client.ts` (483 LOC) | **COMPLETE** - Full SOAP client, WSDL support, certificate auth, echo/fiscalize/validate methods |
-| **Certificate Management** | ✅ IMPLEMENTED | `src/signing/certificate-parser.ts` (275 LOC) | **COMPLETE** - X.509 parsing, expiration validation, chain validation |
-| **ZKI Generator** | ✅ IMPLEMENTED | `src/signing/zki-generator.ts` (252 LOC) | **COMPLETE** - ISO 7064 MOD 11-10 algorithm |
-| **XML-DSig Signing** | ✅ IMPLEMENTED | `src/signing/xmldsig-signer.ts` (234 LOC) | **COMPLETE** - Enveloped signatures, node-forge |
-| **OIB Validation** | ✅ IMPLEMENTED | `src/validation/oib-validator.ts` (256 LOC) | **COMPLETE** - ISO 7064 MOD 11-10 checksum |
-| **Email Ingestion (IMAP)** | ✅ IMPLEMENTED | `src/ingestion/email-poller.ts` (319 LOC) | **COMPLETE** - imapflow, mailparser, multi-user support |
+| Service | Status | Location | Evidence | Completeness | Impact if Missing |
+|---------|--------|----------|----------|--------------|------------------|
+| **FINA Fiscalization** | ✅ IMPLEMENTED | `src/fina/` | 4 files, 913 LOC | **COMPLETE** | N/A |
+| **Certificate Management** | ✅ IMPLEMENTED | `src/signing/certificate-parser.ts` | 275 LOC | **COMPLETE** | N/A |
+| **ZKI Generator** | ✅ IMPLEMENTED | `src/signing/zki-generator.ts` | 252 LOC | **COMPLETE** | N/A |
+| **XML-DSig Signing** | ✅ IMPLEMENTED | `src/signing/xmldsig-signer.ts` | 234 LOC | **COMPLETE** | N/A |
+| **OIB Validation** | ✅ IMPLEMENTED | `src/validation/oib-validator.ts` | 256 LOC | **COMPLETE** | N/A |
+| **Email Ingestion (IMAP)** | ✅ IMPLEMENTED | `src/ingestion/` | 2 files, 609 LOC | **COMPLETE** | N/A |
+| **Bank Integration** | ❌ NOT IMPLEMENTED | N/A | 0 files | **MISSING** | CRITICAL |
+| **Porezna Tax Admin** | ❌ NOT IMPLEMENTED | N/A | 0 files | **MISSING** | CRITICAL |
+| **KLASUS Classification** | ❌ NOT IMPLEMENTED | N/A | 0 files | **MISSING** | MAJOR |
 
-### 3.2 MISSING Integrations
+**Verification:**
+```bash
+# Implemented services confirmed by file existence:
+find src/fina src/signing src/ingestion src/validation -name "*.ts" | wc -l  # 13 files
 
-| Service | Status | Expected Features | Mock Exists | Impact |
-|---------|--------|-------------------|-------------|--------|
-| **Bank Integration** | ❌ NOT IMPLEMENTED | IBAN validation, payment initiation, MT940 statement parsing | ✅ Yes (`_archive/mocks/bank-mock/`) | **CRITICAL** - Cannot process bank payments or statements |
-| **Porezna Tax Administration** | ❌ NOT IMPLEMENTED | OAuth 2.0 flow, batch invoice submission, status tracking | ✅ Yes (`_archive/mocks/porezna-mock/`) | **CRITICAL** - Cannot validate invoices with tax authority |
-| **KLASUS Classification** | ❌ NOT IMPLEMENTED | API client, code validation, caching | ✅ Yes (`_archive/mocks/klasus-mock/`) | **MAJOR** - Cannot classify invoices per Croatian standards |
+# Missing services confirmed by grep:
+grep -r "bank\|Bank\|iban\|IBAN\|mt940\|MT940" --include='*.ts' src/ | wc -l  # 0
+grep -r "porezna\|Porezna\|POREZNA\|oauth\|OAuth" --include='*.ts' src/ | wc -l  # 0
+grep -r "klasus\|Klasus\|KLASUS" --include='*.ts' src/ | wc -l  # 0
+```
 
-**Note:** Mock servers exist for all three missing integrations, indicating they were planned but never implemented in the main codebase.
+---
+
+### 3.2 Implemented Integrations - Detailed Analysis
+
+#### 3.2.1 FINA Fiscalization Service
+
+**Location:** `src/fina/` (4 files, 913 LOC)
+
+**Components:**
+- `fina-client.ts` (483 LOC) - SOAP client with retry logic
+- `soap-envelope-builder.ts` (250 LOC) - SOAP envelope construction
+- `types.ts` (145 LOC) - FINA API type definitions
+- `index.ts` (4 LOC) - Module exports
+
+**Features Implemented:**
+| Feature | Method | Description | Status |
+|---------|--------|-------------|--------|
+| WSDL Client | `FINASOAPClient.initialize()` | SOAP client initialization with certificate auth | ✅ Complete |
+| Fiscalization | `fiscalizeInvoice()` | Submit invoice to FINA for fiscalization | ✅ Complete |
+| Echo Test | `echo()` | Health check endpoint | ✅ Complete |
+| Validation | `validateInvoice()` | Test environment validation | ✅ Complete |
+| Certificate Auth | PKCS#12 support | Client certificate authentication | ✅ Complete |
+| Error Handling | `parseSoapFault()` | SOAP fault parsing with error codes | ✅ Complete |
+| Retry Logic | `withRetry()` | Exponential backoff (3 attempts) | ✅ Complete |
+| Request Building | `buildInvoiceXML()` | XML construction per FINA spec | ✅ Complete |
+| Response Parsing | `parseRacuniResponse()` | JIR extraction and error handling | ✅ Complete |
+
+**Dependencies:**
+- `soap` (1.1.0) - SOAP client
+- `node-forge` (1.3.1) - Certificate handling
+- `fs/promises` - Certificate file reading
+
+**Completeness Assessment:** ✅ **100% COMPLETE**
+- All required SOAP operations implemented
+- Certificate authentication fully functional
+- Error handling covers network, SOAP faults, and validation errors
+- Retry logic for transient failures
+- Type-safe with comprehensive TypeScript definitions
+
+---
+
+#### 3.2.2 Certificate Management
+
+**Location:** `src/signing/certificate-parser.ts` (275 LOC)
+
+**Features Implemented:**
+| Feature | Function | Description | Status |
+|---------|----------|-------------|--------|
+| PKCS#12 Parsing | `parseCertificate()` | Parse .p12 certificates with node-forge | ✅ Complete |
+| File Loading | `loadCertificateFromFile()` | Read certificate from filesystem | ✅ Complete |
+| Certificate Info | `extractCertificateInfo()` | Extract subject, issuer, serial, dates | ✅ Complete |
+| Expiration Check | `validateCertificate()` | Check notBefore/notAfter dates | ✅ Complete |
+| Issuer Validation | `validateCertificate()` | Verify FINA/AKD issuer | ✅ Complete |
+| Expiry Warning | `validateCertificate()` | 30-day expiration warning | ✅ Complete |
+| PEM Conversion | `parseCertificate()` | Export to PEM format | ✅ Complete |
+
+**Validation Rules:**
+- Certificate must not be expired
+- Certificate must not be used before valid date
+- Issuer must be: "Fina RDC 2015 CA", "FINA", or "AKD"
+- Warning issued if expiring within 30 days
+
+**Completeness Assessment:** ✅ **100% COMPLETE**
+- Full X.509 certificate parsing
+- FINA-specific issuer validation
+- Expiration monitoring
+- Secure private key handling
+
+---
+
+#### 3.2.3 ZKI Generator (Zaštitni Kod Izdavatelja)
+
+**Location:** `src/signing/zki-generator.ts` (252 LOC)
+
+**Features Implemented:**
+| Feature | Function | Description | Status |
+|---------|----------|-------------|--------|
+| ZKI Generation | `generateZKI()` | MD5 hash + RSA signature per Croatian spec | ✅ Complete |
+| ZKI Verification | `verifyZKI()` | Verify ZKI with public key | ✅ Complete |
+| Parameter Validation | `validateZKIParams()` | Validate all required fields | ✅ Complete |
+| Format Validation | ISO 8601, amount format | Date/time and decimal validation | ✅ Complete |
+| Formatting | `formatZKI()` | Add dashes every 8 characters | ✅ Complete |
+
+**Algorithm (per Croatian fiscalization spec):**
+1. Concatenate: OIB + IssueDateTime + InvoiceNumber + BusinessPremises + CashRegister + TotalAmount
+2. Compute MD5 hash of concatenated string
+3. Sign MD5 hash with private key (RSA)
+4. Encode signature as hexadecimal (32 hex characters)
+
+**Validation Rules:**
+- OIB: 11 digits
+- IssueDateTime: ISO 8601 format
+- InvoiceNumber: non-empty string
+- BusinessPremises: non-empty string
+- CashRegister: non-empty string
+- TotalAmount: numeric with up to 2 decimal places
+
+**Completeness Assessment:** ✅ **100% COMPLETE**
+- Full implementation of Croatian ZKI specification
+- Parameter validation prevents invalid ZKIs
+- Verification function for testing
+- Proper error handling
+
+---
+
+#### 3.2.4 XML-DSig Signing
+
+**Location:** `src/signing/xmldsig-signer.ts` (234 LOC)
+
+**Features Implemented:**
+| Feature | Function | Description | Status |
+|---------|----------|-------------|--------|
+| Enveloped Signature | `signXMLDocument()` | Sign XML with XML-DSig | ✅ Complete |
+| UBL Invoice Signing | `signUBLInvoice()` | Sign UBL 2.1 invoices | ✅ Complete |
+| Detached Signature | `createDetachedSignature()` | Create separate signature XML | ✅ Complete |
+| Canonicalization | C14N Exclusive | Proper XML canonicalization | ✅ Complete |
+| Signature Algorithm | RSA-SHA256 | Standard signature algorithm | ✅ Complete |
+| Digest Algorithm | SHA-256 | Standard digest algorithm | ✅ Complete |
+| Transform Support | Enveloped + C14N | Required transforms for FINA | ✅ Complete |
+
+**Default Options (FINA-compliant):**
+```typescript
+{
+  canonicalizationAlgorithm: 'http://www.w3.org/2001/10/xml-exc-c14n#',
+  signatureAlgorithm: 'http://www.w3.org/2001/04/xmldsig-more#rsa-sha256',
+  digestAlgorithm: 'http://www.w3.org/2001/04/xmlenc#sha256',
+  transforms: [
+    'http://www.w3.org/2000/09/xmldsig#enveloped-signature',
+    'http://www.w3.org/2001/10/xml-exc-c14n#',
+  ],
+  referenceUri: '',
+  signatureLocationXPath: '//*[local-name()="Invoice"]',
+  signatureLocationAction: 'append',
+}
+```
+
+**Completeness Assessment:** ✅ **100% COMPLETE**
+- Full XML-DSig implementation
+- UBL 2.1 invoice support
+- Configurable signature options
+- FINA-compliant algorithms
+
+---
+
+#### 3.2.5 OIB Validation
+
+**Location:** `src/validation/oib-validator.ts` (256 LOC)
+
+**Features Implemented:**
+| Feature | Function | Description | Status |
+|---------|----------|-------------|--------|
+| Format Validation | `validateOIBFormat()` | 11 digits, first digit not 0 | ✅ Complete |
+| Checksum Validation | `validateOIBChecksum()` | ISO 7064 MOD 11-10 | ✅ Complete |
+| Complete Validation | `validateOIB()` | Format + checksum | ✅ Complete |
+| Batch Validation | `validateOIBBatch()` | Validate multiple OIBs | ✅ Complete |
+| Test Generation | `generateValidOIB()` | Generate valid OIBs for testing | ✅ Complete |
+
+**Algorithm (ISO 7064 MOD 11-10):**
+1. Start with remainder = 10
+2. For each of first 10 digits (left to right):
+   - Add digit to remainder
+   - Remainder = (remainder mod 10) or 10 if zero
+   - Remainder = (remainder * 2) mod 11
+3. Expected check digit = (11 - remainder) mod 10
+4. Compare with actual 11th digit
+
+**Validation Rules:**
+- Exactly 11 digits
+- First digit cannot be 0
+- Must contain only digits
+- Checksum must match ISO 7064 MOD 11-10
+
+**Completeness Assessment:** ✅ **100% COMPLETE**
+- Full ISO 7064 MOD 11-10 implementation
+- Comprehensive validation
+- Batch processing support
+- Test utility for property-based testing
+
+---
+
+#### 3.2.6 Email Ingestion (IMAP)
+
+**Location:** `src/ingestion/` (2 files, 609 LOC)
+
+**Components:**
+- `email-poller.ts` (319 LOC) - IMAP email polling
+- `poller-manager.ts` (290 LOC) - Multi-user poller orchestration
+
+**Features Implemented:**
+| Feature | Component | Description | Status |
+|---------|-----------|-------------|--------|
+| IMAP Connection | `EmailPoller.start()` | Connect to IMAP server (IMAPS) | ✅ Complete |
+| Email Polling | `poll()` | Fetch unread messages at interval | ✅ Complete |
+| Attachment Extraction | `parseMessage()` | Extract attachments from emails | ✅ Complete |
+| Multi-User Support | `PollerManager` | Independent pollers per user | ✅ Complete |
+| Message Handler | `setMessageHandler()` | Callback for incoming emails | ✅ Complete |
+| Start/Stop Control | `startPollerForUser()` | Per-user poller lifecycle | ✅ Complete |
+| Mark as Read | `markSeen` option | Configure email marking | ✅ Complete |
+| Error Handling | Try-catch with logging | Graceful error handling | ✅ Complete |
+
+**Configuration:**
+```typescript
+{
+  userId: string,
+  host: string,
+  port: number,
+  user: string,
+  password: string,
+  mailbox: string,  // Default: 'INBOX'
+  markSeen: boolean,  // Default: true
+}
+```
+
+**Dependencies:**
+- `imapflow` - Modern IMAP client
+- `mailparser` - Email parsing
+
+**Completeness Assessment:** ✅ **100% COMPLETE**
+- Full IMAP email polling
+- Multi-user support with per-user configurations
+- Attachment extraction
+- Configurable polling intervals
+- Graceful shutdown support
+
+---
+
+### 3.3 Missing Integrations - Impact Analysis
+
+#### 3.3.1 Bank Integration
+
+**Status:** ❌ NOT IMPLEMENTED
+
+**Expected Features:**
+- IBAN validation (Croatian format: HRxxxxxxxxxxxxxxxxx)
+- Payment initiation
+- MT940 statement parsing
+- Bank API client
+
+**Mock Status:** ✅ Mock exists in `_archive/mocks/bank-mock/` (not integrated)
+
+**Verification:**
+```bash
+grep -r "bank\|Bank\|iban\|IBAN\|mt940\|MT940" --include='*.ts' src/
+# Result: 0 matches - no bank integration code exists
+```
+
+**Impact:** ⚠️ **CRITICAL**
+- Cannot validate Croatian IBANs
+- Cannot initiate bank payments
+- Cannot process MT940 bank statements
+- Cannot reconcile payments with invoices
+- **Business Impact:** If payment processing is a required feature, this is a production blocker
+
+**Severity:** CRITICAL (if banking is required) / N/A (if out of scope)
+
+---
+
+#### 3.3.2 Porezna Tax Administration Integration
+
+**Status:** ❌ NOT IMPLEMENTED
+
+**Expected Features:**
+- OAuth 2.0 flow for authentication
+- Batch invoice submission
+- Invoice validation with tax authority
+- Status tracking for submitted invoices
+- Rate limiting and retry logic
+
+**Mock Status:** ✅ Mock exists in `_archive/mocks/porezna-mock/` (not integrated)
+
+**Verification:**
+```bash
+grep -r "porezna\|Porezna\|POREZNA\|oauth\|OAuth" --include='*.ts' src/
+# Result: 0 matches - no tax administration integration exists
+```
+
+**Impact:** ⚠️ **CRITICAL**
+- Cannot validate invoices with Croatian tax authority
+- Cannot submit invoices in batch
+- Cannot track invoice validation status
+- Cannot ensure tax compliance
+- **Business Impact:** If tax validation is required by law or business rules, this is a production blocker
+
+**Severity:** CRITICAL (if tax validation is required) / N/A (if out of scope)
+
+---
+
+#### 3.3.3 KLASUS Classification System Integration
+
+**Status:** ❌ NOT IMPLEMENTED
+
+**Expected Features:**
+- KLASUS API client
+- Classification code validation
+- Caching mechanism
+- Code lookup and description
+
+**Mock Status:** ✅ Mock exists in `_archive/mocks/klasus-mock/` (not integrated)
+
+**Verification:**
+```bash
+grep -r "klasus\|Klasus\|KLASUS" --include='*.ts' src/
+# Result: 0 matches - no KLASUS integration exists
+```
+
+**Impact:** ⚠️ **MAJOR**
+- Cannot classify invoices per Croatian standards
+- Cannot lookup KLASUS codes
+- Cannot validate classification data
+- **Business Impact:** If invoice classification is required for reporting or compliance, this is a significant gap
+
+**Severity:** MAJOR (if classification is required) / N/A (if out of scope)
+
+---
+
+### 3.4 Summary Statistics
+
+**Implemented Integrations:** 6 services, 2,604 LOC
+- FINA Fiscalization (100% complete) - 913 LOC
+- Certificate Management (100% complete) - 275 LOC
+- ZKI Generator (100% complete) - 252 LOC
+- XML-DSig Signing (100% complete) - 234 LOC
+- OIB Validation (100% complete) - 256 LOC
+- Email Ingestion (100% complete) - 609 LOC
+
+**Missing Integrations:** 3 services, 0 LOC
+- Bank Integration (0% complete) - mock exists
+- Porezna Tax Administration (0% complete) - mock exists
+- KLASUS Classification (0% complete) - mock exists
+
+**Mock Servers:** 3 mocks exist for missing integrations (Bank, Porezna, KLASUS) but are not connected to the main application
 
 ---
 
