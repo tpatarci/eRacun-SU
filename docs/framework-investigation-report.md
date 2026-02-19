@@ -3,7 +3,7 @@
 **Project:** eRačun-SU - Croatian Electronic Invoicing System
 **Investigation Date:** 2026-02-19
 **Investigation Type:** Framework Integrity and Documentation Assessment
-**Report Version:** 1.4 (Draft - Phase 3: Missing Integrations Investigation - Subtask 3-2 Complete)
+**Report Version:** 1.5 (Draft - Phase 3: Missing Integrations Investigation - Subtask 3-3 Complete)
 
 ---
 
@@ -13,9 +13,11 @@ This report documents a comprehensive investigation of the eRačun-SU software f
 
 **Phase 1 Status:** ✅ COMPLETE - Codebase Discovery and Structure Mapping
 **Phase 2 Status:** ✅ COMPLETE - FINA Fiscalization Integration Verification (4 of 4 subtasks complete)
-**Phase 3 Status:** 🟡 IN PROGRESS - Missing Integrations Investigation (2 of 3 subtasks complete)
+**Phase 3 Status:** ✅ COMPLETE - Missing Integrations Investigation (3 of 3 subtasks complete)
 
 **🔍 CRITICAL FINDING (Subtask 3-2):** The "Porezna Tax Administration Integration" referenced in the investigation plan is a **terminology error**. "Porezna" means "Tax Authority" in Croatian, and the FINA Fiscalization integration verified in Phase 2 **IS** the tax authority connection. There is NO separate "Porezna OAuth API" in the Croatian e-invoicing ecosystem. The `porezna-mock` in `_archive/mocks/` is a hypothetical REST API mock that does not correspond to an actual production system.
+
+**⚠️ CRITICAL FINDING (Subtask 3-3):** KPD (Klasifikacija poslovnih djelatnosti) code validation is **MANDATORY** per Croatian e-invoicing regulations (effective 1 Jan 2026), but NO validation exists in the main application. The invoice contract requires `kpdCode` field (shared/contracts/src/invoice.ts:65), and invalid codes trigger invoice rejection by Tax Authority. No KLASUS integration exists in `src/` (0 files), though a test helper exists in `tests/compliance/helpers/kpd-validator.ts`. This is a **regulatory compliance gap** that must be addressed before production deployment.
 
 ---
 
@@ -399,9 +401,9 @@ This pattern allows for:
 | **XML-DSig Signing** | ✅ IMPLEMENTED | `src/signing/xmldsig-signer.ts` | 234 LOC | **COMPLETE** | N/A |
 | **OIB Validation** | ✅ IMPLEMENTED | `src/validation/oib-validator.ts` | 256 LOC | **COMPLETE** | N/A |
 | **Email Ingestion (IMAP)** | ✅ IMPLEMENTED | `src/ingestion/` | 2 files, 609 LOC | **COMPLETE** | N/A |
-| **Bank Integration** | ❌ NOT IMPLEMENTED | N/A | 0 files | **MISSING** | CRITICAL |
-| **Porezna Tax Admin** | ❌ NOT IMPLEMENTED | N/A | 0 files | **MISSING** | CRITICAL |
-| **KLASUS Classification** | ❌ NOT IMPLEMENTED | N/A | 0 files | **MISSING** | MAJOR |
+| **Bank Integration** | ❌ NOT IMPLEMENTED | N/A | 0 files | **OUT OF SCOPE** | NOT APPLICABLE |
+| **Porezna Tax Admin** | ✅ IMPLEMENTED | `src/fina/` (FINA Fiscalization) | 913 LOC | **COMPLETE** | NOT APPLICABLE |
+| **KLASUS Classification** | ❌ NOT IMPLEMENTED | N/A | 0 files | **REGULATORY GAP** | **CRITICAL** |
 
 **Verification:**
 ```bash
@@ -726,29 +728,98 @@ According to `_archive/docs/standards/EXTERNAL_INTEGRATIONS.md` (1,614 lines), t
 
 #### 3.3.3 KLASUS Classification System Integration
 
-**Status:** ❌ NOT IMPLEMENTED
+**Status:** ⚠️ **CRITICAL - REGULATORY REQUIREMENT NOT IMPLEMENTED**
 
-**Expected Features:**
-- KLASUS API client
-- Classification code validation
-- Caching mechanism
-- Code lookup and description
+**CRITICAL FINDING:** KPD (Klasifikacija poslovnih djelatnosti) code validation is **MANDATORY** per Croatian e-invoicing regulations, but NO validation exists in the codebase.
 
-**Mock Status:** ✅ Mock exists in `_archive/mocks/klasus-mock/` (not integrated)
+**Regulatory Requirement (CROATIAN_COMPLIANCE.md):**
+- **KPD codes are MANDATORY** for all invoice line items (minimum 6 digits)
+- System MUST validate against official KLASUS registry
+- Invalid codes trigger invoice rejection by Tax Authority
+- Every invoice line item MUST have valid KPD code
+- Authority: State Statistical Office (Državni zavod za statistiku - DZS)
 
-**Verification:**
+**Current Implementation Status:**
 ```bash
+# Verification - No KLASUS integration exists
 grep -r "klasus\|Klasus\|KLASUS" --include='*.ts' src/
-# Result: 0 matches - no KLASUS integration exists
+# Result: 0 matches
+
+# No KPD validation in source code
+find src/ -name '*kpd*' -o -name '*klasus*'
+# Result: No files found
 ```
 
-**Impact:** ⚠️ **MAJOR**
-- Cannot classify invoices per Croatian standards
-- Cannot lookup KLASUS codes
-- Cannot validate classification data
-- **Business Impact:** If invoice classification is required for reporting or compliance, this is a significant gap
+**Contract vs. Reality:**
+- **Contract Requirement:** `shared/contracts/src/invoice.ts` line 65: `kpdCode: string; // 6-digit KLASUS code (REQUIRED!)`
+- **Validation Status:** ❌ NO validation exists in `src/`
+- **Test Infrastructure:** ✅ Test helper exists: `tests/compliance/helpers/kpd-validator.ts` (31 LOC)
+  - Contains sample KPD codes for testing
+  - Format validation: `^\d{2}\.\d{2}\.\d{2}$`
+  - NOTE: Test helper is NOT integrated into main application
 
-**Severity:** MAJOR (if classification is required) / N/A (if out of scope)
+**External Integration Context (EXTERNAL_INTEGRATIONS.md Section 2.5):**
+- **Provider:** State Statistical Office (DZS)
+- **Web Application:** `https://klasus.dzs.hr/` (search interface)
+- **API Status:** ❌ No public API available as of November 2025
+- **Expected API:** Q4 2025 (not yet published)
+- **Integration Strategy:** Manual pre-population of local database until API available
+
+**FINA Fiscalization Context:**
+- KPD codes are **NOT sent to FINA** fiscalization API
+- `src/fina/types.ts` FINAInvoice schema does NOT include KPD codes
+- KPD codes are used for UBL invoice classification (EN 16931-1:2017 standard)
+- Fiscalization validates: OIB, amounts, ZKI, signatures - NOT KPD codes
+
+**Missing Features:**
+1. ❌ No KPD code validation in `src/validation/` (only `oib-validator.ts` exists)
+2. ❌ No KLASUS API client (`src/klasus/` or `src/services/klasus-client.ts` missing)
+3. ❌ No local KPD code database for validation
+4. ❌ No code lookup or description retrieval
+5. ❌ No caching mechanism for KPD code data
+6. ❌ Invoice processing does not validate `kpdCode` field
+7. ❌ No API error handling for KLASUS service
+
+**Mock Status:**
+- ✅ Mock exists: `_archive/mocks/klasus-mock/` (449 LOC)
+  - Complete KLASUS 2025 code database
+  - REST API for code lookup and validation
+  - Port: 8451
+- ⚠️ Mock is NOT integrated into main application
+
+**Impact Assessment:**
+- **Severity:** ⚠️ **CRITICAL - REGULATORY COMPLIANCE**
+- **Business Impact:**
+  - Invoices with invalid KPD codes may be rejected by Tax Authority
+  - Unable to verify compliance before invoice submission
+  - No mechanism to lookup or validate KPD codes
+  - Manual KPD code mapping required (error-prone)
+- **Regulatory Risk:** Non-compliance with Croatian e-invoicing law (mandatory from 1 Jan 2026)
+
+**Recommended Remediation:**
+1. **Immediate (Before 1 Jan 2026):**
+   - Create `src/validation/kpd-validator.ts` with local database validation
+   - Import KLASUS 2025 codes into database table
+   - Add KPD validation to invoice processing pipeline
+   - Add error code `INVALID_KPD_CODE` (already defined in `shared/contracts/src/errors.ts`)
+
+2. **Short-term (Q1 2026):**
+   - Monitor DZS for official API publication
+   - Implement KLASUS API client when available
+   - Add caching layer for KPD code lookups
+   - Implement automatic code synchronization
+
+3. **Testing:**
+   - Integrate `tests/compliance/helpers/kpd-validator.ts` patterns
+   - Add unit tests for KPD validation
+   - Add integration tests with klasus-mock
+
+**Evidence:**
+- `shared/contracts/src/invoice.ts:65` - kpdCode marked as REQUIRED
+- `shared/contracts/src/errors.ts` - INVALID_KPD_CODE error defined but not used
+- `_archive/CROATIAN_COMPLIANCE.md` - KPD codes are MANDATORY
+- `_archive/docs/standards/EXTERNAL_INTEGRATIONS.md:458` - No public API exists yet
+- `tests/compliance/helpers/kpd-validator.ts` - Test validation exists but not integrated
 
 ---
 
@@ -777,17 +848,23 @@ grep -r "klasus\|Klasus\|KLASUS" --include='*.ts' src/
   - No separate OAuth integration exists or is needed
   - Severity: NOT APPLICABLE (already complete via FINA)
 
-- **KLASUS Classification** (0% complete) - ⚠️ MAY BE REQUIRED
-  - Mock exists but not integrated
-  - KPD (Klasifikacija poslovnih djelatnosti) codes are used for invoice classification
-  - No public API exists as of 2025 (per EXTERNAL_INTEGRATIONS.md section 2.5)
-  - Manual validation or local database required
-  - Severity: MAJOR (if classification is required for compliance) / N/A (if out of scope)
+- **KLASUS Classification** (0% complete) - ⚠️ **CRITICAL - REGULATORY REQUIREMENT**
+  - KPD codes are MANDATORY per Croatian e-invoicing regulations (CROATIAN_COMPLIANCE.md)
+  - Required in invoice contract (`shared/contracts/src/invoice.ts:65`)
+  - NO validation exists in main application (0 files in `src/`)
+  - Test helper exists (`tests/compliance/helpers/kpd-validator.ts`) but NOT integrated
+  - No public API available as of November 2025 (EXTERNAL_INTEGRATIONS.md section 2.5)
+  - System MUST validate against official KLASUS registry
+  - Invalid codes trigger invoice rejection by Tax Authority
+  - Severity: **CRITICAL** - Regulatory compliance requirement
+  - Required before: 1 Jan 2026 (mandatory for VAT entities)
 
 **Mock Servers:** 3 mocks exist in `_archive/mocks/`:
-- `bank-mock/` - Hypothetical, not required for e-invoicing
-- `porezna-mock/` - Hypothetical REST API, doesn't exist in production (real system uses SOAP)
-- `klasus-mock/` - Useful for testing, but no public API exists yet
+- `bank-mock/` - Hypothetical, not required for e-invoicing (payment processing is out of scope)
+- `porezna-mock/` - Hypothetical REST API, doesn't exist in production (real system uses SOAP via FINA)
+- `klasus-mock/` - Useful for testing KPD validation, but no public API exists yet (expected Q4 2025)
+  - Contains complete KLASUS 2025 code database
+  - Should be integrated for testing KPD validation
 
 **Key Finding:** The investigation plan's concern about "missing Porezna integration" was based on a terminology error. The tax authority connection (FINA) is fully implemented and verified.
 
