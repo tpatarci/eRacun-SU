@@ -1,25 +1,25 @@
 {
   "active": true,
-  "spec": "002-refactor-for-multi-user-support",
+  "spec": "003-this-software-is-suspected-to-have-a-fatal-flaw-of",
   "state": "building",
   "subtasks": {
-    "completed": 32,
-    "total": 33,
+    "completed": 21,
+    "total": 22,
     "in_progress": 1,
     "failed": 0
   },
   "phase": {
-    "current": "Integration & Testing",
+    "current": "Generate Comprehensive Investigation Report",
     "id": null,
-    "total": 8
+    "total": 2
   },
   "workers": {
     "active": 0,
     "max": 1
   },
   "session": {
-    "number": 33,
-    "started_at": "2026-02-10T15:01:48.918628"
+    "number": 20,
+    "started_at": "2026-02-19T08:38:47.934630"
   },
-  "last_update": "2026-02-10T17:07:14.735973"
+  "last_update": "2026-02-19T10:32:29.250960"
 }
