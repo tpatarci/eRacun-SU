@@ -748,18 +748,108 @@ grep -r "klasus\|Klasus\|KLASUS" --include='*.ts' src/
 
 ### 4.1 Incomplete Implementations Found
 
+**Search Command:** `grep -r 'TODO\|FIXME\|XXX\|HACK' --include='*.ts' src/`
+
+**Total Markers Found:** 6 (verification expected 7 - count discrepancy noted)
+
 | File | Line | Type | Description | Severity |
 |------|------|------|-------------|----------|
+| `src/jobs/queue.ts` | 113 | TODO | `oznPoslProstora: 'PP1'` - hardcoded business premises code | **CRITICAL** |
+| `src/jobs/queue.ts` | 114 | TODO | `oznNapUr: '1'` - hardcoded cash register code | **CRITICAL** |
+| `src/jobs/queue.ts` | 115 | TODO | `ukupanIznos: '0'` - hardcoded total amount | **CRITICAL** |
+| `src/jobs/queue.ts` | 116 | TODO | `nacinPlac: 'G'` - hardcoded payment method | **CRITICAL** |
+| `src/jobs/queue.ts` | 117 | TODO | `zki: '000000000000000000'` - hardcoded ZKI instead of extracting from signed XML | **CRITICAL** |
 | `src/shared/auth.ts` | 135 | TODO | Role-based access control not implemented | **MAJOR** |
-| `src/jobs/queue.ts` | 113-117 | TODO | Invoice fields hardcoded (oznPoslProstora, oznNapUr, ukupanIznos, nacinPlac, zki) | **CRITICAL** - Fiscalization data incomplete |
-| `src/jobs/queue.ts` | 117 | TODO | ZKI not extracted from signed XML | **CRITICAL** - Invalid fiscalization requests |
 
-**Total TODO/FIXME Markers:** 7
+### 4.2 Detailed Analysis
 
-**Critical Issues:**
-- Fiscalization requests contain placeholder data instead of actual invoice values
-- ZKI code is hardcoded to '000000000000000000' instead of being extracted from signed XML
-- This means the system would send INVALID fiscalization requests to FINA in production
+#### 4.2.1 CRITICAL: Fiscalization Data Hardcoded (Production Bug)
+
+**Location:** `src/jobs/queue.ts` lines 108-124
+
+**Issue:** The invoice submission job (`processInvoiceSubmission`) contains 5 hardcoded placeholder values when calling `finaClient.fiscalizeInvoice()`:
+
+```typescript
+const result = await finaClient.fiscalizeInvoice(
+  {
+    oib,
+    datVrijeme: new Date().toISOString(),
+    brojRacuna: invoiceNumber,
+    oznPoslProstora: 'PP1', // TODO: get from invoice data
+    oznNapUr: '1', // TODO: get from invoice data
+    ukupanIznos: '0', // TODO: get from invoice data
+    nacinPlac: 'G', // TODO: get from invoice data
+    zki: '000000000000000000', // TODO: get from signed XML
+    // ... rest of params
+  },
+  signedXml
+);
+```
+
+**Impact:**
+- **Every fiscalization request sends invalid/placeholder data to FINA**
+- `ukupanIznos` is always '0' instead of actual invoice amount
+- `zki` is always '000000000000000000' instead of the computed ZKI from signed XML
+- `oznPoslProstora`, `oznNapUr`, `nacinPlac` are static values instead of from invoice data
+- FINA would reject these requests or, worse, accept them with invalid data
+- **This is a PRODUCTION BUG** that renders the fiscalization feature non-functional
+
+**Evidence:**
+- Function: `processInvoiceSubmission` in `src/jobs/queue.ts`
+- The TODO comments explicitly state "get from invoice data" or "get from signed XML"
+- The values are hardcoded as string literals
+- No logic exists to extract these values from the `invoiceData` parameter
+
+**Severity Assessment:** CRITICAL
+- Blocks production deployment
+- Makes fiscalization non-compliant with Croatian tax regulations
+- Could result in rejected invoices or legal penalties if used in production
+- Financial impact: Invalid invoices would not be legally valid
+
+#### 4.2.2 MAJOR: Role-Based Access Control Not Implemented
+
+**Location:** `src/shared/auth.ts` line 135
+
+**Issue:** The `requireRole()` middleware does not implement actual role checking:
+
+```typescript
+// TODO: Implement role-based access control
+// For now, just pass through - basic user isolation is sufficient for MVP
+// as specified in the requirements
+
+logger.warn({
+  requestId: req.id,
+  userId: req.user.id,
+  requiredRole,
+}, 'Role checking not yet implemented - allowing access');
+
+next(); // Always allows access
+```
+
+**Impact:**
+- All authenticated users have access to all endpoints
+- No enforcement of admin vs. standard user permissions
+- Potential security issue if role-based features are added
+
+**Severity Assessment:** MAJOR
+- Does not block production (basic user isolation exists)
+- Security limitation if multi-tier access is required
+- Warning logs indicate this was deferred for MVP
+
+### 4.3 Summary Statistics
+
+| Category | Count |
+|----------|-------|
+| **Total TODO Markers** | 6 |
+| **Critical Issues** | 5 (fiscalization data) |
+| **Major Issues** | 1 (RBAC) |
+| **Minor Issues** | 0 |
+| **Files Affected** | 2 (src/jobs/queue.ts, src/shared/auth.ts) |
+
+**Verification Note:** The verification command expected 7 markers, but only 6 were found. This discrepancy may be due to:
+- A TODO being removed during previous refactoring
+- Multi-line TODO comments being counted differently
+- The count including a comment that was already addressed
 
 ---
 
@@ -834,10 +924,16 @@ grep -r "klasus\|Klasus\|KLASUS" --include='*.ts' src/
 
 ### 7.2 Critical Gaps
 
-1. **Fiscalization Data Hardcoded:** Invoice submission job contains TODO comments with placeholder values instead of actual invoice data
-   - **Impact:** System would send INVALID requests to FINA
-   - **Severity:** CRITICAL
+1. **Fiscalization Data Hardcoded (PRODUCTION BUG):** Invoice submission job contains 5 TODO comments with hardcoded placeholder values instead of actual invoice data
+   - **Impact:** System sends INVALID fiscalization requests to FINA with zero amounts, fake ZKI codes, and static business premises/cash register codes
+   - **Severity:** CRITICAL - Blocks production deployment
    - **Evidence:** `src/jobs/queue.ts` lines 113-117
+   - **Details:**
+     - `ukupanIznos` always '0' instead of actual invoice total
+     - `zki` always '000000000000000000' instead of computed ZKI
+     - `oznPoslProstora` always 'PP1' instead of invoice data
+     - `oznNapUr` always '1' instead of invoice data
+     - `nacinPlac` always 'G' instead of invoice payment method
 
 2. **Bank Integration Missing:** No IBAN validation, payment initiation, or MT940 parsing
    - **Impact:** Cannot process bank payments or reconcile statements
